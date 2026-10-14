@@ -345,6 +345,44 @@ bool CreateUploadBuffer(ID3D12Device* device, UINT64 size, Microsoft::WRL::ComPt
     return SUCCEEDED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
 }
+
+std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UINT width, UINT height, bool srgb)
+{
+    std::vector<std::uint8_t> result(static_cast<std::size_t>(width) * height * 4U);
+    const auto toLinear = [](float c) {
+        return c <= 0.04045F ? c / 12.92F : std::pow((c + 0.055F) / 1.055F, 2.4F);
+    };
+    const auto toSrgb = [](float c) {
+        c = std::clamp(c, 0.0F, 1.0F);
+        return c <= 0.0031308F ? c * 12.92F : 1.055F * std::pow(c, 1.0F / 2.4F) - 0.055F;
+    };
+    for (UINT y = 0; y < height; ++y) {
+        const float sy = std::clamp((static_cast<float>(y) + 0.5F) * source.height / height - 0.5F,
+            0.0F, static_cast<float>(source.height - 1U));
+        const UINT y0 = static_cast<UINT>(sy);
+        const UINT y1 = std::min(source.height - 1U, y0 + 1U);
+        const float fy = sy - static_cast<float>(y0);
+        for (UINT x = 0; x < width; ++x) {
+            const float sx = std::clamp((static_cast<float>(x) + 0.5F) * source.width / width - 0.5F,
+                0.0F, static_cast<float>(source.width - 1U));
+            const UINT x0 = static_cast<UINT>(sx);
+            const UINT x1 = std::min(source.width - 1U, x0 + 1U);
+            const float fx = sx - static_cast<float>(x0);
+            for (UINT channel = 0; channel < 4; ++channel) {
+                auto sample = [&](UINT px, UINT py) {
+                    float value = static_cast<float>(source.rgba[(static_cast<std::size_t>(py) * source.width + px) * 4U + channel]) / 255.0F;
+                    return srgb && channel < 3U ? toLinear(value) : value;
+                };
+                const float top = sample(x0, y0) * (1.0F - fx) + sample(x1, y0) * fx;
+                const float bottom = sample(x0, y1) * (1.0F - fx) + sample(x1, y1) * fx;
+                float value = top * (1.0F - fy) + bottom * fy;
+                if (srgb && channel < 3U) value = toSrgb(value);
+                result[(static_cast<std::size_t>(y) * width + x) * 4U + channel] =
+                    static_cast<std::uint8_t>(std::clamp(std::lround(value * 255.0F), 0L, 255L));
+            }
+        }
+    }
+    return result;
 } // namespace
 
 D3D12Renderer::~D3D12Renderer()

@@ -44,6 +44,7 @@ private:
     };
 
     [[nodiscard]] bool CreateRenderTarget();
+    [[nodiscard]] bool CreateTemporalTargets();
     [[nodiscard]] bool CreateDepthTarget();
     [[nodiscard]] bool CreateShadowResources();
     [[nodiscard]] bool CreatePipeline();
@@ -56,6 +57,17 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_hdrRenderTarget;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_hdrShaderResource;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_postProcessPixelShader;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_postProcessConstants;
+    std::array<Microsoft::WRL::ComPtr<ID3D11Texture2D>, 2> m_historyTextures;
+    std::array<Microsoft::WRL::ComPtr<ID3D11RenderTargetView>, 2> m_historyRenderTargets;
+    std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 2> m_historyShaderResources;
+    std::uint64_t m_frameIndex = 0;
+    UINT m_historyWriteIndex = 0;
+    bool m_historyValid = false;
+    float m_previousCameraX = 0.0F;
+    float m_previousCameraY = 0.0F;
+    float m_previousCameraZ = 0.0F;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_postProcessTemporalBuffer;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthShaderResource;

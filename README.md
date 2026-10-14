@@ -1,127 +1,76 @@
 # VantaEngine
 
-VantaEngine is an early-stage, native C++23 3D game engine. It is designed around a small dependency footprint, clear subsystem boundaries, and a build/test workflow that does not require a heavyweight editor.
+VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 window, Direct3D 11 device and swap chain, runtime-compiled shaders, a GPU-rendered colored triangle, resize handling, a frame loop, and automated core tests. This is the rendering foundation—not yet a complete game engine.
+> **Current milestone:** native Win32 window, Direct3D 11 triangle renderer, and a standalone tested 3D math foundation. The screen still displays the renderer test triangle; camera and mesh rendering are the next milestone.
 
-## Design goals
+## Architecture
 
-- Native executable; no browser runtime or mandatory editor.
-- Keep platform, renderer, core runtime, and game code separate.
-- Make ownership explicit and use RAII for graphics resources.
-- Keep the default development loop fast.
-- Test platform-independent logic without opening a window or requiring a GPU.
-- Add capabilities incrementally: input/actions, math, scene/entity model, resources, materials, meshes, camera, lighting, and editor tooling.
+- core: runtime entry point, logging, frame-time policy
+- math: Vec3, Vec4, Quaternion, Mat4
+- platform: Win32 window/event lifecycle
+- renderer: Direct3D 11 device, shaders, buffers, swap chain
+- tests: GPU-independent runtime and math tests
 
-## Current architecture
+## Math conventions
 
-```text
-engine/
-├── include/vanta/
-│   ├── core/
-│   │   ├── Engine.hpp        # Runtime entry point
-│   │   ├── FrameTime.hpp     # Frame-delta safety utility
-│   │   └── Log.hpp           # Minimal logging
-│   ├── platform/
-│   │   └── Window.hpp        # Native window interface
-│   └── renderer/
-│       └── D3D11Renderer.hpp # Renderer interface/resources
-└── src/
-    ├── core/Engine.cpp       # Startup, frame loop, shutdown
-    ├── platform/Window.cpp   # Win32 event and window lifecycle
-    ├── renderer/D3D11Renderer.cpp
-    └── main.cpp
-tests/
-└── engine_tests.cpp          # Fast, GPU-independent unit tests
-```
+The math layer is header-only and has no Windows or graphics API dependencies.
 
-### Runtime flow
+- Vec3 supports arithmetic, dot/cross products, and safe normalization. Near-zero vectors return no value instead of producing NaNs.
+- Quaternion supports axis-angle creation, normalization, conjugation, multiplication, and vector rotation.
+- Mat4 uses column-major storage, column vectors, and matrix-times-vector transforms. Translation occupies column 3.
+- LookAtLH is a left-handed view matrix where +Z is forward.
+- Perspective is left-handed and maps normalized depth to Direct3D's [0, 1] range.
+- Matrix composition T * R * S * point applies scale, then rotation, then translation.
+- Invalid projection inputs return a zero matrix; degenerate look-at vectors and invalid quaternion axes return no value.
 
-1. Create a native Win32 window.
-2. Initialize the Direct3D 11 device and swap chain.
-3. Compile the initial HLSL vertex/pixel shaders.
-4. Enter the frame loop: pump window messages, handle resize, compute a bounded delta time, render, and present.
-5. Release Direct3D resources through COM smart pointers when the renderer is destroyed.
-
-The initial renderer is deliberately small. It proves that the engine can create a graphics device and submit GPU work before introducing a larger rendering abstraction.
+These conventions match the current Direct3D 11 backend and must be respected by renderer code.
 
 ## Requirements
 
-- Windows 10/11 x64.
-- Visual Studio with the MSVC x64 C++ toolchain.
-- Visual Studio's CMake and Ninja components (or CMake 3.25+ and Ninja available on PATH).
-- PowerShell 5.1+.
-- VS Code is optional; the command-line build works without it.
+- Windows 10/11 x64
+- Visual Studio with MSVC x64 C++ tools
+- Visual Studio CMake/Ninja components, or CMake 3.25+ and Ninja on PATH
+- PowerShell 5.1+
 
-There are no third-party runtime dependencies. The renderer uses the Windows SDK's Direct3D 11, DXGI, and shader compiler libraries.
+No third-party runtime dependencies: the engine uses Win32, Direct3D 11, DXGI, and the Windows SDK shader compiler.
 
-## Build and run
+## Build, test, run
 
-From the repository root in PowerShell:
+From the repository root:
 
-```powershell
-git pull origin main
-.\scripts\build.ps1 -Test -Run
-```
+    git pull origin main
+    .\scripts\build.ps1 -Test -Run
 
-The first command updates your local checkout. The script configures CMake, builds the engine and test executable, runs CTest, then launches the engine. A VantaEngine window should appear with a colored triangle on a dark background. Press **Escape** or close the window to exit.
+This builds the engine, runs CTest, then opens the VantaEngine window. Press Escape or close the window to exit.
 
-Build only:
+Other commands:
 
-```powershell
-.\scripts\build.ps1
-```
+    .\scripts\build.ps1
+    .\scripts\build.ps1 -Configuration Release
+    .\scripts\build.ps1 -Test
+    .\scripts\build.ps1 -Clean -Test
 
-Release build:
-
-```powershell
-.\scripts\build.ps1 -Configuration Release
-```
-
-Build and run automated tests:
-
-```powershell
-.\scripts\build.ps1 -Test
-```
-
-If the CMake generator or toolchain changes, regenerate from a clean build directory:
-
-```powershell
-.\scripts\build.ps1 -Clean -Test
-```
-
-The clean option deletes only the generated `build/` directory.
+The clean option removes only generated output in build/.
 
 ## Tests and CI
 
-Tests use CTest and do not create a window or need a GPU:
+CTest runs without creating a window or requiring a GPU. Coverage includes frame-delta clamping, vector operations, degenerate normalization, point-versus-direction transforms, matrix composition, quaternion rotation, Direct3D perspective depth mapping, and look-at edge cases.
 
-- `VantaEngine.Startup` — verifies the executable's self-test entry point.
-- `VantaEngine.UnitTests` — checks frame-delta clamping behavior.
-
-GitHub Actions builds and tests both Debug and Release on Windows for pushes, pull requests, and manual runs.
-
-## VS Code workflow
-
-- **Ctrl+Shift+B** — build Debug.
-- **Run Task → VantaEngine: Test** — build and run all tests.
-- **F5** — build and launch under the MSVC debugger (requires Microsoft's C/C++ extension).
+GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks provide build/test shortcuts; F5 launches under the MSVC debugger when the C/C++ extension is installed.
 
 ## Current limitations
 
-- Windows-only backend for now.
-- First renderer milestone: one GPU-rendered triangle, no depth buffer or 3D scene graph yet.
-- No asset importer, material system, camera, audio, physics, scripting, or editor yet.
-- The main loop computes delta time, but a simulation/update subsystem has not been introduced yet.
+- Windows backend only.
+- Renderer still draws one triangle; math is not yet wired into rendering.
+- No depth buffer, controllable camera, mesh loading, scene model, audio, physics, scripting, or editor.
 
 ## Roadmap
 
-1. **Native runtime** — window, renderer, frame loop, logging, tests. *(Current milestone.)*
-2. **Engine core** — input state, fixed/variable update policy, time, math library.
-3. **3D scene** — camera, transforms, mesh resources, depth testing, indexed geometry.
-4. **Assets** — texture/material loading, model import, shader management and cache.
-5. **Gameplay** — entity/component model, game module boundary, serialization.
-6. **Tools** — diagnostics, profiler, in-engine debug UI, editor only when the runtime is solid.
-7. **Quality** — graphics-device recovery, resource lifetime validation, performance tests, packaged sample game.
-
-The roadmap is ordered to keep the engine usable at every stage instead of building a large editor before the runtime works.
+1. Native runtime and automated workflow. Implemented.
+2. 3D math foundation. This milestone.
+3. Camera, depth buffer, and transform-aware 3D mesh rendering.
+4. Input system and controllable camera.
+5. Mesh/material/resource lifecycle and scene representation.
+6. Lighting, model import, profiling, and tools.
+7. Game-facing APIs and packaging.

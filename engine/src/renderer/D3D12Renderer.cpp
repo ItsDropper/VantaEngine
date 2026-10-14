@@ -1245,6 +1245,8 @@ bool D3D12Renderer::CreatePipeline()
     staticSamplers[0].RegisterSpace = 0;
     staticSamplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     staticSamplers[1] = staticSamplers[0];
+    staticSamplers[1].Filter = D3D12_FILTER_ANISOTROPIC;
+    staticSamplers[1].MaxAnisotropy = 16;
     staticSamplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     staticSamplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     staticSamplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;

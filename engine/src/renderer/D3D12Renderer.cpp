@@ -1652,8 +1652,18 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         const float midpoint = (previousSplit + split) * 0.5F;
         const Vec3 center = eye + forward * midpoint;
         const float radius = split * (cascade == 0 ? 0.92F : 0.82F);
-        const Vec3 lightEye = center + lightDirection * (radius * 2.4F + 30.0F);
-        const auto lightView = Mat4::LookAtLH(lightEye, center, {0.0F, 1.0F, 0.0F});
+        const Vec3 lightForward = -lightDirection;
+        const Vec3 worldUp{0.0F, 1.0F, 0.0F};
+        const Vec3 lightRight = worldUp.Cross(lightForward).Normalized().value_or(Vec3{1.0F, 0.0F, 0.0F});
+        const Vec3 lightUp = lightForward.Cross(lightRight).Normalized().value_or(worldUp);
+        const float shadowTexelWorldSize = (radius * 2.0F) / static_cast<float>(kShadowResolution);
+        const float centerRight = center.Dot(lightRight);
+        const float centerUp = center.Dot(lightUp);
+        const Vec3 snappedCenter = center +
+            lightRight * (std::round(centerRight / shadowTexelWorldSize) * shadowTexelWorldSize - centerRight) +
+            lightUp * (std::round(centerUp / shadowTexelWorldSize) * shadowTexelWorldSize - centerUp);
+        const Vec3 lightEye = snappedCenter + lightDirection * (radius * 2.4F + 30.0F);
+        const auto lightView = Mat4::LookAtLH(lightEye, snappedCenter, worldUp);
         if (!lightView) return;
         const Mat4 lightProjection = OrthographicLH(radius * 2.0F, radius * 2.0F, 0.1F, radius * 5.0F + 40.0F);
         constants.lightViewProjection[cascade] = lightProjection * *lightView;

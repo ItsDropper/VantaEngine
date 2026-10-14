@@ -279,8 +279,12 @@ float4 PSMain(PSInput input) : SV_TARGET
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
     float3 fogColor = float3(0.36, 0.37, 0.34);
-    // Output linear HDR. The post-process pass performs bloom and tone mapping once.
-    return float4(max(lerp(direct + ambient, fogColor * 1.15, fog), 0.0), 1.0);
+    // Keep the world grounded and neutral: the stylized outdoor scene should not
+    // inherit a cyan cast from ambient/specular energy. Preserve authored albedo,
+    // then apply a restrained warm-neutral white balance before HDR tone mapping.
+    float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
+    litColor *= float3(1.04, 1.10, 0.78);
+    return float4(litColor, 1.0);
 }
 )";
 
@@ -1604,8 +1608,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (depth >= 0.99999)
     {
         float horizon = saturate(1.0 - abs(input.uv.y - 0.52) * 1.7);
-        float3 skyTop = float3(0.045, 0.065, 0.085);
-        float3 horizonColor = float3(0.48, 0.48, 0.44);
+        float3 skyTop = float3(0.060, 0.065, 0.060);
+        float3 horizonColor = float3(0.43, 0.42, 0.37);
         float3 sky = lerp(skyTop, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
         float2 sunUv = input.uv - float2(0.73, 0.27);
         float sun = exp(-dot(sunUv, sunUv) * 1900.0);

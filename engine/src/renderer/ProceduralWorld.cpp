@@ -119,6 +119,32 @@ public:
         P ridgeBack{x,y+h+0.9F*scale,z+d+0.35F*scale};
         quad(lf,ridgeFront,ridgeBack,lb,0.16F,0.18F,0.18F);
         quad(ridgeFront,rf,rb,ridgeBack,0.13F,0.15F,0.16F);
+        // Individual overlapping shingle tiles add real silhouette breaks and visible roof patterning.
+        constexpr int shingleRows = 9, shingleColumns = 12;
+        const float roofOuterX = w + 0.35F * scale;
+        const float roofHalfLength = d + 0.35F * scale;
+        for (int row = 0; row < shingleRows; ++row) {
+            const float t0 = static_cast<float>(row) / shingleRows;
+            const float t1 = static_cast<float>(row + 1) / shingleRows;
+            for (int col = 0; col < shingleColumns; ++col) {
+                const float stagger = (row % 2) * 0.5F;
+                const float z0 = z - roofHalfLength + (2.0F * roofHalfLength) * (col + stagger + 0.035F) / shingleColumns;
+                const float z1 = z - roofHalfLength + (2.0F * roofHalfLength) * (col + stagger + 0.91F) / shingleColumns;
+                const float shade = 0.88F + 0.18F * Hash(row, col, static_cast<int>(x * 7.0F));
+                const float lx0 = x - roofOuterX + roofOuterX * t0;
+                const float lx1 = x - roofOuterX + roofOuterX * t1;
+                const float ly0 = y + h + 0.9F * scale * t0 + 0.018F * scale;
+                const float ly1 = y + h + 0.9F * scale * t1 + 0.018F * scale;
+                quad({lx0,ly0,z0},{lx1,ly1,z0},{lx1,ly1,z1},{lx0,ly0,z1},
+                    0.15F*shade,0.17F*shade,0.18F*shade);
+                const float rx0 = x + roofOuterX * t0;
+                const float rx1 = x + roofOuterX * t1;
+                const float ry0 = y + h + 0.9F * scale * (1.0F - t0) + 0.018F * scale;
+                const float ry1 = y + h + 0.9F * scale * (1.0F - t1) + 0.018F * scale;
+                quad({rx0,ry0,z0},{rx1,ry1,z0},{rx1,ry1,z1},{rx0,ry0,z1},
+                    0.13F*shade,0.15F*shade,0.16F*shade);
+            }
+        }
         // Exposed fascia boards give the roof a readable, finished silhouette.
         beam(lf,lb,0.07F*scale,0.28F,0.17F,0.09F);
         beam(rf,rb,0.07F*scale,0.25F,0.15F,0.08F);
@@ -128,10 +154,46 @@ public:
         box({x-0.95F*scale,y+1.1F*scale,z-d-0.2F*scale},{0.04F*scale,0.45F*scale,0.035F*scale},0.24F,0.18F,0.12F);
         box({x+0.95F*scale,y+1.1F*scale,z-d-0.1F*scale},{0.43F*scale,0.42F*scale,0.09F*scale},0.07F,0.15F,0.17F);
         box({x+0.95F*scale,y+1.1F*scale,z-d-0.2F*scale},{0.035F*scale,0.45F*scale,0.035F*scale},0.25F,0.19F,0.13F);
+        // Window mullions, recessed-looking dark panes, and a small metal door latch.
+        for (float wx : {x-0.95F*scale, x+0.95F*scale}) {
+            box({wx,y+1.1F*scale,z-d-0.245F*scale},{0.035F*scale,0.39F*scale,0.018F*scale},0.20F,0.17F,0.12F);
+            box({wx,y+1.1F*scale,z-d-0.25F*scale},{0.36F*scale,0.025F*scale,0.018F*scale},0.22F,0.18F,0.13F);
+        }
+        box({x+0.23F*scale,y+0.83F*scale,z-d-0.19F*scale},{0.035F*scale,0.055F*scale,0.025F*scale},0.55F,0.43F,0.20F);
+        // Individually spaced horizontal weatherboards on both side elevations.
+        for (int plank = 0; plank < 9; ++plank) {
+            const float py = y + (0.22F + plank * 0.19F) * scale;
+            const float tone = 0.88F + 0.18F * Hash(plank, static_cast<int>(x), static_cast<int>(z));
+            for (int side : {-1, 1}) {
+                box({x+side*(w+0.018F*scale),py,z},{0.028F*scale,0.035F*scale,d*0.94F},
+                    0.25F*tone,0.155F*tone,0.085F*tone);
+            }
+        }
+        // Door boards and a threshold make the entrance read as constructed timber.
+        for (int plank = 0; plank < 5; ++plank) {
+            box({x-0.31F*scale+plank*0.155F*scale,y+0.82F*scale,z-d-0.175F*scale},
+                {0.012F*scale,0.72F*scale,0.012F*scale},0.23F,0.135F,0.075F);
+        }
         box({x,y+0.045F*scale,z-d-0.65F*scale},{1.05F*scale,0.07F*scale,0.65F*scale},0.32F,0.23F,0.13F);
         for(int i=0;i<5;++i) box({x-0.8F*scale+i*0.4F*scale,y+0.08F*scale,z-d-1.18F*scale},{0.17F*scale,0.08F*scale,0.25F*scale},0.29F,0.19F,0.11F);
         box({x+1.25F*scale,y+h+0.7F*scale,z+0.45F*scale},{0.24F*scale,0.9F*scale,0.24F*scale},0.3F,0.27F,0.23F);
         box({x+1.25F*scale,y+h+1.55F*scale,z+0.45F*scale},{0.3F*scale,0.06F*scale,0.3F*scale},0.12F,0.12F,0.12F);
+        // Staggered mortar seams on the chimney's visible faces.
+        for (int course = 0; course < 5; ++course) {
+            const float cy = y+h+0.18F*scale+course*0.27F*scale;
+            box({x+1.25F*scale,cy,z+0.202F*scale},{0.245F*scale,0.012F*scale,0.012F*scale},0.19F,0.18F,0.16F);
+            const float offset = (course % 2 == 0) ? 0.0F : 0.12F*scale;
+            box({x+1.25F*scale-0.12F*scale+offset,cy+0.12F*scale,z+0.202F*scale},
+                {0.009F*scale,0.12F*scale,0.013F*scale},0.18F,0.17F,0.15F);
+        }
+        // Foundation courses wrap the cabin rather than leaving four isolated corner stones.
+        for (int stone = 0; stone < 9; ++stone) {
+            const float sx = x-w+2.0F*w*(stone+0.5F)/9.0F;
+            box({sx,y+0.12F*scale,z-d-0.015F*scale},{w/9.0F*0.91F,0.13F*scale,0.12F*scale},
+                0.32F+0.035F*Hash(stone,1),0.31F,0.28F);
+            box({sx,y+0.12F*scale,z+d+0.015F*scale},{w/9.0F*0.91F,0.13F*scale,0.12F*scale},
+                0.29F+0.035F*Hash(stone,2),0.29F,0.27F);
+        }
     }
 };
 }

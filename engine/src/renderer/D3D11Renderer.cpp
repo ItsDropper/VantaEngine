@@ -5,6 +5,7 @@
 #include "vanta/renderer/ObjLoader.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
 #include "vanta/renderer/WicTextureLoader.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -106,6 +107,9 @@ Texture2D normalTexture : register(t2);
 Texture2D roughnessTexture : register(t3);
 Texture2D metallicTexture : register(t4);
 Texture2D ambientOcclusionTexture : register(t5);
+Texture2D grassAlbedoTexture : register(t6);
+Texture2D rockAlbedoTexture : register(t7);
+Texture2D woodAlbedoTexture : register(t8);
 SamplerState diffuseSampler : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
 
@@ -237,13 +241,46 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float medium = ValueNoise(input.worldPosition * 0.83 + 17.0);
         float fine = HashNoise(floor(input.worldPosition * 17.0));
         float fleck = HashNoise(floor(input.worldPosition * 61.0 + 3.0));
+        // World-space tiled albedo maps add coherent surface character without UV seams:
+        // green-dominant vertices use moss/grass, warm vertices use weathered timber,
+        // and neutral vertices use fractured stone/gravel.
+        float3 baseVertexColor = max(input.color.rgb, 0.001);
+        float grassWeight = step(baseVertexColor.r * 1.12, baseVertexColor.g) *
+                            step(baseVertexColor.b * 1.08, baseVertexColor.g);
+        float woodWeight = (1.0 - grassWeight) * step(baseVertexColor.g * 1.12, baseVertexColor.r);
+        float3 projectionWeights = abs(n);
+        projectionWeights /= max(projectionWeights.x + projectionWeights.y + projectionWeights.z, 0.0001);
+        float3 grassX = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.zy * 0.72).rgb;
+        float3 grassY = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xz * 0.72).rgb;
+        float3 grassZ = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xy * 0.72).rgb;
+        float3 grassAlbedo = grassX * projectionWeights.x + grassY * projectionWeights.y + grassZ * projectionWeights.z;
+        float3 rockX = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.zy * 0.58).rgb;
+        float3 rockY = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xz * 0.58).rgb;
+        float3 rockZ = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xy * 0.58).rgb;
+        float3 rockAlbedo = rockX * projectionWeights.x + rockY * projectionWeights.y + rockZ * projectionWeights.z;
+        float3 woodAlbedo = woodAlbedoTexture.Sample(diffuseSampler,
+            float2(input.worldPosition.x * 0.9, input.worldPosition.y * 1.8)).rgb;
+        float3 generatedAlbedo = lerp(rockAlbedo, grassAlbedo, grassWeight);
+        generatedAlbedo = lerp(generatedAlbedo, woodAlbedo, woodWeight);
+        albedo *= lerp(float3(1.0, 1.0, 1.0), generatedAlbedo, 0.58);
         albedo *= lerp(0.78, 1.16, broad)
                 * lerp(0.88, 1.12, medium)
                 * lerp(0.94, 1.06, fine)
                 * lerp(0.97, 1.035, fleck);
-        // Fine luminance variation approximates small surface relief until real normal maps are used.
+        // High-frequency grain and mineral flecks add non-uniform response at grazing angles.
         float micro = ValueNoise(input.worldPosition * 24.0);
-        albedo *= lerp(0.97, 1.03, micro);
+        albedo *= lerp(0.94, 1.05, micro);
+        roughness = saturate(roughness + (medium - 0.5) * 0.14);
+        // Derivative-based procedural bump gives untextured world surfaces subtle relief
+        // without requiring per-vertex tangents on the merged procedural mesh.
+        float heightField = ValueNoise(input.worldPosition * 8.5) * 0.7 +
+                            ValueNoise(input.worldPosition * 22.0) * 0.3;
+        float3 dpdx = ddx(input.worldPosition);
+        float3 tangent = normalize(dpdx - n * dot(dpdx, n));
+        float3 bitangent = normalize(cross(n, tangent));
+        float heightDx = ddx(heightField);
+        float heightDy = ddy(heightField);
+        n = normalize(n - tangent * heightDx * 1.8 - bitangent * heightDy * 1.8);
     }
     float nDotL = saturate(dot(n, l));
     float nDotV = max(saturate(dot(n, v)), 0.001);
@@ -745,27 +782,53 @@ bool D3D11Renderer::CreatePipeline()
     }
     m_forestIndexCount = static_cast<UINT>(forestIndices.size());
 
+    // Upload each material texture with a complete GPU-generated mip chain.
+    // This prevents distant surfaces from shimmering and reduces texture aliasing.
+    const auto uploadMipmappedTexture = [&](const renderer::CpuTexture& image, DXGI_FORMAT format,
+                                             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
+                                             const char* label) -> bool {
+        if (image.width == 0 || image.height == 0 || image.rgba.size() !=
+                static_cast<std::size_t>(image.width) * image.height * 4U) {
+            LogError((std::string("Invalid decoded texture for ") + label + ".").c_str());
+            return false;
+        }
+        UINT mipLevels = 1;
+        for (UINT dimension = (image.width > image.height ? image.width : image.height);
+             dimension > 1; dimension >>= 1U) {
+            ++mipLevels;
+        }
+
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = image.width;
+        desc.Height = image.height;
+        desc.MipLevels = mipLevels;
+        desc.ArraySize = 1;
+        desc.Format = format;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+        if (FAILED(m_device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))) {
+            LogError((std::string("Could not create mipmapped texture for ") + label + ".").c_str());
+            return false;
+        }
+        m_context->UpdateSubresource(texture.Get(), 0, nullptr, image.rgba.data(), image.width * 4U, 0);
+        if (FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, destination.GetAddressOf()))) {
+            LogError((std::string("Could not create shader view for ") + label + ".").c_str());
+            return false;
+        }
+        m_context->GenerateMips(destination.Get());
+        return true;
+    };
+
     renderer::CpuTexture image;
     if (model.diffuseTexture.empty() || !renderer::LoadWicTexture(model.diffuseTexture, image)) {
         LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
         return false;
     }
-    D3D11_TEXTURE2D_DESC textureDescription{};
-    textureDescription.Width = image.width;
-    textureDescription.Height = image.height;
-    textureDescription.MipLevels = 1;
-    textureDescription.ArraySize = 1;
-    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    textureDescription.SampleDesc.Count = 1;
-    textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
-    textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA textureData{};
-    textureData.pSysMem = image.rgba.data();
-    textureData.SysMemPitch = image.width * 4U;
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    if (FAILED(m_device->CreateTexture2D(&textureDescription, &textureData, texture.GetAddressOf())) ||
-        FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, m_diffuseTexture.GetAddressOf()))) {
-        LogError("Could not upload the imported model's diffuse texture.");
+    if (!uploadMipmappedTexture(image, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_diffuseTexture, "diffuse")) {
         return false;
     }
 
@@ -778,30 +841,69 @@ bool D3D11Renderer::CreatePipeline()
             LogError((std::string("Could not load material ") + label + " map: " + path.string()).c_str());
             return false;
         }
-        D3D11_TEXTURE2D_DESC desc{};
-        desc.Width = map.width;
-        desc.Height = map.height;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Numeric data maps must stay linear.
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_IMMUTABLE;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        D3D11_SUBRESOURCE_DATA data{};
-        data.pSysMem = map.rgba.data();
-        data.SysMemPitch = map.width * 4U;
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> textureResource;
-        if (FAILED(m_device->CreateTexture2D(&desc, &data, textureResource.GetAddressOf())) ||
-            FAILED(m_device->CreateShaderResourceView(textureResource.Get(), nullptr, destination.GetAddressOf()))) {
-            LogError((std::string("Could not upload material ") + label + " map.").c_str());
-            return false;
-        }
-        return true;
+        // Normal, roughness, metallic and AO maps contain numeric data, so they must
+        // remain linear rather than using the sRGB transfer function.
+        return uploadMipmappedTexture(map, DXGI_FORMAT_R8G8B8A8_UNORM, destination, label);
     };
     if (!uploadLinearMaterialMap(model.normalTexture, m_normalTexture, "normal") ||
         !uploadLinearMaterialMap(model.roughnessTexture, m_roughnessTexture, "roughness") ||
         !uploadLinearMaterialMap(model.metallicTexture, m_metallicTexture, "metallic") ||
         !uploadLinearMaterialMap(model.ambientOcclusionTexture, m_ambientOcclusionTexture, "ambient-occlusion")) {
+        return false;
+    }
+
+    // Build small, seamless procedural albedo tiles at startup. These are actual GPU
+    // textures with mipmaps, not just color multipliers: grass/moss, mineral stone/gravel,
+    // and weathered timber are sampled in world space for the merged environment mesh.
+    const auto makeProceduralAlbedo = [](const int kind) {
+        constexpr UINT size = 256;
+        renderer::CpuTexture texture;
+        texture.width = size;
+        texture.height = size;
+        texture.rgba.resize(static_cast<std::size_t>(size) * size * 4U);
+        for (UINT y = 0; y < size; ++y) {
+            for (UINT x = 0; x < size; ++x) {
+                const float u = static_cast<float>(x) / static_cast<float>(size);
+                const float v = static_cast<float>(y) / static_cast<float>(size);
+                const float waveA = std::sin((u * 9.0F + std::sin(v * 17.0F) * 0.12F) * 6.2831853F);
+                const float waveB = std::cos((v * 13.0F + std::sin(u * 11.0F) * 0.08F) * 6.2831853F);
+                const float grain = 0.5F + 0.5F * std::sin((u * 3.0F + std::sin(v * 5.0F) * 0.04F) * 6.2831853F);
+                // Integer-frequency waves are periodic at the tile boundary, so wrap sampling
+                // remains seamless even when the GPU selects lower mip levels.
+                const float noise = std::clamp(0.5F +
+                    0.24F * std::sin((u * 37.0F + std::cos(v * 2.0F * 3.14159265F * 11.0F) * 0.035F) * 6.2831853F) +
+                    0.20F * std::cos((v * 29.0F + std::sin(u * 2.0F * 3.14159265F * 13.0F) * 0.03F) * 6.2831853F) +
+                    0.06F * std::sin((u * 71.0F + v * 53.0F) * 6.2831853F), 0.0F, 1.0F);
+                float r = 0.0F, g = 0.0F, b = 0.0F;
+                if (kind == 0) { // moss and short grass
+                    const float value = 0.70F + 0.22F * noise + 0.08F * waveA + 0.04F * waveB;
+                    r = value * 0.62F; g = value * (0.88F + 0.08F * waveB); b = value * 0.48F;
+                } else if (kind == 1) { // weathered granite and gravel
+                    const float value = 0.63F + 0.27F * noise + 0.08F * waveA;
+                    const float crack = (noise > 0.93F && waveB < -0.45F) ? 0.62F : 1.0F;
+                    r = value * crack; g = value * crack * 0.99F; b = value * crack * 0.94F;
+                } else { // aged wood with long, imperfect grain
+                    const float value = 0.58F + 0.20F * noise + 0.18F * grain + 0.06F * waveA;
+                    const float knot = std::pow(std::max(0.0F, 1.0F - std::abs(waveA) * 5.0F), 4.0F);
+                    r = value * (0.92F + knot * 0.16F);
+                    g = value * (0.63F + knot * 0.08F);
+                    b = value * (0.39F + knot * 0.04F);
+                }
+                const std::size_t offset = (static_cast<std::size_t>(y) * size + x) * 4U;
+                texture.rgba[offset] = static_cast<std::uint8_t>(std::clamp(r, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 1] = static_cast<std::uint8_t>(std::clamp(g, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 2] = static_cast<std::uint8_t>(std::clamp(b, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 3] = 255;
+            }
+        }
+        return texture;
+    };
+    const renderer::CpuTexture grassTile = makeProceduralAlbedo(0);
+    const renderer::CpuTexture rockTile = makeProceduralAlbedo(1);
+    const renderer::CpuTexture woodTile = makeProceduralAlbedo(2);
+    if (!uploadMipmappedTexture(grassTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_grassAlbedoTexture, "procedural grass") ||
+        !uploadMipmappedTexture(rockTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_rockAlbedoTexture, "procedural rock") ||
+        !uploadMipmappedTexture(woodTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_woodAlbedoTexture, "procedural wood")) {
         return false;
     }
 
@@ -1008,6 +1110,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->VSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* environmentMaterialTextures[] = {
+        m_grassAlbedoTexture.Get(), m_rockAlbedoTexture.Get(), m_woodAlbedoTexture.Get()};
+    m_context->PSSetShaderResources(6, static_cast<UINT>(std::size(environmentMaterialTextures)),
+        environmentMaterialTextures);
+    ID3D11SamplerState* environmentSampler = m_textureSampler.Get();
+    m_context->PSSetSamplers(0, 1, &environmentSampler);
 
     const auto drawCube = [&](const Mat4& worldTransform)
     {

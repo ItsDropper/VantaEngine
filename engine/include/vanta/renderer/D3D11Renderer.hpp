@@ -61,6 +61,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_roughnessTexture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_metallicTexture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_ambientOcclusionTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_grassAlbedoTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_rockAlbedoTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_woodAlbedoTexture;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
     UINT m_modelIndexCount = 0;

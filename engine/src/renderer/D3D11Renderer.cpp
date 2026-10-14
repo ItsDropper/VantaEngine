@@ -745,27 +745,53 @@ bool D3D11Renderer::CreatePipeline()
     }
     m_forestIndexCount = static_cast<UINT>(forestIndices.size());
 
+    // Upload each material texture with a complete GPU-generated mip chain.
+    // This prevents distant surfaces from shimmering and reduces texture aliasing.
+    const auto uploadMipmappedTexture = [&](const renderer::CpuTexture& image, DXGI_FORMAT format,
+                                             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
+                                             const char* label) -> bool {
+        if (image.width == 0 || image.height == 0 || image.rgba.size() !=
+                static_cast<std::size_t>(image.width) * image.height * 4U) {
+            LogError((std::string("Invalid decoded texture for ") + label + ".").c_str());
+            return false;
+        }
+        UINT mipLevels = 1;
+        for (UINT dimension = (image.width > image.height ? image.width : image.height);
+             dimension > 1; dimension >>= 1U) {
+            ++mipLevels;
+        }
+
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = image.width;
+        desc.Height = image.height;
+        desc.MipLevels = mipLevels;
+        desc.ArraySize = 1;
+        desc.Format = format;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+        if (FAILED(m_device->CreateTexture2D(&desc, nullptr, texture.GetAddressOf()))) {
+            LogError((std::string("Could not create mipmapped texture for ") + label + ".").c_str());
+            return false;
+        }
+        m_context->UpdateSubresource(texture.Get(), 0, nullptr, image.rgba.data(), image.width * 4U, 0);
+        if (FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, destination.GetAddressOf()))) {
+            LogError((std::string("Could not create shader view for ") + label + ".").c_str());
+            return false;
+        }
+        m_context->GenerateMips(destination.Get());
+        return true;
+    };
+
     renderer::CpuTexture image;
     if (model.diffuseTexture.empty() || !renderer::LoadWicTexture(model.diffuseTexture, image)) {
         LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
         return false;
     }
-    D3D11_TEXTURE2D_DESC textureDescription{};
-    textureDescription.Width = image.width;
-    textureDescription.Height = image.height;
-    textureDescription.MipLevels = 1;
-    textureDescription.ArraySize = 1;
-    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    textureDescription.SampleDesc.Count = 1;
-    textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
-    textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA textureData{};
-    textureData.pSysMem = image.rgba.data();
-    textureData.SysMemPitch = image.width * 4U;
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    if (FAILED(m_device->CreateTexture2D(&textureDescription, &textureData, texture.GetAddressOf())) ||
-        FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, m_diffuseTexture.GetAddressOf()))) {
-        LogError("Could not upload the imported model's diffuse texture.");
+    if (!uploadMipmappedTexture(image, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_diffuseTexture, "diffuse")) {
         return false;
     }
 
@@ -778,25 +804,9 @@ bool D3D11Renderer::CreatePipeline()
             LogError((std::string("Could not load material ") + label + " map: " + path.string()).c_str());
             return false;
         }
-        D3D11_TEXTURE2D_DESC desc{};
-        desc.Width = map.width;
-        desc.Height = map.height;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Numeric data maps must stay linear.
-        desc.SampleDesc.Count = 1;
-        desc.Usage = D3D11_USAGE_IMMUTABLE;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        D3D11_SUBRESOURCE_DATA data{};
-        data.pSysMem = map.rgba.data();
-        data.SysMemPitch = map.width * 4U;
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> textureResource;
-        if (FAILED(m_device->CreateTexture2D(&desc, &data, textureResource.GetAddressOf())) ||
-            FAILED(m_device->CreateShaderResourceView(textureResource.Get(), nullptr, destination.GetAddressOf()))) {
-            LogError((std::string("Could not upload material ") + label + " map.").c_str());
-            return false;
-        }
-        return true;
+        // Normal, roughness, metallic and AO maps contain numeric data, so they must
+        // remain linear rather than using the sRGB transfer function.
+        return uploadMipmappedTexture(map, DXGI_FORMAT_R8G8B8A8_UNORM, destination, label);
     };
     if (!uploadLinearMaterialMap(model.normalTexture, m_normalTexture, "normal") ||
         !uploadLinearMaterialMap(model.roughnessTexture, m_roughnessTexture, "roughness") ||

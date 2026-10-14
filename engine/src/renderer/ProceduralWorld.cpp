@@ -21,7 +21,7 @@ float Height(float x, float z) {
         + 0.28F*std::sin((x+z)*0.17F) + 0.15F*std::cos(z*0.29F)*std::sin(x*0.23F);
 }
 float Hash(int x, int z, int salt=0) {
-    std::uint32_t n=static_cast<std::uint32_t>(x*374761393 + z*668265263 + salt*2246822519U);
+    std::uint32_t n=static_cast<std::uint32_t>(x)*374761393U + static_cast<std::uint32_t>(z)*668265263U + static_cast<std::uint32_t>(salt)*2246822519U;
     n=(n^(n>>13U))*1274126177U; n^=n>>16U;
     return static_cast<float>(n & 0x00ffffffU)/16777215.0F;
 }
@@ -70,7 +70,6 @@ public:
     }
     void rock(P c,float rx,float ry,float rz,float shade) {
         constexpr int rings=4, sides=7;
-        P top{c.x,c.y+ry*(0.8F+Hash(static_cast<int>(c.x*11),static_cast<int>(c.z*9))*0.35F),c.z};
         P bottom{c.x,c.y-ry*0.45F,c.z};
         for(int ring=0;ring<rings;++ring) {
             const float v0=static_cast<float>(ring)/rings, v1=static_cast<float>(ring+1)/rings;

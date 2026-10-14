@@ -43,7 +43,8 @@ struct SceneConstants
     float materialProperties[4];
     float baseColorFactor[4];
     UINT textureFlags[4];
-    Mat4 lightViewProjection;
+    Mat4 lightViewProjection[3];
+    float cascadeSplits[4];
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -99,10 +100,11 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
-    float4x4 lightViewProjection;
+    float4x4 lightViewProjection[3];
+    float4 cascadeSplits;
 };
 Texture2D diffuseTexture : register(t0);
-Texture2D<float> shadowMap : register(t1);
+Texture2DArray<float> shadowMap : register(t1);
 Texture2D normalTexture : register(t2);
 Texture2D roughnessTexture : register(t3);
 Texture2D metallicTexture : register(t4);
@@ -137,7 +139,7 @@ PixelInput VSMain(VertexInput input)
     output.position = mul(worldViewProjection, float4(input.position, 1.0));
     output.normal = normalize(mul((float3x3)world, input.normal));
     output.worldPosition = mul(world, float4(input.position, 1.0)).xyz;
-    output.shadowPosition = mul(lightViewProjection, float4(output.worldPosition, 1.0));
+    output.shadowPosition = mul(lightViewProjection[0], float4(output.worldPosition, 1.0));
     output.color = input.color;
     output.uv = input.uv;
     return output;
@@ -171,8 +173,12 @@ float3 ACESFilm(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
-float CalculateShadow(float4 shadowPosition, float3 normal, float3 lightDirection)
+float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection)
 {
+    float cameraDistance = distance(cameraPosition, worldPosition);
+    int cascadeIndex = cameraDistance < cascadeSplits.x ? 0 :
+                       (cameraDistance < cascadeSplits.y ? 1 : 2);
+    float4 shadowPosition = mul(lightViewProjection[cascadeIndex], float4(worldPosition, 1.0));
     float3 projected = shadowPosition.xyz / max(shadowPosition.w, 0.0001);
     float2 uv = float2(projected.x * 0.5 + 0.5, 0.5 - projected.y * 0.5);
     if (uv.x <= 0.001 || uv.x >= 0.999 || uv.y <= 0.001 || uv.y >= 0.999 ||
@@ -182,7 +188,8 @@ float CalculateShadow(float4 shadowPosition, float3 normal, float3 lightDirectio
     float visibility = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
-            visibility += shadowMap.SampleCmpLevelZero(shadowSampler, uv + float2(x, y) * texel, projected.z - bias);
+            visibility += shadowMap.SampleCmpLevelZero(shadowSampler,
+                float3(uv + float2(x, y) * texel, (float)cascadeIndex), projected.z - bias);
     return visibility / 9.0;
 }
 float HashNoise(float3 p)
@@ -291,7 +298,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 specular = (ndf * geometry * f) / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float3 radiance = float3(4.2, 3.45, 2.55);
-    float shadow = CalculateShadow(input.shadowPosition, n, l);
+    float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
     float3 sky = lerp(float3(0.025, 0.035, 0.055), float3(0.22, 0.30, 0.38), saturate(n.y));
     float ambientOcclusion = textureFlags.w != 0
@@ -360,12 +367,13 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
-    float4x4 lightViewProjection;
+    float4x4 lightViewProjection[3];
+    float4 cascadeSplits;
 };
 struct VertexInput { float3 position : POSITION; };
 float4 VSMain(VertexInput input) : SV_POSITION
 {
-    return mul(lightViewProjection, mul(world, float4(input.position, 1.0)));
+    return mul(lightViewProjection[0], mul(world, float4(input.position, 1.0)));
 }
 )";
 
@@ -517,7 +525,7 @@ bool D3D11Renderer::CreateShadowResources()
     textureDescription.Width = shadowSize;
     textureDescription.Height = shadowSize;
     textureDescription.MipLevels = 1;
-    textureDescription.ArraySize = 1;
+    textureDescription.ArraySize = 3;
     textureDescription.Format = DXGI_FORMAT_R32_TYPELESS;
     textureDescription.SampleDesc.Count = 1;
     textureDescription.Usage = D3D11_USAGE_DEFAULT;
@@ -529,16 +537,22 @@ bool D3D11Renderer::CreateShadowResources()
 
     D3D11_DEPTH_STENCIL_VIEW_DESC depthViewDescription{};
     depthViewDescription.Format = DXGI_FORMAT_D32_FLOAT;
-    depthViewDescription.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-    if (FAILED(m_device->CreateDepthStencilView(m_shadowTexture.Get(), &depthViewDescription, m_shadowDepthStencil.GetAddressOf()))) {
-        LogError("Could not create the shadow-map depth view.");
-        return false;
+    depthViewDescription.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+    depthViewDescription.Texture2DArray.ArraySize = 1;
+    for (UINT cascade = 0; cascade < 3; ++cascade) {
+        depthViewDescription.Texture2DArray.FirstArraySlice = cascade;
+        if (FAILED(m_device->CreateDepthStencilView(m_shadowTexture.Get(), &depthViewDescription,
+                m_shadowDepthStencil[cascade].GetAddressOf()))) {
+            LogError("Could not create a cascaded shadow-map depth view.");
+            return false;
+        }
     }
 
     D3D11_SHADER_RESOURCE_VIEW_DESC resourceDescription{};
     resourceDescription.Format = DXGI_FORMAT_R32_FLOAT;
-    resourceDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    resourceDescription.Texture2D.MipLevels = 1;
+    resourceDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    resourceDescription.Texture2DArray.MipLevels = 1;
+    resourceDescription.Texture2DArray.ArraySize = 3;
     if (FAILED(m_device->CreateShaderResourceView(m_shadowTexture.Get(), &resourceDescription, m_shadowShaderResource.GetAddressOf()))) {
         LogError("Could not create the shadow-map shader view.");
         return false;
@@ -1086,22 +1100,27 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
 
-    // Directional sunlight shadow map: render scene depth from the sun's viewpoint.
-    const Vec3 lightPosition{30.0F, 65.0F, -40.0F};
-    const Mat4 lightView = Mat4::LookAtLH(lightPosition, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F})
-        .value_or(Mat4::Identity());
-    Mat4 lightProjection{};
-    lightProjection.At(0, 0) = 2.0F / 110.0F;
-    lightProjection.At(1, 1) = 2.0F / 110.0F;
-    lightProjection.At(2, 2) = 1.0F / 180.0F;
-    lightProjection.At(2, 3) = -0.1F / 180.0F;
-    lightProjection.At(3, 3) = 1.0F;
-    const Mat4 lightViewProjection = lightProjection * lightView;
+    // Three camera-relative shadow cascades keep nearby contact shadows sharp while
+    // retaining useful coverage for the valley. The split distances match the shader.
+    const float cascadeRadii[3] = {24.0F, 58.0F, 140.0F};
+    const float cascadeCenters[3] = {12.0F, 40.0F, 95.0F};
+    Mat4 lightViewProjections[3]{};
+    for (int cascade = 0; cascade < 3; ++cascade) {
+        const Vec3 center = cameraPosition + cameraForward * cascadeCenters[cascade];
+        const Vec3 lightOffset{30.0F, 65.0F, -40.0F};
+        const Mat4 lightView = Mat4::LookAtLH(center + lightOffset, center, {0.0F, 1.0F, 0.0F})
+            .value_or(Mat4::Identity());
+        Mat4 lightProjection{};
+        lightProjection.At(0, 0) = 2.0F / cascadeRadii[cascade];
+        lightProjection.At(1, 1) = 2.0F / cascadeRadii[cascade];
+        lightProjection.At(2, 2) = 1.0F / 320.0F;
+        lightProjection.At(2, 3) = -0.1F / 320.0F;
+        lightProjection.At(3, 3) = 1.0F;
+        lightViewProjections[cascade] = lightProjection * lightView;
+    }
 
-    // Unbind last frame's shadow SRV before binding the same resource as a depth target.
     ID3D11ShaderResourceView* noShadowTexture = nullptr;
     m_context->PSSetShaderResources(1, 1, &noShadowTexture);
-    m_context->OMSetRenderTargets(0, nullptr, m_shadowDepthStencil.Get());
     D3D11_VIEWPORT shadowViewport{};
     shadowViewport.Width = 2048.0F;
     shadowViewport.Height = 2048.0F;
@@ -1109,7 +1128,6 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     shadowViewport.MaxDepth = 1.0F;
     m_context->RSSetViewports(1, &shadowViewport);
     m_context->RSSetState(m_shadowRasterizerState.Get());
-    m_context->ClearDepthStencilView(m_shadowDepthStencil.Get(), D3D11_CLEAR_DEPTH, 1.0F, 0);
     m_context->IASetInputLayout(m_shadowInputLayout.Get());
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_context->VSSetShader(m_shadowVertexShader.Get(), nullptr, 0);
@@ -1118,10 +1136,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->VSSetConstantBuffers(0, 1, &shadowConstantsBuffer);
 
     const auto drawShadowMesh = [&](ID3D11Buffer* vertices, ID3D11Buffer* indices, DXGI_FORMAT indexFormat,
-                                    UINT indexCount, const Mat4& worldTransform) {
+                                    UINT indexCount, const Mat4& worldTransform, const Mat4& lightViewProjection) {
         SceneConstants constants{};
         constants.world = worldTransform;
-        constants.lightViewProjection = lightViewProjection;
+        constants.lightViewProjection[0] = lightViewProjection;
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
         *static_cast<SceneConstants*>(mapped.pData) = constants;
@@ -1132,28 +1150,37 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->IASetIndexBuffer(indices, indexFormat, 0);
         m_context->DrawIndexed(indexCount, 0, 0);
     };
-    drawShadowMesh(m_terrainVertexBuffer.Get(), m_terrainIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
-                   m_terrainIndexCount, Mat4::Identity());
-    drawShadowMesh(m_forestVertexBuffer.Get(), m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
-                   m_forestIndexCount, Mat4::Identity());
-    const Mat4 shadowHouseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
-    drawShadowMesh(m_modelVertexBuffer.Get(), m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
-                   m_modelIndexCount, shadowHouseWorld);
+
     const auto shadowPropA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F + elapsedSeconds * 0.35F);
     const auto shadowPropB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);
     const auto shadowPropC = Quaternion::FromAxisAngle({0.3F, 1.0F, 0.0F}, 0.35F);
-    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
-        static_cast<UINT>(std::size(kCubeIndices)),
-        Mat4::Translation({-3.0F, -0.4F, 1.5F}) * Mat4::Rotation(shadowPropA.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
-    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
-        static_cast<UINT>(std::size(kCubeIndices)),
-        Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(shadowPropB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
-    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
-        static_cast<UINT>(std::size(kCubeIndices)),
-        Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(shadowPropC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
-    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
-        static_cast<UINT>(std::size(kCubeIndices)),
-        Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    const Mat4 shadowHouseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
+    for (UINT cascade = 0; cascade < 3; ++cascade) {
+        m_context->OMSetRenderTargets(0, nullptr, m_shadowDepthStencil[cascade].Get());
+        m_context->ClearDepthStencilView(m_shadowDepthStencil[cascade].Get(), D3D11_CLEAR_DEPTH, 1.0F, 0);
+        drawShadowMesh(m_terrainVertexBuffer.Get(), m_terrainIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+            m_terrainIndexCount, Mat4::Identity(), lightViewProjections[cascade]);
+        drawShadowMesh(m_forestVertexBuffer.Get(), m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+            m_forestIndexCount, Mat4::Identity(), lightViewProjections[cascade]);
+        drawShadowMesh(m_modelVertexBuffer.Get(), m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+            m_modelIndexCount, shadowHouseWorld, lightViewProjections[cascade]);
+        drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+            static_cast<UINT>(std::size(kCubeIndices)),
+            Mat4::Translation({-3.0F, -0.4F, 1.5F}) * Mat4::Rotation(shadowPropA.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
+            lightViewProjections[cascade]);
+        drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+            static_cast<UINT>(std::size(kCubeIndices)),
+            Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(shadowPropB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
+            lightViewProjections[cascade]);
+        drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+            static_cast<UINT>(std::size(kCubeIndices)),
+            Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(shadowPropC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
+            lightViewProjections[cascade]);
+        drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+            static_cast<UINT>(std::size(kCubeIndices)),
+            Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
+            lightViewProjections[cascade]);
+    }
 
     // Restore the main color/depth targets and camera viewport.
     ID3D11RenderTargetView* mainTarget = m_renderTarget.Get();
@@ -1197,7 +1224,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F},
             {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
             {0.32F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
-        constants.lightViewProjection = lightViewProjection;
+        for (std::size_t cascade = 0; cascade < 3; ++cascade) constants.lightViewProjection[cascade] = lightViewProjections[cascade];
+        constants.cascadeSplits[0] = 25.0F; constants.cascadeSplits[1] = 60.0F; constants.cascadeSplits[2] = 130.0F;
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
@@ -1214,7 +1242,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     SceneConstants worldConstants{projection * view, identity, 0U, {0.0F, 0.0F, 0.0F},
         {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
         {0.92F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
-    worldConstants.lightViewProjection = lightViewProjection;
+    for (std::size_t cascade = 0; cascade < 3; ++cascade) worldConstants.lightViewProjection[cascade] = lightViewProjections[cascade];
+    worldConstants.cascadeSplits[0] = 25.0F; worldConstants.cascadeSplits[1] = 60.0F; worldConstants.cascadeSplits[2] = 130.0F;
     D3D11_MAPPED_SUBRESOURCE worldMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &worldMapped))) {
         *static_cast<SceneConstants*>(worldMapped.pData) = worldConstants;
@@ -1242,7 +1271,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
         {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
         {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
-    houseConstants.lightViewProjection = lightViewProjection;
+    for (std::size_t cascade = 0; cascade < 3; ++cascade) houseConstants.lightViewProjection[cascade] = lightViewProjections[cascade];
+    houseConstants.cascadeSplits[0] = 25.0F; houseConstants.cascadeSplits[1] = 60.0F; houseConstants.cascadeSplits[2] = 130.0F;
     houseConstants.textureFlags[0] = m_normalTexture.Get() != nullptr ? 1U : 0U;
     houseConstants.textureFlags[1] = m_roughnessTexture.Get() != nullptr ? 1U : 0U;
     houseConstants.textureFlags[2] = m_metallicTexture.Get() != nullptr ? 1U : 0U;

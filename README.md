@@ -52,7 +52,7 @@ Movement is delta-time based, so it remains consistent across frame rates. The c
 - core: runtime entry point, logging, frame-time policy
 - math: Vec3, Vec4, Quaternion, Mat4
 - platform: Win32 window/event lifecycle
-- renderer: Direct3D 11 device, shaders, buffers, swap chain, depth target
+- renderer: Direct3D 11 scene pipeline; experimental Direct3D 12 device/swap-chain/presentation backend; shaders, buffers, depth and temporal-history targets
 - tests: GPU-independent runtime and math tests
 
 ## Math conventions

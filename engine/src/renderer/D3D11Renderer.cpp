@@ -347,24 +347,13 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->RSSetState(m_rasterizerState.Get());
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
 
-    const auto rotation = Quaternion::FromAxisAngle({0.45F, 1.0F, 0.2F}, elapsedSeconds * 0.75F);
-    const Mat4 world = Mat4::Translation({0.0F, 0.0F, 0.0F}) *
-        Mat4::Rotation(rotation.value_or(Quaternion::Identity()));
     const Vec3 cameraPosition{cameraX, cameraY, cameraZ};
     const float cosPitch = std::cos(cameraPitch);
     const Vec3 cameraForward{std::sin(cameraYaw) * cosPitch, std::sin(cameraPitch), std::cos(cameraYaw) * cosPitch};
     const Mat4 view = Mat4::LookAtLH(cameraPosition, cameraPosition + cameraForward, {0.0F, 1.0F, 0.0F})
         .value_or(Mat4::Identity());
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 100.0F);
-    const SceneConstants constants{projection * view * world, world};
-
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-    {
-        *static_cast<SceneConstants*>(mapped.pData) = constants;
-        m_context->Unmap(m_sceneConstants.Get(), 0);
-    }
+    const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
 
     constexpr UINT stride = sizeof(Vertex);
     constexpr UINT offset = 0;
@@ -377,7 +366,34 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     ID3D11Buffer* constantsBuffer = m_sceneConstants.Get();
     m_context->VSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
-    m_context->DrawIndexed(static_cast<UINT>(std::size(kCubeIndices)), 0, 0);
+
+    const auto drawCube = [&](const Mat4& worldTransform)
+    {
+        const SceneConstants constants{projection * view * worldTransform, worldTransform};
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        {
+            LogError("Could not update the per-object scene constants.");
+            return;
+        }
+        *static_cast<SceneConstants*>(mapped.pData) = constants;
+        m_context->Unmap(m_sceneConstants.Get(), 0);
+        m_context->DrawIndexed(static_cast<UINT>(std::size(kCubeIndices)), 0, 0);
+    };
+
+    // A broad green-topped ground slab makes depth, scale, and lighting readable.
+    drawCube(Mat4::Translation({0.0F, -1.15F, 0.0F}) * Mat4::Scale({12.0F, 0.15F, 12.0F}));
+
+    const auto mainRotation = Quaternion::FromAxisAngle({0.45F, 1.0F, 0.2F}, elapsedSeconds * 0.75F);
+    drawCube(Mat4::Rotation(mainRotation.value_or(Quaternion::Identity())));
+
+    const auto propA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F);
+    const auto propB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);
+    const auto propC = Quaternion::FromAxisAngle({0.3F, 1.0F, 0.0F}, 0.35F);
+    drawCube(Mat4::Translation({-3.0F, -0.4F, 1.5F}) * Mat4::Rotation(propA.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawCube(Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(propB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawCube(Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(propC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawCube(Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     (void)m_swapChain->Present(1, 0);
 }
 } // namespace vanta

@@ -33,7 +33,12 @@ The renderer now includes:
 - MTL diffuse, tangent-space normal, roughness, metallic, and ambient-occlusion map loading through Windows Imaging Component (WIC). Diffuse is decoded as sRGB; numeric data maps remain linear. Missing maps are optional, while referenced maps must decode and upload successfully.
 - UV interpolation, linear wrap sampling, sRGB diffuse sampling, and GPU-generated mip chains for diffuse, normal, roughness, metallic, and ambient-occlusion maps. Numeric maps remain in linear space.
 - Startup diagnostics for NVIDIA, AMD, and Intel adapter capabilities, including D3D12 and DXR support where available.
-- A native Direct3D 12 scene pipeline with hardware adapter selection, WARP fallback, flip-model swap chain, per-frame command allocators, root signature, compiled shaders, vertex/index buffers, constant buffer, depth buffer, indexed terrain/forest scene rendering, resize handling, and fence synchronization. D3D12 now includes Cook–Torrance/GGX PBR-style direct and environment lighting, multi-frequency world-space terrain shading that blends grass, soil, and exposed rock by slope/height, an R16G16B16A16_FLOAT HDR scene target, a fullscreen ACES tone-map pass, thresholded bloom, a depth-neighborhood contact-occlusion approximation, and a procedural atmospheric sky. Cascaded shadow maps, imported PBR asset/material binding, and temporal AA still need to be ported; those features remain available in the D3D11 compatibility renderer.
+- A native Direct3D 12 scene pipeline with flip-model swap chain, per-frame command allocators and constant buffers, explicit resource transitions, GPU fences, resize handling, and a default D3D12 launch path.
+- Three 2048×2048 cascaded directional shadow maps with per-cascade depth passes, depth bias, cascade selection and 3×3 percentage-closer filtering. Shadow draws select a distance-appropriate geometry LOD.
+- Depth-reprojected temporal anti-aliasing with an eight-sample Halton projection-jitter sequence, ping-pong HDR color/depth history, disocclusion rejection, neighborhood clipping and camera-cut history invalidation. Per-object motion vectors are not implemented yet, so moving geometry can still ghost.
+- Imported OBJ/MTL and glTF/GLB static geometry is added to the D3D12 scene with per-submesh base-color, roughness and metallic factors. External base-color, normal, roughness/metallic and ambient-occlusion maps are uploaded to GPU textures with complete mip chains; base color uses sRGB decoding while data maps remain linear. The current sample house uses this path.
+- Spatially chunked world geometry with frustum culling and three index-based LOD tiers. Medium/far tiers remove small vegetation triangles to reduce distant geometry cost while keeping a shared vertex buffer.
+- Cook–Torrance/GGX PBR-style direct/environment lighting, multi-frequency world-space terrain shading, slope/height-based grass/soil/rock blending, linear R16G16B16A16_FLOAT HDR, ACES tone mapping, thresholded bloom, depth-neighborhood contact-occlusion approximation, procedural sky and atmospheric fog. The AO and environment lighting are still approximations rather than production GTAO and prefiltered HDR image-based lighting.
 - A small sample house asset under `assets/models/` so the OBJ importer and texture path are exercised on startup. If `stone_house.glb` or `stone_house.gltf` is placed in that directory, the engine prefers it over the OBJ sample.
 
 ## Camera controls
@@ -82,7 +87,7 @@ From the repository root:
     git pull origin main
     .\scripts\build.ps1 -Test -Run
 
-This builds the engine, runs CTest, then opens the VantaEngine window. Press Escape or close the window to exit.
+This builds the engine, runs CTest, then opens VantaEngine using Direct3D 12 by default. Pass `-Backend D3D11` to launch the compatibility renderer. Press Escape or close the window to exit.
 
 Other commands:
 
@@ -90,6 +95,7 @@ Other commands:
     .\scripts\build.ps1 -Configuration Release
     .\scripts\build.ps1 -Test
     .\scripts\build.ps1 -Clean -Test
+    .\scripts\build.ps1 -Test -Run -Backend D3D11
 
 The clean option removes only generated output in build/.
 
@@ -101,10 +107,10 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 ## Current limitations
 
-- Windows backend only. The D3D12 renderer now draws the procedural valley with depth testing, HDR PBR-style shading, multi-scale world-space terrain material variation, slope/height-based grass/soil/rock blending, ACES tone mapping, bloom, a depth-neighborhood AO approximation, procedural sky and distance fog. Cascaded shadow maps, imported asset/material rendering, and TAA remain to be ported from D3D11.
-- The procedural valley now includes denser ground clutter, tree roots, bark seams, road gravel, ferns, leaf litter, twigs, and layered world-space material variation. It remains a handcrafted prototype, not photorealistic scanned assets: geometry silhouettes and most environment materials still need authored models and complete PBR texture sets. Terrain and environment geometry are generated once at startup; there is no streaming, LOD system, foliage animation, or baked lighting yet.
-- The D3D11 compatibility renderer has the more complete feature set today, including cascaded shadows, imported PBR materials and TAA. D3D12 now has its own HDR and post-processing path, but its screen-space contact occlusion and analytic environment lighting are approximations; they do not replace production GTAO or prefiltered HDR image-based lighting. The environment's grass, stone and timber texture tiles are synthesized deterministically at startup; they are not artist-authored scanned materials.
-- The D3D12 renderer does not yet use DXR or path tracing. Its scene currently uses one merged upload-heap mesh and vertex-color-driven procedural materials; it does not yet bind imported glTF/MTL PBR textures or render the D3D11 renderer’s three cascaded 2048×2048 shadow maps. The current contact AO and environment reflection are approximations, and temporal AA/motion vectors remain future work. Production-quality asset streaming, default-heap geometry uploads and render-graph/resource lifetime management are also future work. DXR additionally needs acceleration structures and ray-generation/miss/hit shaders.
+- Windows backend only. D3D12 now has cascaded shadows, imported PBR material maps, temporal reprojection AA, and chunked frustum/LOD rendering, but this is still an engine prototype rather than a GTA-scale production renderer.
+- The procedural valley is still handcrafted prototype geometry, not photogrammetry-quality content. Spatial LOD reduces small distant vegetation triangles, but there is no world streaming, foliage animation, occlusion-query system, baked lighting, or large-world partitioning yet.
+- D3D12's contact occlusion and analytic environment lighting remain approximations; they do not replace production GTAO, prefiltered HDR image-based lighting, or ray-traced effects. Temporal AA has no per-object motion vectors, so animated objects may ghost.
+- D3D12 does not yet use DXR/path tracing, motion vectors, GPU-driven indirect draws, streaming, or a render graph. Procedural environment geometry and index buffers still use upload heaps; migrating static meshes to default heaps and introducing staged streaming are future performance work.
 - NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
 - No mouse-look, audio, physics, scripting, or game packaging yet.
 
@@ -116,8 +122,8 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
 6. glTF 2.0 import, multi-material meshes, authored asset packs, mip-chain generation, and environment IBL.
-7. Direct3D 12 scene pipeline implemented as the default backend; port the advanced PBR materials, cascaded shadows, HDR post-processing and temporal AA, then add DXR acceleration structures, ray-traced shadows/reflections, and a path-tracing test scene.
+7. Direct3D 12 scene pipeline, cascaded shadows, imported PBR maps, HDR post-processing and temporal AA. Next: motion vectors, production AO/IBL, and DXR acceleration structures.
 8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
-9. Cascaded PCF directional shadows in D3D11; port the three-cascade shadow pass and filtering to D3D12.
-10. D3D12 HDR tone mapping, bloom and depth-neighborhood contact AO implemented; port TAA with motion vectors and robust disocclusion handling.
+9. Cascaded PCF directional shadows in D3D12. Implemented; stabilize cascades and profile filtering.
+10. D3D12 HDR tone mapping, bloom, contact AO and reprojection TAA implemented; add motion vectors and improve disocclusion handling.
 11. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.

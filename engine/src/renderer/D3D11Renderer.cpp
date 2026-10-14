@@ -287,6 +287,85 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
 
+    const std::filesystem::path modelPath = std::filesystem::path{VANTA_ASSET_DIR} / "models" / "stone_house.obj";
+    CpuModel model;
+    std::string importError;
+    if (!LoadWavefrontObj(modelPath, model, importError)) {
+        LogError(importError.c_str());
+        return false;
+    }
+    std::vector<Vertex> modelVertices;
+    modelVertices.reserve(model.vertices.size());
+    for (const ModelVertex& source : model.vertices) {
+        modelVertices.push_back({{source.position.x, source.position.y, source.position.z},
+            {source.normal.x, source.normal.y, source.normal.z}, {1.0F, 1.0F, 1.0F, 1.0F},
+            {source.u, source.v}});
+    }
+    if (modelVertices.empty() || model.indices.empty() ||
+        modelVertices.size() * sizeof(Vertex) > std::numeric_limits<UINT>::max() ||
+        model.indices.size() * sizeof(unsigned int) > std::numeric_limits<UINT>::max()) {
+        LogError("Imported model has invalid or excessive geometry.");
+        return false;
+    }
+
+    D3D11_BUFFER_DESC modelVertexDescription{};
+    modelVertexDescription.ByteWidth = static_cast<UINT>(modelVertices.size() * sizeof(Vertex));
+    modelVertexDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    modelVertexDescription.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA modelVertexData{};
+    modelVertexData.pSysMem = modelVertices.data();
+    if (FAILED(m_device->CreateBuffer(&modelVertexDescription, &modelVertexData, m_modelVertexBuffer.GetAddressOf()))) {
+        LogError("Could not create the imported model vertex buffer.");
+        return false;
+    }
+
+    D3D11_BUFFER_DESC modelIndexDescription{};
+    modelIndexDescription.ByteWidth = static_cast<UINT>(model.indices.size() * sizeof(unsigned int));
+    modelIndexDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    modelIndexDescription.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA modelIndexData{};
+    modelIndexData.pSysMem = model.indices.data();
+    if (FAILED(m_device->CreateBuffer(&modelIndexDescription, &modelIndexData, m_modelIndexBuffer.GetAddressOf()))) {
+        LogError("Could not create the imported model index buffer.");
+        return false;
+    }
+    m_modelIndexCount = static_cast<UINT>(model.indices.size());
+
+    CpuTexture image;
+    if (model.diffuseTexture.empty() || !LoadWicTexture(model.diffuseTexture, image)) {
+        LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
+        return false;
+    }
+    D3D11_TEXTURE2D_DESC textureDescription{};
+    textureDescription.Width = image.width;
+    textureDescription.Height = image.height;
+    textureDescription.MipLevels = 1;
+    textureDescription.ArraySize = 1;
+    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDescription.SampleDesc.Count = 1;
+    textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA textureData{};
+    textureData.pSysMem = image.rgba.data();
+    textureData.SysMemPitch = image.width * 4U;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(m_device->CreateTexture2D(&textureDescription, &textureData, texture.GetAddressOf())) ||
+        FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, m_diffuseTexture.GetAddressOf()))) {
+        LogError("Could not upload the imported model's diffuse texture.");
+        return false;
+    }
+
+    D3D11_SAMPLER_DESC samplerDescription{};
+    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.MaxLOD = D3D11_FLOAT32_MAX;
+    if (FAILED(m_device->CreateSamplerState(&samplerDescription, m_textureSampler.GetAddressOf()))) {
+        LogError("Could not create the material texture sampler.");
+        return false;
+    }
+
     D3D11_BUFFER_DESC constantsDescription{};
     constantsDescription.ByteWidth = sizeof(SceneConstants);
     constantsDescription.Usage = D3D11_USAGE_DYNAMIC;

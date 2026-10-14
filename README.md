@@ -15,6 +15,7 @@ The renderer now includes:
 - Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
 - Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
 - sRGB diffuse texture sampling, GPU-generated mip chains for diffuse and linear PBR maps, seamless procedural grass/stone/wood albedo textures with triplanar projection, and ACES-style tone mapping for more physically plausible light response.
+- A linear `R16G16B16A16_FLOAT` HDR scene target followed by full-screen ACES tone mapping, display transfer, and a thresholded 5×5 highlight-bloom pass. Scene shading remains linear until final composition instead of tone-mapping each material before the scene is complete.
 - A dynamic constant buffer for per-frame transforms and light-space transforms.
 - A 2048×2048 directional shadow depth pass for terrain, forest, imported house, and props, with slope-aware depth bias and 3×3 PCF filtering.
 - Window resize handling and a continuously updated frame loop.

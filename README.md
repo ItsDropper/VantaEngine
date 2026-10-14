@@ -6,7 +6,7 @@ VantaEngine is an early-stage native C++23 3D game engine designed for direct co
 
 ## What runs right now
 
-Launching the engine opens a 1280×720 native window and renders a rotating, multi-colored 3D cube against a dark background. It uses the GPU through Direct3D 11; this is not a prerecorded animation or a UI mock-up.
+Launching the engine opens a 1280×720 native window and renders a small real-time 3D test environment: a broad ground surface, a rotating hero cube, and several smaller objects at different positions. It uses the GPU through Direct3D 11; this is not a prerecorded animation or a UI mock-up.
 
 The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
@@ -15,6 +15,8 @@ The renderer now includes:
 - A directional diffuse-lighting shader.
 - A dynamic constant buffer for per-frame transforms.
 - Window resize handling and a continuously updated frame loop.
+- Multiple world-space objects rendered with individual transforms against a scaled ground slab.
+- A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 
 ## Camera controls
 
@@ -82,7 +84,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 ## Current limitations
 
 - Windows backend only.
-- The scene currently contains one procedural cube; no general-purpose scene graph, asset importer, or editor yet.
+- The scene is currently a hard-coded procedural test environment using cube geometry; no imported real-world models, texture maps, general-purpose scene graph, or editor yet.
 - No mouse-look, model loading, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap

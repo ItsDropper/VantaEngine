@@ -284,13 +284,15 @@ bool CreateUploadBuffer(ID3D12Device* device, UINT64 size, Microsoft::WRL::ComPt
 D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
-    if (m_mappedConstants != nullptr && m_constantBuffer) {
-        m_constantBuffer->Unmap(0, nullptr);
-        m_mappedConstants = nullptr;
-    }
-    if (m_mappedTemporalConstants != nullptr && m_temporalConstantBuffer) {
-        m_temporalConstantBuffer->Unmap(0, nullptr);
-        m_mappedTemporalConstants = nullptr;
+    for (UINT i = 0; i < kFrameCount; ++i) {
+        if (m_mappedConstants[i] != nullptr && m_constantBuffers[i]) {
+            m_constantBuffers[i]->Unmap(0, nullptr);
+            m_mappedConstants[i] = nullptr;
+        }
+        if (m_mappedTemporalConstants[i] != nullptr && m_temporalConstantBuffers[i]) {
+            m_temporalConstantBuffers[i]->Unmap(0, nullptr);
+            m_mappedTemporalConstants[i] = nullptr;
+        }
     }
     if (m_fenceEvent != nullptr) {
         CloseHandle(m_fenceEvent);
@@ -773,12 +775,14 @@ bool D3D12Renderer::CreatePipeline()
     pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     pso.SampleDesc.Count = 1;
-    if (!CreateUploadBuffer(m_device.Get(), 1280, m_constantBuffer)) {
-        LogError("Direct3D 12: constant buffer allocation failed.");
-        return false;
-    }
     D3D12_RANGE noRead{0, 0};
-    if (FAILED(m_constantBuffer->Map(0, &noRead, &m_mappedConstants))) return false;
+    for (UINT i = 0; i < kFrameCount; ++i) {
+        if (!CreateUploadBuffer(m_device.Get(), 1280, m_constantBuffers[i]) ||
+            FAILED(m_constantBuffers[i]->Map(0, &noRead, &m_mappedConstants[i]))) {
+            LogError("Direct3D 12: per-frame scene constant buffer allocation failed.");
+            return false;
+        }
+    }
     if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_pipelineState.GetAddressOf())))) {
         LogError("Direct3D 12: graphics pipeline state creation failed.");
         return false;
@@ -962,10 +966,12 @@ TemporalOutput PSMain(VSOut input)
         LogError("Direct3D 12: temporal pixel shader compilation failed.");
         return false;
     }
-    if (!CreateUploadBuffer(m_device.Get(), 256, m_temporalConstantBuffer) ||
-        FAILED(m_temporalConstantBuffer->Map(0, nullptr, &m_mappedTemporalConstants))) {
-        LogError("Direct3D 12: temporal constant buffer allocation failed.");
-        return false;
+    for (UINT i = 0; i < kFrameCount; ++i) {
+        if (!CreateUploadBuffer(m_device.Get(), 256, m_temporalConstantBuffers[i]) ||
+            FAILED(m_temporalConstantBuffers[i]->Map(0, nullptr, &m_mappedTemporalConstants[i]))) {
+            LogError("Direct3D 12: per-frame temporal constant buffer allocation failed.");
+            return false;
+        }
     }
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();
@@ -1241,10 +1247,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     temporalConstants.parameters[1] = static_cast<float>(1U - m_historyWriteIndex);
     temporalConstants.parameters[2] = static_cast<float>(m_historyWriteIndex);
     temporalConstants.parameters[3] = 0.88F;
-    std::memcpy(m_mappedTemporalConstants, &temporalConstants, sizeof(temporalConstants));
-    std::memcpy(m_mappedConstants, &constants, sizeof(constants));
+    std::memcpy(m_mappedTemporalConstants[m_frameIndex], &temporalConstants, sizeof(temporalConstants));
+    std::memcpy(m_mappedConstants[m_frameIndex], &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {
-        std::memcpy(static_cast<unsigned char*>(m_mappedConstants) + kShadowConstantOffset + cascade * kShadowConstantStride,
+        std::memcpy(static_cast<unsigned char*>(m_mappedConstants[m_frameIndex]) + kShadowConstantOffset + cascade * kShadowConstantStride,
             &constants.lightViewProjection[cascade], sizeof(Mat4));
     }
 
@@ -1275,7 +1281,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->OMSetRenderTargets(0, nullptr, &m_shadowDsvHandles[cascade]);
         m_commandList->ClearDepthStencilView(m_shadowDsvHandles[cascade], D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
         m_commandList->SetGraphicsRootConstantBufferView(0,
-            m_constantBuffer->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
+            m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
         m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
     }
     D3D12_RESOURCE_BARRIER shadowToSample = shadowToDepth;
@@ -1308,7 +1314,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     ID3D12DescriptorHeap* sceneHeaps[] = {m_srvHeap.Get()};
     m_commandList->SetDescriptorHeaps(1, sceneHeaps);
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-    m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
     D3D12_VIEWPORT sceneViewport{0.0F, 0.0F, static_cast<float>(m_width), static_cast<float>(m_height), 0.0F, 1.0F};
     D3D12_RECT sceneScissor{0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height)};
     m_commandList->RSSetViewports(1, &sceneViewport);
@@ -1349,7 +1355,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     };
     m_commandList->OMSetRenderTargets(2, temporalRtvs, FALSE, nullptr);
     m_commandList->SetPipelineState(m_temporalPipelineState.Get());
-    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffer->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffers[m_frameIndex]->GetGPUVirtualAddress());
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
     D3D12_VIEWPORT temporalViewport{0.0F, 0.0F, static_cast<float>(m_width), static_cast<float>(m_height), 0.0F, 1.0F};
     D3D12_RECT temporalScissor{0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height)};
@@ -1380,7 +1386,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     ID3D12DescriptorHeap* heaps[] = {m_srvHeap.Get()};
     m_commandList->SetDescriptorHeaps(1, heaps);
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffer->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffers[m_frameIndex]->GetGPUVirtualAddress());
     m_commandList->IASetVertexBuffers(0, 0, nullptr);
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

@@ -181,6 +181,28 @@ float CalculateShadow(float4 shadowPosition, float3 normal, float3 lightDirectio
             visibility += shadowMap.SampleCmpLevelZero(shadowSampler, uv + float2(x, y) * texel, projected.z - bias);
     return visibility / 9.0;
 }
+float HashNoise(float3 p)
+{
+    p = frac(p * 0.1031);
+    p += dot(p, p.yzx + 33.33);
+    return frac((p.x + p.y) * p.z);
+}
+float ValueNoise(float3 p)
+{
+    float3 cell = floor(p);
+    float3 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = HashNoise(cell);
+    float b = HashNoise(cell + float3(1,0,0));
+    float c = HashNoise(cell + float3(0,1,0));
+    float d = HashNoise(cell + float3(1,1,0));
+    float e = HashNoise(cell + float3(0,0,1));
+    float f1 = HashNoise(cell + float3(1,0,1));
+    float g = HashNoise(cell + float3(0,1,1));
+    float h = HashNoise(cell + float3(1,1,1));
+    return lerp(lerp(lerp(a,b,f.x),lerp(c,d,f.x),f.y),
+                lerp(lerp(e,f1,f.x),lerp(g,h,f.x),f.y),f.z);
+}
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
@@ -209,10 +231,19 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
     if (useTexture == 0)
     {
-        float3 cell = floor(input.worldPosition * 3.7);
-        float grain = frac(sin(dot(cell, float3(127.1, 311.7, 74.7))) * 43758.5453);
-        float broad = 0.5 + 0.5 * sin(input.worldPosition.x * 0.83 + sin(input.worldPosition.z * 0.57));
-        albedo *= lerp(0.86, 1.10, grain) * lerp(0.94, 1.04, broad);
+        // World-space, multi-frequency material breakup gives large surfaces natural variation
+        // without obvious UV repetition or the blocky cells of a single-frequency hash.
+        float broad = ValueNoise(input.worldPosition * 0.11);
+        float medium = ValueNoise(input.worldPosition * 0.83 + 17.0);
+        float fine = HashNoise(floor(input.worldPosition * 17.0));
+        float fleck = HashNoise(floor(input.worldPosition * 61.0 + 3.0));
+        albedo *= lerp(0.78, 1.16, broad)
+                * lerp(0.88, 1.12, medium)
+                * lerp(0.94, 1.06, fine)
+                * lerp(0.97, 1.035, fleck);
+        // Fine luminance variation approximates small surface relief until real normal maps are used.
+        float micro = ValueNoise(input.worldPosition * 24.0);
+        albedo *= lerp(0.97, 1.03, micro);
     }
     float nDotL = saturate(dot(n, l));
     float nDotV = max(saturate(dot(n, v)), 0.001);

@@ -230,7 +230,23 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
         if(x*x+z*z<115.0F || std::abs(x)>59.0F || std::abs(z)>59.0F) continue;
         if(std::abs(x-(8.0F+std::sin(z*0.035F)*4.2F))<5.0F || (x>-27&&x<-19)) continue;
         const float y=Height(x,z), h=4.0F+Hash(gx,gz,2)*4.5F, radius=0.9F+Hash(gz,gx,6)*0.85F;
-        b.cylinder({x,y,z},0.18F+Hash(gx,gz,7)*0.1F,h*0.42F,7,0.22F,0.12F,0.065F,0.72F);
+        const float trunkRadius = 0.18F + Hash(gx,gz,7)*0.1F;
+        b.cylinder({x,y,z},trunkRadius,h*0.42F,9,0.22F,0.12F,0.065F,0.72F);
+        // Exposed buttress roots flare into the forest floor; darker seams break up the smooth trunk.
+        for (int root = 0; root < 4; ++root) {
+            const float angle = root * (kPi * 0.5F) + Hash(gx,gz,root) * 0.55F;
+            P end{x + std::cos(angle) * (0.48F + trunkRadius),
+                  y + 0.035F,
+                  z + std::sin(angle) * (0.48F + trunkRadius)};
+            b.beam({x,y+0.12F,z},end,0.055F,0.25F,0.135F,0.07F);
+        }
+        for (int groove = 0; groove < 3; ++groove) {
+            const float angle = groove * 2.0943951F + Hash(gx,gz,groove+30) * 0.4F;
+            const float gx0 = x + std::cos(angle) * (trunkRadius * 0.88F);
+            const float gz0 = z + std::sin(angle) * (trunkRadius * 0.88F);
+            b.beam({gx0,y+0.2F,gz0},{gx0+0.01F,y+h*0.38F,gz0+0.01F},
+                   0.012F,0.13F,0.075F,0.04F);
+        }
         for(int tier=0;tier<4;++tier) {
             const float ty=y+h*(0.19F+tier*0.17F), th=h*(0.43F-tier*0.045F);
             const float rr=radius*(1.0F-tier*0.19F);
@@ -292,8 +308,95 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
         float x=-18.0F+Hash(i,89)*36.0F, z=-18.0F+Hash(i,97)*36.0F;
         if(x*x+z*z<45.0F) continue;
         float y=Height(x,z)+0.18F, len=1.2F+Hash(i,101)*2.8F;
-        b.cylinder({x-len*0.5F,y,z},0.13F+Hash(i,103)*0.09F,len,7,0.25F,0.14F,0.075F,0.98F);
-        if(i%2==0) b.cone({x+len*0.15F,y+0.04F,z+0.15F},0.07F,0.65F,5,0.24F,0.15F,0.08F);
+        b.cylinder({x-len*0.5F,y,z},0.13F+Hash(i,103)*0.09F,len,9,0.25F,0.14F,0.075F,0.98F);
+        // Broken branch stubs and exposed pale cut ends make fallen trees less like plain cylinders.
+        if(i%2==0) {
+            b.beam({x-len*0.12F,y,z},{x-len*0.25F,y+0.35F,z+0.22F},0.045F,0.24F,0.14F,0.075F);
+            b.cylinder({x+len*0.5F,y,z},0.105F,0.018F,9,0.48F,0.34F,0.20F,1.0F);
+        }
+    }
+
+    // Loose gravel, scattered across the road surface with natural size and color variation.
+    for (int i = 0; i < 620; ++i) {
+        const float z = -64.0F + Hash(i, 107) * 128.0F;
+        const float roadX = 8.0F + std::sin(z * 0.035F) * 4.2F;
+        const float x = roadX + (Hash(i, 109) - 0.5F) * 5.1F;
+        if (Hash(i, 113) < 0.08F) continue; // Leave irregular bare patches.
+        const float y = Height(x,z) + 0.065F;
+        const float size = 0.025F + Hash(i, 127) * 0.065F;
+        const float shade = 0.72F + Hash(i, 131) * 0.45F;
+        b.rock({x,y,z},size,size*0.45F,size*(0.55F+Hash(i,137)*0.6F),
+               0.30F*shade);
+    }
+
+    // Ferns form irregular understory clusters, especially in shaded woodland and near the stream.
+    for (int i = 0; i < 340; ++i) {
+        const float x = -57.0F + Hash(i, 139) * 114.0F;
+        const float z = -61.0F + Hash(i, 149) * 122.0F;
+        const float roadX = 8.0F + std::sin(z * 0.035F) * 4.2F;
+        if (x*x+z*z < 34.0F || std::abs(x-roadX) < 4.1F ||
+            (x > -26.0F && x < -20.0F)) continue;
+        const float y = Height(x,z) + 0.035F;
+        const float scale = 0.35F + Hash(i, 151) * 0.55F;
+        const float rotation = Hash(i, 157) * 2.0F * kPi;
+        for (int leaf = 0; leaf < 7; ++leaf) {
+            const float a = rotation + leaf * (2.0F*kPi/7.0F);
+            const float length = scale * (0.65F + Hash(i, leaf+163)*0.5F);
+            const float width = length * 0.19F;
+            const P base{x,y,z};
+            const P tip{x+std::cos(a)*length*0.8F,
+                        y+length*(0.28F+Hash(i,leaf+173)*0.18F),
+                        z+std::sin(a)*length*0.8F};
+            const P side{x-std::sin(a)*width,y+length*0.35F,
+                         z+std::cos(a)*width};
+            const float green = 0.16F + Hash(i,leaf+179)*0.12F;
+            b.tri(base,side,tip,0.045F,green,0.055F);
+            b.tri(base,tip,{x+std::sin(a)*width,y+length*0.35F,
+                            z-std::cos(a)*width},0.055F,green*1.05F,0.06F);
+        }
+    }
+
+    // Leaf litter and small broken twigs break up the otherwise uniform ground plane.
+    for (int i = 0; i < 1450; ++i) {
+        const float x = -61.0F + Hash(i, 181) * 122.0F;
+        const float z = -64.0F + Hash(i, 191) * 128.0F;
+        const float roadX = 8.0F + std::sin(z * 0.035F) * 4.2F;
+        if (x*x+z*z < 24.0F || std::abs(x-roadX) < 3.9F) continue;
+        const float y = Height(x,z) + 0.032F;
+        const float a = Hash(i, 193) * kPi;
+        const float length = 0.06F + Hash(i, 197) * 0.19F;
+        const float width = length * (0.18F + Hash(i, 199) * 0.18F);
+        const P along{std::cos(a)*length,0.003F,std::sin(a)*length};
+        const P across{-std::sin(a)*width,0.001F,std::cos(a)*width};
+        const P center{x,y,z};
+        const float tint = 0.75F + Hash(i, 211) * 0.55F;
+        const float red = (i%4==0 ? 0.27F : 0.16F) * tint;
+        const float green = (i%4==0 ? 0.19F : 0.13F) * tint;
+        const float blue = (i%4==0 ? 0.075F : 0.055F) * tint;
+        b.quad(center-along-across,center+along-across,center+along+across,center-along+across,
+               red,green,blue);
+        if (i%5==0) {
+            const P twigEnd{x+std::cos(a)*length*1.8F,y+0.015F,z+std::sin(a)*length*1.8F};
+            b.beam(center,twigEnd,0.009F,0.20F,0.12F,0.06F);
+        }
+    }
+
+    // Tiny wildflowers add restrained color variation to grass verges and clearings.
+    for (int i = 0; i < 150; ++i) {
+        const float x = -56.0F + Hash(i, 223) * 112.0F;
+        const float z = -60.0F + Hash(i, 227) * 120.0F;
+        const float roadX = 8.0F + std::sin(z * 0.035F) * 4.2F;
+        if (std::abs(x-roadX) < 4.0F || x*x+z*z < 26.0F) continue;
+        const float y = Height(x,z) + 0.04F;
+        const float h = 0.12F + Hash(i, 229) * 0.18F;
+        b.beam({x,y,z},{x,y+h,z},0.009F,0.12F,0.24F,0.075F);
+        const float petal = 0.025F + Hash(i, 233) * 0.018F;
+        const float color = Hash(i, 239);
+        const float r = color < 0.45F ? 0.85F : (color < 0.75F ? 0.9F : 0.96F);
+        const float g = color < 0.45F ? 0.79F : (color < 0.75F ? 0.42F : 0.85F);
+        const float bl = color < 0.45F ? 0.48F : (color < 0.75F ? 0.16F : 0.2F);
+        b.rock({x,y+h,z},petal,petal*0.3F,petal,0.6F);
+        b.tri({x-petal,y+h,z},{x,y+h+petal*0.2F,z+petal},{x+petal,y+h,z},r,g,bl);
     }
 }
 } // namespace vanta::renderer

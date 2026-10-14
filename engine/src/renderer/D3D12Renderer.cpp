@@ -749,11 +749,88 @@ bool D3D12Renderer::CreateSceneGeometry()
     if (!CreateModelAlbedoTexture(diffuseTexture.width, diffuseTexture.height, diffuseTexture.rgba.data())) return false;
 
     if (vertices.empty() || indices.empty() || indices.size() > UINT_MAX ||
-        vertices.size() != materialParameters.size() ||
-        vertices.size() > UINT_MAX / sizeof(D3D12WorldVertex)) {
+        vertices.size() != materialParameters.size() || (indices.size() % 3U) != 0U) {
         LogError("Direct3D 12: procedural/imported scene mesh is empty or too large.");
         return false;
     }
+
+    // Spatially sort triangles into 24 m cells. Each cell stores three index lists:
+    // full detail, medium detail, and a far LOD that drops sub-pixel vegetation triangles.
+    // Vertex data stays shared, so LOD changes do not duplicate GPU vertex storage.
+    constexpr float chunkSize = 24.0F;
+    float minX = vertices.front().position[0], maxX = minX;
+    float minY = vertices.front().position[1], maxY = minY;
+    float minZ = vertices.front().position[2], maxZ = minZ;
+    for (const auto& vertex : vertices) {
+        minX = std::min(minX, vertex.position[0]); maxX = std::max(maxX, vertex.position[0]);
+        minY = std::min(minY, vertex.position[1]); maxY = std::max(maxY, vertex.position[1]);
+        minZ = std::min(minZ, vertex.position[2]); maxZ = std::max(maxZ, vertex.position[2]);
+    }
+    const int chunksX = std::max(1, static_cast<int>(std::ceil((maxX - minX) / chunkSize)));
+    const int chunksZ = std::max(1, static_cast<int>(std::ceil((maxZ - minZ) / chunkSize)));
+    struct CpuChunk {
+        std::array<std::vector<unsigned int>, 3> lodIndices;
+        float minY = std::numeric_limits<float>::max();
+        float maxY = std::numeric_limits<float>::lowest();
+        bool occupied = false;
+    };
+    std::vector<CpuChunk> cpuChunks(static_cast<std::size_t>(chunksX) * chunksZ);
+    for (std::size_t tri = 0; tri < indices.size(); tri += 3) {
+        const unsigned int ia = indices[tri], ib = indices[tri + 1], ic = indices[tri + 2];
+        if (ia >= vertices.size() || ib >= vertices.size() || ic >= vertices.size()) {
+            LogError("Direct3D 12: generated mesh contained an out-of-range index.");
+            return false;
+        }
+        const auto& a = vertices[ia]; const auto& b = vertices[ib]; const auto& c = vertices[ic];
+        const float cx = (a.position[0] + b.position[0] + c.position[0]) / 3.0F;
+        const float cz = (a.position[2] + b.position[2] + c.position[2]) / 3.0F;
+        const int chunkX = std::clamp(static_cast<int>((cx - minX) / chunkSize), 0, chunksX - 1);
+        const int chunkZ = std::clamp(static_cast<int>((cz - minZ) / chunkSize), 0, chunksZ - 1);
+        CpuChunk& chunk = cpuChunks[static_cast<std::size_t>(chunkZ) * chunksX + chunkX];
+        chunk.occupied = true;
+        chunk.minY = std::min({chunk.minY, a.position[1], b.position[1], c.position[1]});
+        chunk.maxY = std::max({chunk.maxY, a.position[1], b.position[1], c.position[1]});
+        const Vec3 edgeA{b.position[0] - a.position[0], b.position[1] - a.position[1], b.position[2] - a.position[2]};
+        const Vec3 edgeB{c.position[0] - a.position[0], c.position[1] - a.position[1], c.position[2] - a.position[2]};
+        const float triangleArea = edgeA.Cross(edgeB).Length() * 0.5F;
+        const float red = (a.color[0] + b.color[0] + c.color[0]) / 3.0F;
+        const float green = (a.color[1] + b.color[1] + c.color[1]) / 3.0F;
+        const float blue = (a.color[2] + b.color[2] + c.color[2]) / 3.0F;
+        const bool foliageTriangle = green > red * 1.12F && green > blue * 1.10F;
+        chunk.lodIndices[0].insert(chunk.lodIndices[0].end(), {ia, ib, ic});
+        if (!foliageTriangle || triangleArea >= 0.035F)
+            chunk.lodIndices[1].insert(chunk.lodIndices[1].end(), {ia, ib, ic});
+        if (!foliageTriangle || triangleArea >= 0.14F)
+            chunk.lodIndices[2].insert(chunk.lodIndices[2].end(), {ia, ib, ic});
+    }
+
+    std::vector<unsigned int> sortedIndices;
+    sortedIndices.reserve(indices.size());
+    m_drawChunks.clear();
+    for (int z = 0; z < chunksZ; ++z) {
+        for (int x = 0; x < chunksX; ++x) {
+            CpuChunk& sourceChunk = cpuChunks[static_cast<std::size_t>(z) * chunksX + x];
+            if (!sourceChunk.occupied || sourceChunk.lodIndices[0].empty()) continue;
+            DrawChunk chunk{};
+            chunk.centerX = minX + (static_cast<float>(x) + 0.5F) * chunkSize;
+            chunk.centerY = (sourceChunk.minY + sourceChunk.maxY) * 0.5F;
+            chunk.centerZ = minZ + (static_cast<float>(z) + 0.5F) * chunkSize;
+            const float halfHeight = (sourceChunk.maxY - sourceChunk.minY) * 0.5F;
+            chunk.radius = std::sqrt(chunkSize * chunkSize * 0.5F + halfHeight * halfHeight) + 2.0F;
+            for (UINT lod = 0; lod < 3; ++lod) {
+                chunk.startIndex[lod] = static_cast<UINT>(sortedIndices.size());
+                chunk.indexCount[lod] = static_cast<UINT>(sourceChunk.lodIndices[lod].size());
+                sortedIndices.insert(sortedIndices.end(), sourceChunk.lodIndices[lod].begin(), sourceChunk.lodIndices[lod].end());
+            }
+            m_drawChunks.push_back(chunk);
+        }
+    }
+    indices = std::move(sortedIndices);
+    if (indices.empty() || indices.size() > UINT_MAX || vertices.size() > UINT_MAX / sizeof(D3D12WorldVertex)) {
+        LogError("Direct3D 12: spatial LOD index generation produced an invalid mesh.");
+        return false;
+    }
+
     std::vector<D3D12WorldVertex> gpuVertices;
     gpuVertices.reserve(vertices.size());
     for (std::size_t i = 0; i < vertices.size(); ++i) {

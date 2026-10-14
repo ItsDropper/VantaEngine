@@ -318,7 +318,7 @@ float3 ACESFilm(float3 x)
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 scene = sceneTexture.Sample(sceneSampler, input.uv).rgb;
-    float2 texel = 1.0 / float2(max((float)1, (float)0 + 1280.0), max((float)1, (float)0 + 720.0));
+    float2 texel;
     // A wide, thresholded 5x5 gather creates a restrained highlight bloom without
     // blurring the whole frame. UV offsets are scaled by the actual scene texture size
     // through Sample's implicit derivatives on the normalized coordinates below.
@@ -330,7 +330,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     {
         [unroll] for (int x = -2; x <= 2; ++x)
         {
-            float2 uv = input.uv + float2(x, y) * texel * 4.0;
+            float2 uv = saturate(input.uv + float2(x, y) * texel * 4.0);
             float3 sampleColor = sceneTexture.Sample(sceneSampler, uv).rgb;
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
             float contribution = smoothstep(0.8, 2.4, luminance);

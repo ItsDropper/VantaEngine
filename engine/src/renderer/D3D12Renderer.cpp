@@ -2,6 +2,9 @@
 
 #include "vanta/core/Log.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
+#include "vanta/renderer/GltfLoader.hpp"
+#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/renderer/WicTextureLoader.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,6 +12,9 @@
 #include <iterator>
 #include <cstring>
 #include <vector>
+#include <filesystem>
+#include <string>
+#include <limits>
 #include <d3dcompiler.h>
 #include <array>
 
@@ -18,6 +24,16 @@ namespace
 {
 using math::Mat4;
 using math::Vec3;
+
+struct D3D12WorldVertex
+{
+    float position[3];
+    float normal[3];
+    float color[4];
+    float uv[2];
+    float material[4];
+};
+static_assert(sizeof(D3D12WorldVertex) == 60);
 
 struct SceneConstants
 {
@@ -90,8 +106,10 @@ cbuffer SceneConstants : register(b0)
 };
 Texture2DArray<float> shadowMap : register(t2);
 SamplerState linearClamp : register(s0);
-struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD; };
-struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; };
+Texture2D modelAlbedoTexture : register(t7);
+SamplerState linearClamp : register(s0);
+struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
+struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
 PSInput VSMain(VSInput input)
 {
     PSInput o;
@@ -99,6 +117,8 @@ PSInput VSMain(VSInput input)
     o.worldPosition = input.position;
     o.normal = normalize(input.normal);
     o.color = input.color;
+    o.uv = input.uv;
+    o.material = input.material;
     return o;
 }
 float DistributionGGX(float3 n, float3 h, float roughness)
@@ -174,6 +194,8 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 l = normalize(float3(-0.42, 0.82, -0.36));
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
+    float3 sampledAlbedo = modelAlbedoTexture.Sample(linearClamp, input.uv).rgb;
+    albedo *= lerp(float3(1.0, 1.0, 1.0), sampledAlbedo, saturate(input.material.z));
     // World-space multi-frequency noise breaks up large flat color regions without
     // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
     // grass and exposed-rock response while leaving trees and buildings mostly intact.
@@ -193,8 +215,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     albedo = lerp(albedo, rockAlbedo, rockMask * 0.88);
     // Fine world-space breakup adds surface detail at multiple viewing distances.
     albedo *= 0.94 + 0.10 * fine + 0.07 * (macroNoise - 0.5);
-    float roughness = saturate(0.72 + 0.16 * fine + terrainColorMask * 0.12);
-    float metallic = 0.025;
+    float roughness = saturate(lerp(0.72 + 0.16 * fine + terrainColorMask * 0.12,
+        input.material.x + 0.05 * fine, saturate(input.material.z)));
+    float metallic = saturate(lerp(0.025, input.material.y, saturate(input.material.z)));
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
@@ -213,7 +236,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
     float3 fogColor = float3(0.31, 0.40, 0.49);
     // Output linear HDR. The post-process pass performs bloom and tone mapping once.
-    return float4(lerp(direct + ambient, fogColor * 1.4, fog), input.color.a);
+    return float4(lerp(direct + ambient, fogColor * 1.4, fog), 1.0);
 }
 )";
 
@@ -527,7 +550,7 @@ bool D3D12Renderer::CreateHdrTarget()
     m_device->CreateRenderTargetView(m_hdrTexture.Get(), nullptr, rtv);
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDescription{};
-    srvDescription.NumDescriptors = 7;
+    srvDescription.NumDescriptors = 8;
     srvDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(m_device->CreateDescriptorHeap(&srvDescription, IID_PPV_ARGS(m_srvHeap.GetAddressOf())))) {
@@ -688,7 +711,7 @@ bool D3D12Renderer::CreatePipeline()
 
     D3D12_DESCRIPTOR_RANGE srvRange{};
     srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    srvRange.NumDescriptors = 7;
+    srvRange.NumDescriptors = 8;
     srvRange.BaseShaderRegister = 0;
     srvRange.RegisterSpace = 0;
     srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -743,7 +766,8 @@ bool D3D12Renderer::CreatePipeline()
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();

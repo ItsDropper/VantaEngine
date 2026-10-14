@@ -4,7 +4,10 @@ param(
 
     [switch]$Test,
     [switch]$Run,
-    [switch]$Clean
+    [switch]$Clean,
+
+    [ValidateSet("D3D12", "D3D11")]
+    [string]$Backend = "D3D12"
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,7 +79,8 @@ if ($Test) {
 
 if ($Run) {
     if (-not (Test-Path $exe)) { throw "Expected executable was not created: $exe" }
-    & $exe
+    Write-Host "Launching VantaEngine with the $Backend renderer..."
+    & $exe "--backend=$($Backend.ToLowerInvariant())"
     if ($LASTEXITCODE -ne 0) { throw "Engine exited with code $LASTEXITCODE." }
 }
 

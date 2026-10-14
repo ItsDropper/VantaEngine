@@ -62,9 +62,9 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE." }
 $exe = Join-Path $buildDir "bin\VantaEngine.exe"
 
 if ($Test) {
-    $test = 'call "{0}" -arch=x64 -host_arch=x64 >nul && "{1}" --test-dir "{2}" --output-on-failure' -f $devCmd, $cmake, $buildDir
+    $testCommand = 'call "{0}" -arch=x64 -host_arch=x64 >nul && "{1}" --test-dir "{2}" --output-on-failure' -f $devCmd, $cmake, $buildDir
     Write-Host "Running tests..."
-    & $env:ComSpec /d /s /c $test
+    & $env:ComSpec /d /s /c $testCommand
     if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
 }
 

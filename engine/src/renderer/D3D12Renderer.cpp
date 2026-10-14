@@ -29,6 +29,14 @@ struct SceneConstants
 };
 static_assert(sizeof(SceneConstants) == 304);
 
+struct TemporalConstants
+{
+    Mat4 inverseViewProjection;
+    Mat4 previousViewProjection;
+    float parameters[4];
+};
+static_assert(sizeof(TemporalConstants) == 144);
+
 constexpr UINT kShadowResolution = 2048;
 constexpr UINT64 kShadowConstantOffset = 512;
 constexpr UINT64 kShadowConstantStride = 256;
@@ -41,6 +49,34 @@ Mat4 OrthographicLH(float width, float height, float nearZ, float farZ)
     result.At(2, 2) = 1.0F / (farZ - nearZ);
     result.At(2, 3) = -nearZ / (farZ - nearZ);
     return result;
+}
+
+bool InvertMatrix(const Mat4& input, Mat4& output)
+{
+    float augmented[4][8]{};
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) augmented[row][column] = input.At(row, column);
+        augmented[row][row + 4] = 1.0F;
+    }
+    for (int column = 0; column < 4; ++column) {
+        int pivot = column;
+        for (int row = column + 1; row < 4; ++row)
+            if (std::abs(augmented[row][column]) > std::abs(augmented[pivot][column])) pivot = row;
+        if (std::abs(augmented[pivot][column]) < 1.0e-8F) return false;
+        if (pivot != column)
+            for (int k = 0; k < 8; ++k) std::swap(augmented[pivot][k], augmented[column][k]);
+        const float divisor = augmented[column][column];
+        for (int k = 0; k < 8; ++k) augmented[column][k] /= divisor;
+        for (int row = 0; row < 4; ++row) {
+            if (row == column) continue;
+            const float factor = augmented[row][column];
+            for (int k = 0; k < 8; ++k) augmented[row][k] -= factor * augmented[column][k];
+        }
+    }
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column)
+            output.At(row, column) = augmented[row][column + 4];
+    return true;
 }
 
 constexpr char kSceneShader[] = R"(
@@ -252,6 +288,10 @@ D3D12Renderer::~D3D12Renderer()
         m_constantBuffer->Unmap(0, nullptr);
         m_mappedConstants = nullptr;
     }
+    if (m_mappedTemporalConstants != nullptr && m_temporalConstantBuffer) {
+        m_temporalConstantBuffer->Unmap(0, nullptr);
+        m_mappedTemporalConstants = nullptr;
+    }
     if (m_fenceEvent != nullptr) {
         CloseHandle(m_fenceEvent);
         m_fenceEvent = nullptr;
@@ -323,7 +363,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     (void)m_factory->MakeWindowAssociation(m_window, DXGI_MWA_NO_ALT_ENTER);
 
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDescription{};
-    rtvHeapDescription.NumDescriptors = kFrameCount + 1;
+    rtvHeapDescription.NumDescriptors = kFrameCount + 5;
     rtvHeapDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     if (FAILED(m_device->CreateDescriptorHeap(&rtvHeapDescription, IID_PPV_ARGS(m_rtvHeap.GetAddressOf())))) {
         LogError("Direct3D 12: RTV descriptor heap creation failed.");
@@ -362,7 +402,8 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     }
 
     if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateShadowResources() || !CreateHdrTarget() ||
-        !CreateSceneGeometry() || !CreatePipeline() || !CreateShadowPipeline() || !CreatePostProcessPipeline()) return false;
+        !CreateTemporalTargets() || !CreateSceneGeometry() || !CreatePipeline() ||
+        !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline()) return false;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     LogInfo("Direct3D 12 scene renderer initialized: HDR PBR shading, three 2048px cascaded shadow maps with 3x3 PCF, ACES tone mapping, highlight bloom, depth-aware contact occlusion, procedural sky and atmospheric fog.");
     LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
@@ -484,7 +525,7 @@ bool D3D12Renderer::CreateHdrTarget()
     m_device->CreateRenderTargetView(m_hdrTexture.Get(), nullptr, rtv);
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDescription{};
-    srvDescription.NumDescriptors = 3;
+    srvDescription.NumDescriptors = 7;
     srvDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(m_device->CreateDescriptorHeap(&srvDescription, IID_PPV_ARGS(m_srvHeap.GetAddressOf())))) {
@@ -515,6 +556,71 @@ bool D3D12Renderer::CreateHdrTarget()
     D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     shadowHandle.ptr += static_cast<SIZE_T>(2) * m_srvDescriptorSize;
     m_device->CreateShaderResourceView(m_shadowTexture.Get(), &shadowSrv, shadowHandle);
+    return true;
+}
+
+bool D3D12Renderer::CreateTemporalTargets()
+{
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heap.CreationNodeMask = 1;
+    heap.VisibleNodeMask = 1;
+    D3D12_RESOURCE_DESC colorDesc{};
+    colorDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    colorDesc.Width = m_width;
+    colorDesc.Height = m_height;
+    colorDesc.DepthOrArraySize = 1;
+    colorDesc.MipLevels = 1;
+    colorDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    colorDesc.SampleDesc.Count = 1;
+    colorDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    colorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    D3D12_CLEAR_VALUE colorClear{};
+    colorClear.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    colorClear.Color[0] = colorClear.Color[1] = colorClear.Color[2] = 0.0F;
+    colorClear.Color[3] = 1.0F;
+    D3D12_RESOURCE_DESC depthDesc = colorDesc;
+    depthDesc.Format = DXGI_FORMAT_R32_FLOAT;
+    D3D12_CLEAR_VALUE depthClear{};
+    depthClear.Format = DXGI_FORMAT_R32_FLOAT;
+    depthClear.Color[0] = 1.0F;
+    for (UINT i = 0; i < 2; ++i) {
+        if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &colorDesc,
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &colorClear,
+                IID_PPV_ARGS(m_historyColorTextures[i].GetAddressOf()))) ||
+            FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depthDesc,
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &depthClear,
+                IID_PPV_ARGS(m_historyDepthTextures[i].GetAddressOf()))) {
+            LogError("Direct3D 12: temporal history texture creation failed.");
+            return false;
+        }
+        m_historyColorRtvs[i] = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+        m_historyColorRtvs[i].ptr += static_cast<SIZE_T>(kFrameCount + 1 + i) * m_rtvDescriptorSize;
+        m_device->CreateRenderTargetView(m_historyColorTextures[i].Get(), nullptr, m_historyColorRtvs[i]);
+        m_historyDepthRtvs[i] = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+        m_historyDepthRtvs[i].ptr += static_cast<SIZE_T>(kFrameCount + 3 + i) * m_rtvDescriptorSize;
+        m_device->CreateRenderTargetView(m_historyDepthTextures[i].Get(), nullptr, m_historyDepthRtvs[i]);
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC colorSrv{};
+        colorSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        colorSrv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        colorSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        colorSrv.Texture2D.MipLevels = 1;
+        D3D12_CPU_DESCRIPTOR_HANDLE colorHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+        colorHandle.ptr += static_cast<SIZE_T>(3 + i) * m_srvDescriptorSize;
+        m_device->CreateShaderResourceView(m_historyColorTextures[i].Get(), &colorSrv, colorHandle);
+        D3D12_SHADER_RESOURCE_VIEW_DESC historyDepthSrv{};
+        historyDepthSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        historyDepthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+        historyDepthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        historyDepthSrv.Texture2D.MipLevels = 1;
+        D3D12_CPU_DESCRIPTOR_HANDLE historyDepthHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+        historyDepthHandle.ptr += static_cast<SIZE_T>(5 + i) * m_srvDescriptorSize;
+        m_device->CreateShaderResourceView(m_historyDepthTextures[i].Get(), &historyDepthSrv, historyDepthHandle);
+    }
+    m_historyWriteIndex = 0;
+    m_historyValid = false;
+    m_previousViewProjection = Mat4::Identity();
     return true;
 }
 
@@ -584,7 +690,7 @@ bool D3D12Renderer::CreatePipeline()
     srvRange.BaseShaderRegister = 0;
     srvRange.RegisterSpace = 0;
     srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    D3D12_ROOT_PARAMETER rootParameters[2]{};
+    D3D12_ROOT_PARAMETER rootParameters[3]{};
     rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[0].Descriptor.ShaderRegister = 0;
     rootParameters[0].Descriptor.RegisterSpace = 0;
@@ -593,6 +699,10 @@ bool D3D12Renderer::CreatePipeline()
     rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
     rootParameters[1].DescriptorTable.pDescriptorRanges = &srvRange;
     rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    rootParameters[2].Descriptor.ShaderRegister = 1;
+    rootParameters[2].Descriptor.RegisterSpace = 0;
+    rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     D3D12_STATIC_SAMPLER_DESC staticSampler{};
     staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -608,7 +718,7 @@ bool D3D12Renderer::CreatePipeline()
     staticSampler.RegisterSpace = 0;
     staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     D3D12_ROOT_SIGNATURE_DESC rootDescription{};
-    rootDescription.NumParameters = 2;
+    rootDescription.NumParameters = 3;
     rootDescription.pParameters = rootParameters;
     rootDescription.NumStaticSamplers = 1;
     rootDescription.pStaticSamplers = &staticSampler;
@@ -730,6 +840,160 @@ float4 VSMain(VSInput input) : SV_POSITION
     pso.SampleDesc.Count = 1;
     if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_shadowPipelineState.GetAddressOf())))) {
         LogError("Direct3D 12: cascaded shadow pipeline creation failed.");
+        return false;
+    }
+    return true;
+}
+
+bool D3D12Renderer::CreateTemporalPipeline()
+{
+    constexpr char shader[] = R"(
+Texture2D<float4> hdrScene : register(t0);
+Texture2D<float> sceneDepth : register(t1);
+Texture2D<float4> historyColor0 : register(t3);
+Texture2D<float4> historyColor1 : register(t4);
+Texture2D<float> historyDepth0 : register(t5);
+Texture2D<float> historyDepth1 : register(t6);
+SamplerState linearClamp : register(s0);
+cbuffer TemporalConstants : register(b1)
+{
+    float4x4 inverseViewProjection;
+    float4x4 previousViewProjection;
+    float4 temporalParams;
+};
+struct VSOut { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
+VSOut VSMain(uint id : SV_VertexID)
+{
+    VSOut o;
+    o.uv = float2((id << 1) & 2, id & 2);
+    o.position = float4(o.uv.x * 2.0 - 1.0, 1.0 - o.uv.y * 2.0, 0.0, 1.0);
+    return o;
+}
+float4 ReadHistoryColor(float2 uv, int index)
+{
+    return index == 0 ? historyColor0.SampleLevel(linearClamp, uv, 0)
+                      : historyColor1.SampleLevel(linearClamp, uv, 0);
+}
+float ReadHistoryDepth(float2 uv, int index)
+{
+    return index == 0 ? historyDepth0.SampleLevel(linearClamp, uv, 0)
+                      : historyDepth1.SampleLevel(linearClamp, uv, 0);
+}
+struct TemporalOutput { float4 color : SV_TARGET0; float depth : SV_TARGET1; };
+TemporalOutput PSMain(VSOut input)
+{
+    TemporalOutput output;
+    float depth = sceneDepth.SampleLevel(linearClamp, input.uv, 0);
+    float3 current = max(hdrScene.SampleLevel(linearClamp, input.uv, 0).rgb, 0.0);
+    output.depth = depth;
+    if (temporalParams.x < 0.5 || depth >= 0.99999)
+    {
+        output.color = float4(current, 1.0);
+        return output;
+    }
+    float2 ndc = float2(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0);
+    float4 world = mul(inverseViewProjection, float4(ndc, depth, 1.0));
+    if (abs(world.w) < 1.0e-6)
+    {
+        output.color = float4(current, 1.0);
+        return output;
+    }
+    world /= world.w;
+    float4 previousClip = mul(previousViewProjection, world);
+    if (previousClip.w <= 1.0e-5)
+    {
+        output.color = float4(current, 1.0);
+        return output;
+    }
+    float2 previousUv = float2(previousClip.x / previousClip.w * 0.5 + 0.5,
+        0.5 - previousClip.y / previousClip.w * 0.5);
+    if (any(previousUv <= 0.001) || any(previousUv >= 0.999))
+    {
+        output.color = float4(current, 1.0);
+        return output;
+    }
+    int readIndex = (int)temporalParams.y;
+    float oldDepth = ReadHistoryDepth(previousUv, readIndex);
+    float expectedDepth = previousClip.z / previousClip.w;
+    if (abs(oldDepth - expectedDepth) > max(0.0015, expectedDepth * 0.012))
+    {
+        output.color = float4(current, 1.0);
+        return output;
+    }
+    float3 neighborhoodMin = current;
+    float3 neighborhoodMax = current;
+    uint width, height;
+    hdrScene.GetDimensions(width, height);
+    float2 texel = 1.0 / float2(max(width, 1u), max(height, 1u));
+    [unroll] for (int y = -1; y <= 1; ++y)
+    {
+        [unroll] for (int x = -1; x <= 1; ++x)
+        {
+            float3 sampleColor = hdrScene.SampleLevel(linearClamp,
+                saturate(input.uv + float2(x, y) * texel), 0).rgb;
+            neighborhoodMin = min(neighborhoodMin, sampleColor);
+            neighborhoodMax = max(neighborhoodMax, sampleColor);
+        }
+    }
+    float3 history = ReadHistoryColor(previousUv, readIndex).rgb;
+    float3 expansion = (neighborhoodMax - neighborhoodMin) * 0.12 + 0.002;
+    history = clamp(history, neighborhoodMin - expansion, neighborhoodMax + expansion);
+    output.color = float4(lerp(current, history, 0.88), 1.0);
+    return output;
+}
+)";
+    Microsoft::WRL::ComPtr<ID3DBlob> vs, ps, errors;
+    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined(_DEBUG)
+    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+    HRESULT hr = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_temporal", nullptr, nullptr,
+        "VSMain", "vs_5_0", flags, 0, vs.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(hr)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        LogError("Direct3D 12: temporal vertex shader compilation failed.");
+        return false;
+    }
+    errors.Reset();
+    hr = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_temporal", nullptr, nullptr,
+        "PSMain", "ps_5_0", flags, 0, ps.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(hr)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        LogError("Direct3D 12: temporal pixel shader compilation failed.");
+        return false;
+    }
+    if (!CreateUploadBuffer(m_device.Get(), 256, m_temporalConstantBuffer) ||
+        FAILED(m_temporalConstantBuffer->Map(0, nullptr, &m_mappedTemporalConstants))) {
+        LogError("Direct3D 12: temporal constant buffer allocation failed.");
+        return false;
+    }
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+    pso.pRootSignature = m_rootSignature.Get();
+    pso.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};
+    pso.PS = {ps->GetBufferPointer(), ps->GetBufferSize()};
+    pso.BlendState.AlphaToCoverageEnable = FALSE;
+    pso.BlendState.IndependentBlendEnable = FALSE;
+    const D3D12_RENDER_TARGET_BLEND_DESC blend = {
+        FALSE, FALSE, D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+        D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD, D3D12_LOGIC_OP_NOOP,
+        D3D12_COLOR_WRITE_ENABLE_ALL
+    };
+    for (auto& target : pso.BlendState.RenderTarget) target = blend;
+    pso.SampleMask = UINT_MAX;
+    pso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    pso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    pso.RasterizerState.DepthClipEnable = TRUE;
+    pso.DepthStencilState.DepthEnable = FALSE;
+    pso.DepthStencilState.StencilEnable = FALSE;
+    pso.InputLayout = {nullptr, 0};
+    pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    pso.NumRenderTargets = 2;
+    pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    pso.RTVFormats[1] = DXGI_FORMAT_R32_FLOAT;
+    pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    pso.SampleDesc.Count = 1;
+    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_temporalPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: temporal resolve pipeline creation failed.");
         return false;
     }
     return true;

@@ -590,7 +590,7 @@ bool D3D11Renderer::Initialize(const HWND window, const int width, const int hei
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
 
-    if (!CreateRenderTarget() || !CreateDepthTarget() || !CreateShadowResources() || !CreatePipeline())
+    if (!CreateRenderTarget() || !CreateDepthTarget() || !CreateShadowResources() || !CreatePipeline() || !CreateTemporalTargets())
     {
         return false;
     }
@@ -629,7 +629,7 @@ bool D3D11Renderer::CreateRenderTarget()
         LogError("Could not create the HDR scene target.");
         return false;
     }
-    return CreateTemporalTargets();
+    return true;
 }
 
 bool D3D11Renderer::CreateTemporalTargets()

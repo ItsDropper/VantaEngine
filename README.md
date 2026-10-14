@@ -26,11 +26,12 @@ The renderer now includes:
 - Timber fence runs, roadside utility poles, thousands of crossed grass blades, scattered leaf litter and twigs, small wildflowers, and layered world-space shader noise, seamless generated grass/stone/wood texture tiles, triplanar projection on natural surfaces, and procedural roughness breakup and derivative-based micro-bump shading to reduce obvious repetition and give surfaces subtle relief.
 - A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
-- Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
+- Wavefront OBJ/MTL import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
+- glTF 2.0/GLB static-mesh import with scene-node transforms, indexed triangle primitives, UVs, imported or generated normals, per-primitive submeshes, multiple PBR materials, base-color/normal/occlusion maps, metallic-roughness factors, and the glTF packed G (roughness) / B (metallic) channel convention. External texture images are supported; embedded data-URI/GLB images currently return a clear import error.
 - MTL diffuse, tangent-space normal, roughness, metallic, and ambient-occlusion map loading through Windows Imaging Component (WIC). Diffuse is decoded as sRGB; numeric data maps remain linear. Missing maps are optional, while referenced maps must decode and upload successfully.
 - UV interpolation, linear wrap sampling, sRGB diffuse sampling, and GPU-generated mip chains for diffuse, normal, roughness, metallic, and ambient-occlusion maps. Numeric maps remain in linear space.
 - Startup diagnostics for the high-performance D3D12 adapter and its DXR tier, when available.
-- A small sample house asset under `assets/models/` so the importer and texture path are exercised on startup.
+- A small sample house asset under `assets/models/` so the OBJ importer and texture path are exercised on startup. If `stone_house.glb` or `stone_house.gltf` is placed in that directory, the engine prefers it over the OBJ sample.
 
 ## Camera controls
 

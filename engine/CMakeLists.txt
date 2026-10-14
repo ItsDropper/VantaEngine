@@ -10,6 +10,7 @@ add_executable(VantaEngine
     src/renderer/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
     src/renderer/ObjLoader.cpp
+    src/renderer/GltfLoader.cpp
     src/renderer/WicTextureLoader.cpp
 )
 

@@ -2,6 +2,7 @@
 
 #include "vanta/math/Math.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -16,6 +17,26 @@ struct ModelVertex
     float v = 0.0F;
 };
 
+struct CpuMaterial
+{
+    std::filesystem::path diffuseTexture;
+    std::filesystem::path normalTexture;
+    std::filesystem::path roughnessTexture;
+    std::filesystem::path metallicTexture;
+    std::filesystem::path ambientOcclusionTexture;
+    math::Vec3 baseColor{1.0F, 1.0F, 1.0F};
+    float roughness = 0.8F;
+    float metallic = 0.0F;
+    bool packedMetallicRoughness = false;
+};
+
+struct CpuSubmesh
+{
+    std::uint32_t firstIndex = 0;
+    std::uint32_t indexCount = 0;
+    std::uint32_t materialIndex = 0;
+};
+
 struct CpuModel
 {
     std::vector<ModelVertex> vertices;
@@ -28,6 +49,8 @@ struct CpuModel
     math::Vec3 baseColor{1.0F, 1.0F, 1.0F};
     float roughness = 0.8F;
     float metallic = 0.0F;
+    std::vector<CpuMaterial> materials;
+    std::vector<CpuSubmesh> submeshes;
 };
 
 [[nodiscard]] bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::string& error);

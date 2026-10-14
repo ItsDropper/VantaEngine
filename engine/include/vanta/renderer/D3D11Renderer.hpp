@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace vanta
 {
@@ -23,6 +24,25 @@ public:
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ, float cameraYaw, float cameraPitch);
 
 private:
+    struct GpuModelMaterial
+    {
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> diffuse;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> normal;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> roughness;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> metallic;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> ambientOcclusion;
+        float baseColor[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+        float roughnessFactor = 0.8F;
+        float metallicFactor = 0.0F;
+        UINT textureFlags[4] = {};
+    };
+    struct GpuSubmesh
+    {
+        UINT firstIndex = 0;
+        UINT indexCount = 0;
+        UINT materialIndex = 0;
+    };
+
     [[nodiscard]] bool CreateRenderTarget();
     [[nodiscard]] bool CreateDepthTarget();
     [[nodiscard]] bool CreateShadowResources();
@@ -61,22 +81,16 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_terrainIndexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestVertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestIndexBuffer;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_diffuseTexture;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_normalTexture;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_roughnessTexture;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_metallicTexture;
-    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_ambientOcclusionTexture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_grassAlbedoTexture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_rockAlbedoTexture;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_woodAlbedoTexture;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
     UINT m_modelIndexCount = 0;
+    std::vector<GpuModelMaterial> m_modelMaterials;
+    std::vector<GpuSubmesh> m_modelSubmeshes;
     UINT m_terrainIndexCount = 0;
     UINT m_forestIndexCount = 0;
-    float m_modelRoughness = 0.72F;
-    float m_modelMetallic = 0.0F;
-    float m_modelBaseColor[3] = {1.0F, 1.0F, 1.0F};
 
     UINT m_width = 0;
     UINT m_height = 0;

@@ -614,12 +614,17 @@ bool D3D11Renderer::CreatePipeline()
     errors.Reset();
     const HRESULT pixelCompile = D3DCompile(
         kShaderSource, sizeof(kShaderSource) - 1, "vanta_pixel", nullptr, nullptr,
-        "PSMain", "ps_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0,
+        "PSMain", "ps_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0,
         pixelBytecode.GetAddressOf(), errors.GetAddressOf());
     if (FAILED(pixelCompile))
     {
-        LogError("Pixel shader compilation failed.");
-        if (errors) { OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer())); }
+        std::string message = "Pixel shader compilation failed";
+        if (errors && errors->GetBufferPointer()) {
+            message += ": ";
+            message.append(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize());
+            OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        }
+        LogError(message.c_str());
         return false;
     }
 

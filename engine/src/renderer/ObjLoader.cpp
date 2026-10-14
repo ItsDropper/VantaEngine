@@ -174,8 +174,8 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
                     // Convert legacy Phong shininess into a roughness approximation.
                     model.roughness = std::sqrt(2.0F / (std::max(shininess, 0.0F) + 2.0F));
                 }
-            } else if (tag == "map_Kd" || tag == "map_Bump" || tag == "bump" ||
-                       tag == "map_Pr" || tag == "map_Pm") {
+            } else if (tag == "map_Kd" || tag == "map_Bump" || tag == "bump" || tag == "norm" ||
+                       tag == "map_Pr" || tag == "map_Pm" || tag == "map_AO" || tag == "map_ao" || tag == "map_Ka") {
                 // MTL map options can precede the filename. The final token is the most
                 // useful portable interpretation for common exports (including Blender).
                 std::string token;
@@ -184,9 +184,10 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
                 if (filename.empty()) continue;
                 const auto texturePath = materialLibrary.parent_path() / filename;
                 if (tag == "map_Kd") model.diffuseTexture = texturePath;
-                else if (tag == "map_Bump" || tag == "bump") model.normalTexture = texturePath;
+                else if (tag == "map_Bump" || tag == "bump" || tag == "norm") model.normalTexture = texturePath;
                 else if (tag == "map_Pr") model.roughnessTexture = texturePath;
                 else if (tag == "map_Pm") model.metallicTexture = texturePath;
+                else if (tag == "map_AO" || tag == "map_ao" || tag == "map_Ka") model.ambientOcclusionTexture = texturePath;
             }
         }
         model.roughness = std::clamp(model.roughness, 0.04F, 1.0F);

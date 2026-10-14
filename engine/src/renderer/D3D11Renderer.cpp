@@ -454,6 +454,11 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
     m_modelIndexCount = static_cast<UINT>(model.indices.size());
+    m_modelRoughness = model.roughness;
+    m_modelMetallic = model.metallic;
+    m_modelBaseColor[0] = model.baseColor.x;
+    m_modelBaseColor[1] = model.baseColor.y;
+    m_modelBaseColor[2] = model.baseColor.z;
 
     // Procedural rolling terrain: deterministic layered waves, vertex normals, and altitude/slope-based biome colors.
     constexpr int terrainCells = 128;
@@ -775,8 +780,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
     const SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F},
         {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
-        {model.roughness, model.metallic, 0.0F, 0.0F},
-        {model.baseColor.x, model.baseColor.y, model.baseColor.z, 1.0F}};
+        {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
+        {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
     D3D11_MAPPED_SUBRESOURCE houseMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
         *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;

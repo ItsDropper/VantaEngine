@@ -17,5 +17,5 @@ struct NvidiaRenderingCapabilities
 
 // Queries the high-performance adapter through DXGI/D3D12. This reports hardware/runtime
 // capability only; it does not claim that a DXR renderer or DLSS integration is active.
-[[nodiscard]] NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities() noexcept;
+[[nodiscard]] NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities();
 } // namespace vanta::renderer

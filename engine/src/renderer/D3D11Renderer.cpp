@@ -330,7 +330,7 @@ bool D3D11Renderer::Resize(const int width, const int height)
     return CreateRenderTarget() && CreateDepthTarget();
 }
 
-void D3D11Renderer::Render(const float elapsedSeconds)
+void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY, const float cameraZ, const float cameraYaw, const float cameraPitch)
 {
     constexpr float clearColor[] = {0.018F, 0.025F, 0.055F, 1.0F};
     ID3D11RenderTargetView* target = m_renderTarget.Get();
@@ -350,7 +350,10 @@ void D3D11Renderer::Render(const float elapsedSeconds)
     const auto rotation = Quaternion::FromAxisAngle({0.45F, 1.0F, 0.2F}, elapsedSeconds * 0.75F);
     const Mat4 world = Mat4::Translation({0.0F, 0.0F, 0.0F}) *
         Mat4::Rotation(rotation.value_or(Quaternion::Identity()));
-    const Mat4 view = Mat4::LookAtLH({3.4F, 2.6F, -5.5F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F})
+    const Vec3 cameraPosition{cameraX, cameraY, cameraZ};
+    const float cosPitch = std::cos(cameraPitch);
+    const Vec3 cameraForward{std::sin(cameraYaw) * cosPitch, std::sin(cameraPitch), std::cos(cameraYaw) * cosPitch};
+    const Mat4 view = Mat4::LookAtLH(cameraPosition, cameraPosition + cameraForward, {0.0F, 1.0F, 0.0F})
         .value_or(Mat4::Identity());
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 100.0F);

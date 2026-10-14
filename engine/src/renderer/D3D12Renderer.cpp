@@ -1004,7 +1004,21 @@ bool D3D12Renderer::CreatePostProcessPipeline()
     constexpr char shader[] = R"(
 Texture2D hdrScene : register(t0);
 Texture2D sceneDepth : register(t1);
+Texture2D<float4> historyColor0 : register(t3);
+Texture2D<float4> historyColor1 : register(t4);
 SamplerState linearClamp : register(s0);
+cbuffer TemporalConstants : register(b1)
+{
+    float4x4 inverseViewProjection;
+    float4x4 previousViewProjection;
+    float4 temporalParams;
+};
+float3 ResolvedColor(float2 uv)
+{
+    return temporalParams.z < 0.5
+        ? historyColor0.SampleLevel(linearClamp, uv, 0).rgb
+        : historyColor1.SampleLevel(linearClamp, uv, 0).rgb;
+}
 struct VSOut { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 VSOut VSMain(uint id : SV_VertexID)
 {
@@ -1035,7 +1049,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     uint width, height;
     hdrScene.GetDimensions(width, height);
     float2 texel = 1.0 / float2(max(width, 1u), max(height, 1u));
-    float3 color = max(hdrScene.SampleLevel(linearClamp, input.uv, 0).rgb, 0.0);
+    float3 color = max(ResolvedColor(input.uv), 0.0);
     // Small cross-kernel contact AO approximation from neighboring depth discontinuities.
     float ao = 1.0;
     const float2 offsets[8] = {
@@ -1055,8 +1069,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     {
         [unroll] for (int x = -2; x <= 2; ++x)
         {
-            float3 sampleColor = hdrScene.SampleLevel(linearClamp,
-                saturate(input.uv + float2(x, y) * texel * 3.0), 0).rgb;
+            float3 sampleColor = ResolvedColor(
+                saturate(input.uv + float2(x, y) * texel * 3.0));
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
             bloom += sampleColor * smoothstep(1.0, 2.8, luminance);
         }
@@ -1148,6 +1162,8 @@ bool D3D12Renderer::Resize(int width, int height)
     for (auto& target : m_renderTargets) target.Reset();
     m_depthTexture.Reset();
     m_hdrTexture.Reset();
+    for (auto& history : m_historyColorTextures) history.Reset();
+    for (auto& history : m_historyDepthTextures) history.Reset();
     const HRESULT resizeResult = m_swapChain->ResizeBuffers(kFrameCount, static_cast<UINT>(width),
             static_cast<UINT>(height), DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     if (FAILED(resizeResult)) {
@@ -1159,7 +1175,10 @@ bool D3D12Renderer::Resize(int width, int height)
     }
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
-    if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateHdrTarget()) return false;
+    if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateHdrTarget() || !CreateTemporalTargets()) return false;
+    m_historyValid = false;
+    m_historyWriteIndex = 0;
+    m_previousViewProjection = Mat4::Identity();
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     return true;
 }
@@ -1209,6 +1228,20 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     constants.lighting[1] = 0.82F;
     constants.lighting[2] = -0.36F;
     constants.lighting[3] = elapsedSeconds;
+    const float cameraDeltaX = cameraX - m_previousCameraX;
+    const float cameraDeltaY = cameraY - m_previousCameraY;
+    const float cameraDeltaZ = cameraZ - m_previousCameraZ;
+    const bool cameraCut = (cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ > 64.0F) ||
+        std::abs(cameraYaw - m_previousCameraYaw) > 0.7F || std::abs(cameraPitch - m_previousCameraPitch) > 0.7F;
+    if (cameraCut) m_historyValid = false;
+    TemporalConstants temporalConstants{};
+    if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) return;
+    temporalConstants.previousViewProjection = m_previousViewProjection;
+    temporalConstants.parameters[0] = m_historyValid ? 1.0F : 0.0F;
+    temporalConstants.parameters[1] = static_cast<float>(1U - m_historyWriteIndex);
+    temporalConstants.parameters[2] = static_cast<float>(m_historyWriteIndex);
+    temporalConstants.parameters[3] = 0.88F;
+    std::memcpy(m_mappedTemporalConstants, &temporalConstants, sizeof(temporalConstants));
     std::memcpy(m_mappedConstants, &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {
         std::memcpy(static_cast<unsigned char*>(m_mappedConstants) + kShadowConstantOffset + cascade * kShadowConstantStride,
@@ -1300,6 +1333,41 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     hdrToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     hdrToSample.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &hdrToSample);
+
+    D3D12_RESOURCE_BARRIER historyColorToTarget{};
+    historyColorToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    historyColorToTarget.Transition.pResource = m_historyColorTextures[m_historyWriteIndex].Get();
+    historyColorToTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    historyColorToTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    historyColorToTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    D3D12_RESOURCE_BARRIER historyDepthToTarget = historyColorToTarget;
+    historyDepthToTarget.Transition.pResource = m_historyDepthTextures[m_historyWriteIndex].Get();
+    m_commandList->ResourceBarrier(1, &historyColorToTarget);
+    m_commandList->ResourceBarrier(1, &historyDepthToTarget);
+    D3D12_CPU_DESCRIPTOR_HANDLE temporalRtvs[] = {
+        m_historyColorRtvs[m_historyWriteIndex], m_historyDepthRtvs[m_historyWriteIndex]
+    };
+    m_commandList->OMSetRenderTargets(2, temporalRtvs, FALSE, nullptr);
+    m_commandList->SetPipelineState(m_temporalPipelineState.Get());
+    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffer->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+    D3D12_VIEWPORT temporalViewport{0.0F, 0.0F, static_cast<float>(m_width), static_cast<float>(m_height), 0.0F, 1.0F};
+    D3D12_RECT temporalScissor{0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height)};
+    m_commandList->RSSetViewports(1, &temporalViewport);
+    m_commandList->RSSetScissorRects(1, &temporalScissor);
+    m_commandList->IASetVertexBuffers(0, 0, nullptr);
+    m_commandList->IASetIndexBuffer(nullptr);
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->DrawInstanced(3, 1, 0, 0);
+    D3D12_RESOURCE_BARRIER historyColorToSample = historyColorToTarget;
+    historyColorToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    historyColorToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    historyColorToSample.Transition.pResource = m_historyColorTextures[m_historyWriteIndex].Get();
+    D3D12_RESOURCE_BARRIER historyDepthToSample = historyColorToSample;
+    historyDepthToSample.Transition.pResource = m_historyDepthTextures[m_historyWriteIndex].Get();
+    m_commandList->ResourceBarrier(1, &historyColorToSample);
+    m_commandList->ResourceBarrier(1, &historyDepthToSample);
+
     D3D12_RESOURCE_BARRIER backToTarget{};
     backToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     backToTarget.Transition.pResource = m_renderTargets[m_frameIndex].Get();
@@ -1312,6 +1380,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     ID3D12DescriptorHeap* heaps[] = {m_srvHeap.Get()};
     m_commandList->SetDescriptorHeaps(1, heaps);
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+    m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffer->GetGPUVirtualAddress());
     m_commandList->IASetVertexBuffers(0, 0, nullptr);
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1350,6 +1419,14 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_failed = true;
         return;
     }
+    m_historyValid = true;
+    m_historyWriteIndex = 1U - m_historyWriteIndex;
+    m_previousViewProjection = constants.viewProjection;
+    m_previousCameraX = cameraX;
+    m_previousCameraY = cameraY;
+    m_previousCameraZ = cameraZ;
+    m_previousCameraYaw = cameraYaw;
+    m_previousCameraPitch = cameraPitch;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 }
 } // namespace vanta

@@ -24,3 +24,10 @@ add_executable(VantaEngineMathTests
 )
 vanta_configure_test(VantaEngineMathTests)
 add_test(NAME VantaEngine.MathTests COMMAND VantaEngineMathTests)
+
+add_executable(VantaEngineModelImportTests
+    model_import_tests.cpp
+    ../engine/src/renderer/ObjLoader.cpp
+)
+vanta_configure_test(VantaEngineModelImportTests)
+add_test(NAME VantaEngine.ModelImportTests COMMAND VantaEngineModelImportTests)

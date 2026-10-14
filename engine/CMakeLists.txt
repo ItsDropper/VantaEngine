@@ -1,5 +1,12 @@
+if(NOT WIN32)
+    message(FATAL_ERROR "VantaEngine currently targets Windows. Cross-platform backends are planned.")
+endif()
+
 add_executable(VantaEngine
     src/main.cpp
+    src/core/Engine.cpp
+    src/platform/Window.cpp
+    src/renderer/D3D11Renderer.cpp
 )
 
 target_compile_features(VantaEngine PRIVATE cxx_std_23)
@@ -8,18 +15,34 @@ target_include_directories(VantaEngine
     PRIVATE include
 )
 
+target_compile_definitions(VantaEngine PRIVATE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    UNICODE
+    _UNICODE
+)
+
+target_link_libraries(VantaEngine PRIVATE
+    d3d11
+    dxgi
+    d3dcompiler
+    user32
+)
+
 if(MSVC)
     target_compile_options(VantaEngine PRIVATE
         /W4
         /permissive-
         /Zc:__cplusplus
         /utf-8
+        $<$<BOOL:${VANTA_ENABLE_WARNINGS_AS_ERRORS}>:/WX>
     )
 else()
     target_compile_options(VantaEngine PRIVATE
         -Wall
         -Wextra
         -Wpedantic
+        $<$<BOOL:${VANTA_ENABLE_WARNINGS_AS_ERRORS}>:-Werror>
     )
 endif()
 

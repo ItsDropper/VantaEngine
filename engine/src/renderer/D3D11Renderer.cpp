@@ -3,6 +3,7 @@
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
 #include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/renderer/GltfLoader.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
 #include "vanta/renderer/WicTextureLoader.hpp"
 #include <algorithm>
@@ -232,11 +233,15 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 v = normalize(cameraPosition - input.worldPosition);
     float3 l = normalize(-sunDirection);
     float3 h = normalize(v + l);
+    float4 roughnessSample = roughnessTexture.Sample(diffuseSampler, input.uv);
+    float4 metallicSample = metallicTexture.Sample(diffuseSampler, input.uv);
+    float roughnessMapValue = textureFlags.y == 2 ? roughnessSample.g : roughnessSample.r;
+    float metallicMapValue = textureFlags.z == 2 ? metallicSample.b : metallicSample.r;
     float roughness = textureFlags.y != 0
-        ? clamp(roughnessTexture.Sample(diffuseSampler, input.uv).r, 0.04, 1.0)
+        ? clamp(roughnessMapValue, 0.04, 1.0)
         : clamp(materialProperties.x, 0.04, 1.0);
     float metallic = textureFlags.z != 0
-        ? saturate(metallicTexture.Sample(diffuseSampler, input.uv).r)
+        ? saturate(metallicMapValue)
         : saturate(materialProperties.y);
     float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
@@ -729,13 +734,46 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
 
-    const std::filesystem::path modelPath = std::filesystem::path{VANTA_ASSET_DIR} / "models" / "stone_house.obj";
+    const std::filesystem::path modelDirectory = std::filesystem::path{VANTA_ASSET_DIR} / "models";
+    const std::filesystem::path glbPath = modelDirectory / "stone_house.glb";
+    const std::filesystem::path gltfPath = modelDirectory / "stone_house.gltf";
+    const std::filesystem::path objPath = modelDirectory / "stone_house.obj";
+    const std::filesystem::path modelPath = std::filesystem::exists(glbPath) ? glbPath
+        : (std::filesystem::exists(gltfPath) ? gltfPath : objPath);
     renderer::CpuModel model;
     std::string importError;
-    if (!renderer::LoadWavefrontObj(modelPath, model, importError)) {
+    const std::string extension = modelPath.extension().string();
+    const bool loadedModel = (extension == ".glb" || extension == ".gltf")
+        ? renderer::LoadGltf(modelPath, model, importError)
+        : renderer::LoadWavefrontObj(modelPath, model, importError);
+    if (!loadedModel) {
         LogError(importError.c_str());
         return false;
     }
+    // Keep the OBJ/MTL loader compatible while giving both import paths the same
+    // per-material/per-submesh representation consumed by the GPU renderer.
+    if (model.materials.empty()) {
+        renderer::CpuMaterial material;
+        material.diffuseTexture = model.diffuseTexture;
+        material.normalTexture = model.normalTexture;
+        material.roughnessTexture = model.roughnessTexture;
+        material.metallicTexture = model.metallicTexture;
+        material.ambientOcclusionTexture = model.ambientOcclusionTexture;
+        material.baseColor = model.baseColor;
+        material.roughness = model.roughness;
+        material.metallic = model.metallic;
+        model.materials.push_back(std::move(material));
+    }
+    if (model.submeshes.empty())
+        model.submeshes.push_back({0U, static_cast<std::uint32_t>(model.indices.size()), 0U});
+    if (model.materials.empty() || std::any_of(model.submeshes.begin(), model.submeshes.end(),
+            [&](const renderer::CpuSubmesh& submesh) { return submesh.materialIndex >= model.materials.size(); })) {
+        LogError("Imported model has an invalid material/submesh reference.");
+        return false;
+    }
+    m_modelSubmeshes.clear();
+    for (const renderer::CpuSubmesh& submesh : model.submeshes)
+        m_modelSubmeshes.push_back({submesh.firstIndex, submesh.indexCount, submesh.materialIndex});
     std::vector<Vertex> modelVertices;
     modelVertices.reserve(model.vertices.size());
     for (const renderer::ModelVertex& source : model.vertices) {
@@ -772,11 +810,6 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
     m_modelIndexCount = static_cast<UINT>(model.indices.size());
-    m_modelRoughness = model.roughness;
-    m_modelMetallic = model.metallic;
-    m_modelBaseColor[0] = model.baseColor.x;
-    m_modelBaseColor[1] = model.baseColor.y;
-    m_modelBaseColor[2] = model.baseColor.z;
 
     // Procedural rolling terrain: deterministic layered waves, vertex normals, and altitude/slope-based biome colors.
     constexpr int terrainCells = 128;
@@ -909,15 +942,6 @@ bool D3D11Renderer::CreatePipeline()
         return true;
     };
 
-    renderer::CpuTexture image;
-    if (model.diffuseTexture.empty() || !renderer::LoadWicTexture(model.diffuseTexture, image)) {
-        LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
-        return false;
-    }
-    if (!uploadMipmappedTexture(image, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_diffuseTexture, "diffuse")) {
-        return false;
-    }
-
     const auto uploadLinearMaterialMap = [&](const std::filesystem::path& path,
                                                 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
                                                 const char* label) -> bool {
@@ -927,15 +951,42 @@ bool D3D11Renderer::CreatePipeline()
             LogError((std::string("Could not load material ") + label + " map: " + path.string()).c_str());
             return false;
         }
-        // Normal, roughness, metallic and AO maps contain numeric data, so they must
-        // remain linear rather than using the sRGB transfer function.
+        // Numeric PBR maps stay linear; base color is decoded from sRGB.
         return uploadMipmappedTexture(map, DXGI_FORMAT_R8G8B8A8_UNORM, destination, label);
     };
-    if (!uploadLinearMaterialMap(model.normalTexture, m_normalTexture, "normal") ||
-        !uploadLinearMaterialMap(model.roughnessTexture, m_roughnessTexture, "roughness") ||
-        !uploadLinearMaterialMap(model.metallicTexture, m_metallicTexture, "metallic") ||
-        !uploadLinearMaterialMap(model.ambientOcclusionTexture, m_ambientOcclusionTexture, "ambient-occlusion")) {
-        return false;
+
+    m_modelMaterials.clear();
+    m_modelMaterials.reserve(model.materials.size());
+    for (std::size_t materialIndex = 0; materialIndex < model.materials.size(); ++materialIndex) {
+        const renderer::CpuMaterial& source = model.materials[materialIndex];
+        GpuModelMaterial material;
+        material.baseColor[0] = source.baseColor.x;
+        material.baseColor[1] = source.baseColor.y;
+        material.baseColor[2] = source.baseColor.z;
+        material.baseColor[3] = 1.0F;
+        material.roughnessFactor = std::clamp(source.roughness, 0.04F, 1.0F);
+        material.metallicFactor = std::clamp(source.metallic, 0.0F, 1.0F);
+
+        if (!source.diffuseTexture.empty()) {
+            renderer::CpuTexture diffuse;
+            if (!renderer::LoadWicTexture(source.diffuseTexture, diffuse) ||
+                !uploadMipmappedTexture(diffuse, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                    material.diffuse, "base-color")) {
+                LogError((std::string("Could not load base-color texture: ") + source.diffuseTexture.string()).c_str());
+                return false;
+            }
+        }
+        if (!uploadLinearMaterialMap(source.normalTexture, material.normal, "normal") ||
+            !uploadLinearMaterialMap(source.roughnessTexture, material.roughness, "roughness/metallic-roughness") ||
+            !uploadLinearMaterialMap(source.metallicTexture, material.metallic, "metallic") ||
+            !uploadLinearMaterialMap(source.ambientOcclusionTexture, material.ambientOcclusion, "ambient-occlusion")) {
+            return false;
+        }
+        material.textureFlags[0] = material.normal ? 1U : 0U;
+        material.textureFlags[1] = material.roughness ? (source.packedMetallicRoughness ? 2U : 1U) : 0U;
+        material.textureFlags[2] = material.metallic ? (source.packedMetallicRoughness ? 2U : 1U) : 0U;
+        material.textureFlags[3] = material.ambientOcclusion ? 1U : 0U;
+        m_modelMaterials.push_back(std::move(material));
     }
 
     // Build small, seamless procedural albedo tiles at startup. These are actual GPU
@@ -1265,43 +1316,48 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         LogError("Could not update constants for terrain and forest rendering.");
     }
 
-    // Render the imported house with its MTL diffuse texture.
+    // Render every imported submesh with its own glTF/MTL PBR material.
     const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
-    SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F},
-        {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
-        {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
-        {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
-    for (std::size_t cascade = 0; cascade < 3; ++cascade) houseConstants.lightViewProjection[cascade] = lightViewProjections[cascade];
-    houseConstants.cascadeSplits[0] = 25.0F; houseConstants.cascadeSplits[1] = 60.0F; houseConstants.cascadeSplits[2] = 130.0F;
-    houseConstants.textureFlags[0] = m_normalTexture.Get() != nullptr ? 1U : 0U;
-    houseConstants.textureFlags[1] = m_roughnessTexture.Get() != nullptr ? 1U : 0U;
-    houseConstants.textureFlags[2] = m_metallicTexture.Get() != nullptr ? 1U : 0U;
-    houseConstants.textureFlags[3] = m_ambientOcclusionTexture.Get() != nullptr ? 1U : 0U;
-    D3D11_MAPPED_SUBRESOURCE houseMapped{};
-    if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
-        *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;
+    constexpr UINT modelStride = sizeof(Vertex);
+    constexpr UINT modelOffset = 0;
+    ID3D11Buffer* modelVertexBuffer = m_modelVertexBuffer.Get();
+    m_context->IASetVertexBuffers(0, 1, &modelVertexBuffer, &modelStride, &modelOffset);
+    m_context->IASetIndexBuffer(m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+    ID3D11SamplerState* materialSampler = m_textureSampler.Get();
+    for (const GpuSubmesh& submesh : m_modelSubmeshes) {
+        if (submesh.materialIndex >= m_modelMaterials.size()) continue;
+        const GpuModelMaterial& material = m_modelMaterials[submesh.materialIndex];
+        SceneConstants houseConstants{projection * view * houseWorld, houseWorld,
+            material.diffuse ? 1U : 0U, {0.0F, 0.0F, 0.0F},
+            {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
+            {material.roughnessFactor, material.metallicFactor, 0.0F, 0.0F},
+            {material.baseColor[0], material.baseColor[1], material.baseColor[2], material.baseColor[3]}};
+        for (std::size_t cascade = 0; cascade < 3; ++cascade)
+            houseConstants.lightViewProjection[cascade] = lightViewProjections[cascade];
+        houseConstants.cascadeSplits[0] = 25.0F;
+        houseConstants.cascadeSplits[1] = 60.0F;
+        houseConstants.cascadeSplits[2] = 130.0F;
+        std::copy(std::begin(material.textureFlags), std::end(material.textureFlags),
+            std::begin(houseConstants.textureFlags));
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            LogError("Could not update constants for an imported submesh.");
+            continue;
+        }
+        *static_cast<SceneConstants*>(mapped.pData) = houseConstants;
         m_context->Unmap(m_sceneConstants.Get(), 0);
-        constexpr UINT modelStride = sizeof(Vertex);
-        constexpr UINT modelOffset = 0;
-        ID3D11Buffer* modelVertexBuffer = m_modelVertexBuffer.Get();
-        m_context->IASetVertexBuffers(0, 1, &modelVertexBuffer, &modelStride, &modelOffset);
-        m_context->IASetIndexBuffer(m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        ID3D11ShaderResourceView* textureView = m_diffuseTexture.Get();
-        ID3D11SamplerState* sampler = m_textureSampler.Get();
         ID3D11ShaderResourceView* materialViews[] = {
-            textureView, m_shadowShaderResource.Get(), m_normalTexture.Get(), m_roughnessTexture.Get(),
-            m_metallicTexture.Get(), m_ambientOcclusionTexture.Get()};
+            material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),
+            material.roughness.Get(), material.metallic.Get(), material.ambientOcclusion.Get()};
         m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(materialViews)), materialViews);
-        m_context->PSSetSamplers(0, 1, &sampler);
-        m_context->DrawIndexed(m_modelIndexCount, 0, 0);
-        ID3D11ShaderResourceView* noTextures[6]{};
-        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noTextures)), noTextures);
-        ID3D11Buffer* cubeVertexBuffer = m_vertexBuffer.Get();
-        m_context->IASetVertexBuffers(0, 1, &cubeVertexBuffer, &stride, &offset);
-        m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
-    } else {
-        LogError("Could not update constants for the imported model.");
+        m_context->PSSetSamplers(0, 1, &materialSampler);
+        m_context->DrawIndexed(submesh.indexCount, submesh.firstIndex, 0);
     }
+    ID3D11ShaderResourceView* noModelTextures[6]{};
+    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noModelTextures)), noModelTextures);
+    ID3D11Buffer* cubeVertexBuffer = m_vertexBuffer.Get();
+    m_context->IASetVertexBuffers(0, 1, &cubeVertexBuffer, &stride, &offset);
+    m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
 
     const auto propA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F + elapsedSeconds * 0.35F);
     const auto propB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);

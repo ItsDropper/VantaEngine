@@ -71,6 +71,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_hdrTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowTexture;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_modelMaterialTextures;
+    std::array<UINT, 5> m_modelMaterialMipLevels{};
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;

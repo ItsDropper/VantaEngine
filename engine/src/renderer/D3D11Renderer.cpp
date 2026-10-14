@@ -2,6 +2,12 @@
 
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
+#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/renderer/WicTextureLoader.hpp"
+#include <filesystem>
+#include <limits>
+#include <string>
+#include <vector>
 
 #include <d3dcompiler.h>
 #include <iterator>
@@ -19,12 +25,15 @@ struct Vertex
     float position[3];
     float normal[3];
     float color[4];
+    float uv[2];
 };
 
 struct SceneConstants
 {
     Mat4 worldViewProjection;
     Mat4 world;
+    UINT useTexture;
+    float padding[3];
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -71,13 +80,18 @@ cbuffer SceneConstants : register(b0)
 {
     float4x4 worldViewProjection;
     float4x4 world;
+    uint useTexture;
+    float3 padding;
 };
+Texture2D diffuseTexture : register(t0);
+SamplerState diffuseSampler : register(s0);
 
 struct VertexInput
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
     float4 color : COLOR;
+    float2 uv : TEXCOORD;
 };
 
 struct PixelInput
@@ -93,6 +107,7 @@ PixelInput VSMain(VertexInput input)
     output.position = mul(worldViewProjection, float4(input.position, 1.0));
     output.normal = normalize(mul((float3x3)world, input.normal));
     output.color = input.color;
+    output.uv = input.uv;
     return output;
 }
 
@@ -102,8 +117,9 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 lightDirection = normalize(float3(-0.45, 0.8, -0.55));
     float diffuse = saturate(dot(normal, lightDirection));
     float lighting = 0.22 + diffuse * 0.78;
-    float3 color = input.color.rgb * lighting;
-    return float4(color, input.color.a);
+    float4 albedo = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
+    float3 color = albedo.rgb * lighting;
+    return float4(color, albedo.a);
 }
 )";
 
@@ -171,7 +187,7 @@ bool D3D11Renderer::Initialize(const HWND window, const int width, const int hei
         return false;
     }
 
-    LogInfo("Direct3D 11 renderer initialized (3D pipeline, depth buffer, dynamic scene).");
+    LogInfo("Direct3D 11 renderer initialized (textured model pipeline, depth buffer, dynamic scene).");
     return true;
 }
 
@@ -238,6 +254,7 @@ bool D3D11Renderer::CreatePipeline()
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     if (FAILED(m_device->CreateInputLayout(inputElements, static_cast<UINT>(std::size(inputElements)),
             vertexBytecode->GetBufferPointer(), vertexBytecode->GetBufferSize(), m_inputLayout.GetAddressOf())))
@@ -369,7 +386,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     const auto drawCube = [&](const Mat4& worldTransform)
     {
-        const SceneConstants constants{projection * view * worldTransform, worldTransform};
+        const SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F}};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {

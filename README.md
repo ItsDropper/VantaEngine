@@ -21,7 +21,7 @@ The renderer now includes:
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
 - A deterministic, dense conifer forest with varied trunk and crown sizes, layered boughs, shrubs, angular boulders, fallen timber, and merged geometry to limit draw calls.
 - A winding gravel access road with shoulders, broken center paint, and a stream with irregular rock banks.
-- Multiple timber cabins with pitched roofs, fascia, siding seams, stone footings, doors, window frames, porch boards, steps, and chimneys.
+- Multiple timber cabins with individual overlapping roof shingles, horizontal side-wall weatherboards, vertical front siding, pane mullions, door planks and latch, porch boards, stone foundation courses, chimney mortar seams, fascia, and steps.
 - Timber fence runs, roadside utility poles, thousands of crossed grass blades, and stable world-space surface grain for more visual breakup.
 - A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.

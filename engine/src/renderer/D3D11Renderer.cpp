@@ -1029,10 +1029,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
         {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
     houseConstants.lightViewProjection = lightViewProjection;
-    houseConstants.textureFlags[0] = m_normalTexture ? 1U : 0U;
-    houseConstants.textureFlags[1] = m_roughnessTexture ? 1U : 0U;
-    houseConstants.textureFlags[2] = m_metallicTexture ? 1U : 0U;
-    houseConstants.textureFlags[3] = m_ambientOcclusionTexture ? 1U : 0U;
+    houseConstants.textureFlags[0] = m_normalTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[1] = m_roughnessTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[2] = m_metallicTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[3] = m_ambientOcclusionTexture.Get() != nullptr ? 1U : 0U;
     D3D11_MAPPED_SUBRESOURCE houseMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
         *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;

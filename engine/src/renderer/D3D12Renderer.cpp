@@ -823,11 +823,9 @@ bool D3D12Renderer::CreateSceneGeometry()
     // Vertex data stays shared, so LOD changes do not duplicate GPU vertex storage.
     constexpr float chunkSize = 24.0F;
     float minX = vertices.front().position[0], maxX = minX;
-    float minY = vertices.front().position[1], maxY = minY;
     float minZ = vertices.front().position[2], maxZ = minZ;
     for (const auto& vertex : vertices) {
         minX = std::min(minX, vertex.position[0]); maxX = std::max(maxX, vertex.position[0]);
-        minY = std::min(minY, vertex.position[1]); maxY = std::max(maxY, vertex.position[1]);
         minZ = std::min(minZ, vertex.position[2]); maxZ = std::max(maxZ, vertex.position[2]);
     }
     const int chunksX = std::max(1, static_cast<int>(std::ceil((maxX - minX) / chunkSize)));

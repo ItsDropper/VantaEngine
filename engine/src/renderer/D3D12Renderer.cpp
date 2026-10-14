@@ -105,7 +105,6 @@ cbuffer SceneConstants : register(b0)
     float4 cascadeSplits;
 };
 Texture2DArray<float> shadowMap : register(t2);
-SamplerState linearClamp : register(s0);
 Texture2D modelAlbedoTexture : register(t7);
 SamplerState linearClamp : register(s0);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };

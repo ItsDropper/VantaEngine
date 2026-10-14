@@ -24,7 +24,7 @@ int Engine::Run(const bool useD3D12)
 
     if (useD3D12)
     {
-        LogInfo("Rendering backend: Direct3D 12 (selected explicitly).");
+        LogInfo("Rendering backend: Direct3D 12 (default scene renderer).");
         D3D12Renderer renderer;
         if (!renderer.Initialize(window.NativeHandle(), window.Width(), window.Height()))
         {

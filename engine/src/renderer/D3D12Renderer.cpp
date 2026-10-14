@@ -1346,7 +1346,7 @@ TemporalOutput PSMain(VSOut input)
     return output;
 }
 )";
-    Microsoft::WRL::ComPtr<ID3DBlob> vs, ps, errors;
+    Microsoft::WRL::ComPtr<ID3DBlob> vs, errors;
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #if defined(_DEBUG)
     flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;

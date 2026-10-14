@@ -14,7 +14,7 @@ The renderer now includes:
 - A depth/stencil buffer and depth testing.
 - Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
 - Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
-- sRGB diffuse texture sampling and ACES-style tone mapping for more physically plausible light response.
+- sRGB diffuse texture sampling, GPU-generated mip chains for diffuse and linear PBR maps, and ACES-style tone mapping for more physically plausible light response.
 - A dynamic constant buffer for per-frame transforms and light-space transforms.
 - A 2048×2048 directional shadow depth pass for terrain, forest, imported house, and props, with slope-aware depth bias and 3×3 PCF filtering.
 - Window resize handling and a continuously updated frame loop.
@@ -27,7 +27,7 @@ The renderer now includes:
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
 - MTL diffuse, tangent-space normal, roughness, metallic, and ambient-occlusion map loading through Windows Imaging Component (WIC). Diffuse is decoded as sRGB; numeric data maps remain linear. Missing maps are optional, while referenced maps must decode and upload successfully.
-- UV interpolation, linear wrap sampling, and sRGB diffuse texture sampling in the Direct3D 11 pixel shader.
+- UV interpolation, linear wrap sampling, sRGB diffuse sampling, and GPU-generated mip chains for diffuse, normal, roughness, metallic, and ambient-occlusion maps. Numeric maps remain in linear space.
 - Startup diagnostics for the high-performance D3D12 adapter and its DXR tier, when available.
 - A small sample house asset under `assets/models/` so the importer and texture path are exercised on startup.
 
@@ -98,7 +98,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 - Windows backend only; the renderer is currently Direct3D 11.
 - The procedural valley now includes denser ground clutter, tree roots, bark seams, road gravel, ferns, leaf litter, twigs, and layered world-space material variation. It remains a handcrafted prototype, not photorealistic scanned assets: geometry silhouettes and most environment materials still need authored models and complete PBR texture sets. Terrain and environment geometry are generated once at startup; there is no streaming, LOD system, foliage animation, or baked lighting yet.
-- The active renderer is still Direct3D 11 and uses one directional light. Imported OBJ/MTL materials now sample optional normal, roughness, metallic, and ambient-occlusion maps in addition to sRGB base color. Normal mapping currently builds a tangent frame from pixel derivatives; there is no glTF 2.0 importer, multi-material/submesh support, mip-chain generation, or environment IBL yet.
+- The active renderer is still Direct3D 11 and uses one directional light. Imported OBJ/MTL materials now sample optional normal, roughness, metallic, and ambient-occlusion maps in addition to sRGB base color. Normal mapping currently builds a tangent frame from pixel derivatives; there is no glTF 2.0 importer, multi-material/submesh support, or environment IBL yet. Texture mip chains are generated on the GPU at startup.
 - The engine now reports D3D12/DXR hardware capability, but it does **not** yet render with DXR or path tracing. That requires a separate D3D12 renderer, acceleration structures, ray-generation/miss/hit shaders, and a working dispatch/presentation path.
 - NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
 - No mouse-look, audio, physics, scripting, or game packaging yet.

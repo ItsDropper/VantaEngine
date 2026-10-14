@@ -1,0 +1,27 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+
+# Visual Studio / VS Code local state
+.vs/
+.vscode/.cache/
+*.user
+*.suo
+
+# Debug symbols and binaries
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# OS noise
+.DS_Store
+Thumbs.db

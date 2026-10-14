@@ -1571,7 +1571,14 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->ClearDepthStencilView(m_shadowDsvHandles[cascade], D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
         m_commandList->SetGraphicsRootConstantBufferView(0,
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
-        m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+        const float cascadeRange = cascadeSplits[cascade];
+        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
+        for (const DrawChunk& chunk : m_drawChunks) {
+            const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
+            if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
+            if (chunk.indexCount[shadowLod] == 0) continue;
+            m_commandList->DrawIndexedInstanced(chunk.indexCount[shadowLod], 1, chunk.startIndex[shadowLod], 0, 0);
+        }
     }
     D3D12_RESOURCE_BARRIER shadowToSample = shadowToDepth;
     shadowToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
@@ -1611,7 +1618,25 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
-    m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
+    const Vec3 cameraRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
+    const auto normalizedUp = forward.Cross(cameraRight).Normalized();
+    const Vec3 cameraUp = normalizedUp.value_or(Vec3{0.0F, 1.0F, 0.0F});
+    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+    const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
+    for (const DrawChunk& chunk : m_drawChunks) {
+        const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
+        const float distance = toChunk.Length();
+        if (distance > 270.0F + chunk.radius) continue;
+        const float forwardDistance = toChunk.Dot(forward);
+        if (forwardDistance < -chunk.radius) continue;
+        const float horizontalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov * aspect + chunk.radius;
+        if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
+        const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov + chunk.radius;
+        if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
+        const UINT lod = distance < 65.0F ? 0U : (distance < 140.0F ? 1U : 2U);
+        if (chunk.indexCount[lod] != 0)
+            m_commandList->DrawIndexedInstanced(chunk.indexCount[lod], 1, chunk.startIndex[lod], 0, 0);
+    }
 
     D3D12_RESOURCE_BARRIER depthToSample{};
     depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;

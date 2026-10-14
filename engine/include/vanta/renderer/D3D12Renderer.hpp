@@ -44,7 +44,7 @@ private:
     [[nodiscard]] bool CreateShadowPipeline();
     [[nodiscard]] bool CreateTemporalTargets();
     [[nodiscard]] bool CreateTemporalPipeline();
-    [[nodiscard]] bool CreateModelTexture(UINT width, UINT height, const std::uint8_t* rgba, UINT descriptorIndex, bool srgb);
+    [[nodiscard]] bool CreateModelTextureArray(UINT width, UINT height, UINT layers, const std::vector<std::uint8_t>& rgbaLayers, UINT descriptorIndex, bool srgb);
     [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreatePipeline();
@@ -72,6 +72,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowTexture;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_modelMaterialTextures;
     std::array<UINT, 5> m_modelMaterialMipLevels{};
+    UINT m_modelMaterialLayerCount = 1;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;

@@ -57,7 +57,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_hdrRenderTarget;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_hdrShaderResource;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_postProcessPixelShader;
-    Microsoft::WRL::ComPtr<ID3D11Buffer> m_postProcessConstants;
     std::array<Microsoft::WRL::ComPtr<ID3D11Texture2D>, 2> m_historyTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D11RenderTargetView>, 2> m_historyRenderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 2> m_historyShaderResources;
@@ -68,6 +67,7 @@ private:
     float m_previousCameraY = 0.0F;
     float m_previousCameraZ = 0.0F;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_postProcessTemporalBuffer;
+    math::Mat4 m_previousViewProjection = math::Mat4::Identity();
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthShaderResource;

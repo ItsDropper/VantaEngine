@@ -88,7 +88,7 @@ cbuffer SceneConstants : register(b0)
     float3 padding;
     float3 cameraPosition;
     float fogDensity;
-    float3 lightDirection;
+    float3 sunDirection;
     float fogStart;
 };
 Texture2D diffuseTexture : register(t0);
@@ -125,7 +125,7 @@ PixelInput VSMain(VertexInput input)
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 normal = normalize(input.normal);
-    float3 lightDirection = normalize(-lightDirection);
+    float3 lightDirection = normalize(-sunDirection);
     float diffuse = saturate(dot(normal, lightDirection));
     float3 viewDirection = normalize(cameraPosition - input.worldPosition);
     float3 halfDirection = normalize(lightDirection + viewDirection);
@@ -413,7 +413,7 @@ bool D3D11Renderer::CreatePipeline()
     const auto addTriangle = [&](const Vec3& a, const Vec3& b, const Vec3& c, const float r, const float g, const float blue) {
         const Vec3 edgeA = b - a;
         const Vec3 edgeB = c - a;
-        const Vec3 cross = math::Cross(edgeA, edgeB);
+        const Vec3 cross = edgeA.Cross(edgeB);
         const float length = std::sqrt(cross.x * cross.x + cross.y * cross.y + cross.z * cross.z);
         if (length < 0.0001F) return;
         const Vec3 n{cross.x / length, cross.y / length, cross.z / length};

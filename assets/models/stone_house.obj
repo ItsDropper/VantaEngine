@@ -1,0 +1,39 @@
+# VantaEngine sample asset: simple low-poly house, Wavefront OBJ
+mtllib stone_house.mtl
+o StoneHouse
+v -1.5 0 -1.2
+v 1.5 0 -1.2
+v 1.5 2 -1.2
+v -1.5 2 -1.2
+v -1.5 0 1.2
+v 1.5 0 1.2
+v 1.5 2 1.2
+v -1.5 2 1.2
+v 0 3.1 -1.2
+v 0 3.1 1.2
+v -0.28 0 1.205
+v 0.28 0 1.205
+v 0.28 1.15 1.205
+v -0.28 1.15 1.205
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+usemtl stone
+# Front wall
+f 5/1 6/2 7/3 8/4
+# Back wall
+f 2/1 1/2 4/3 3/4
+# Left wall
+f 1/1 5/2 8/3 4/4
+# Right wall
+f 6/1 2/2 3/3 7/4
+# Front roof slope
+f 8/1 7/2 10/3 9/4
+# Back roof slope
+f 1/1 2/2 9/3 10/4
+# Roof end triangles
+f 4/1 9/3 3/2
+f 8/1 10/3 7/2
+# Door recess panel on front
+f 11/1 12/2 13/3 14/4

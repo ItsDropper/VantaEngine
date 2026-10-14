@@ -797,7 +797,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         materialCount = 1U;
     }
     m_modelMaterialLayerCount = static_cast<UINT>(materialCount);
-    const UINT materialTextureResolution = materialCount <= 8U ? 512U : (materialCount <= 24U ? 256U : 128U);
+    UINT materialTextureResolution = 1U;
     const std::array<renderer::CpuTexture, 5> neutralTextures = {{
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {128, 128, 255, 255}},
@@ -842,6 +842,17 @@ bool D3D12Renderer::CreateSceneGeometry()
         if (material.packedMetallicRoughness && materialMapPresent[2][materialIndex])
             materialTextureFlags[materialIndex] |= 32U;
     }
+    const UINT textureResolutionCap = materialCount <= 8U ? 1024U :
+        (materialCount <= 24U ? 512U : (materialCount <= 64U ? 256U : 128U));
+    for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
+        for (std::size_t layer = 0; layer < materialCount; ++layer) {
+            if (materialMapPresent[slot][layer]) {
+                materialTextureResolution = std::max(materialTextureResolution,
+                    std::max(materialMaps[slot][layer].width, materialMaps[slot][layer].height));
+            }
+        }
+    }
+    materialTextureResolution = std::clamp(materialTextureResolution, 1U, textureResolutionCap);
     for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
         std::vector<std::uint8_t> textureLayers;
         const std::size_t layerBytes = static_cast<std::size_t>(materialTextureResolution) * materialTextureResolution * 4U;

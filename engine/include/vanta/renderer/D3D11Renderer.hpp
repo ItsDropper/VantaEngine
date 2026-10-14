@@ -17,7 +17,7 @@ public:
 
     [[nodiscard]] bool Initialize(HWND window, int width, int height);
     [[nodiscard]] bool Resize(int width, int height);
-    void Render(float elapsedSeconds);
+    void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ, float cameraYaw, float cameraPitch);
 
 private:
     [[nodiscard]] bool CreateRenderTarget();

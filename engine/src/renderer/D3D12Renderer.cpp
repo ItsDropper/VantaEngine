@@ -206,13 +206,13 @@ float4 PSMain(PSInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
     uint materialFlags = (uint)(input.material.w + 0.5);
+    float3 dp1 = ddx(input.worldPosition);
+    float3 dp2 = ddy(input.worldPosition);
+    float2 duv1 = ddx(input.uv);
+    float2 duv2 = ddy(input.uv);
     if ((materialFlags & 2U) != 0U)
     {
         float3 tangentNormal = modelNormalTexture.Sample(linearClamp, input.uv).xyz * 2.0 - 1.0;
-        float3 dp1 = ddx(input.worldPosition);
-        float3 dp2 = ddy(input.worldPosition);
-        float2 duv1 = ddx(input.uv);
-        float2 duv2 = ddy(input.uv);
         float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);

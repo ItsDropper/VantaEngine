@@ -4,6 +4,8 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <cstdint>
+
 namespace vanta
 {
 class D3D11Renderer final
@@ -37,7 +39,12 @@ private:
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_indexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_modelVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_modelIndexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_diffuseTexture;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
+    UINT m_modelIndexCount = 0;
 
     UINT m_width = 0;
     UINT m_height = 0;

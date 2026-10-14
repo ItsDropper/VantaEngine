@@ -2,6 +2,12 @@
 
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
+#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/renderer/WicTextureLoader.hpp"
+#include <filesystem>
+#include <limits>
+#include <string>
+#include <vector>
 
 #include <d3dcompiler.h>
 #include <iterator>
@@ -19,12 +25,15 @@ struct Vertex
     float position[3];
     float normal[3];
     float color[4];
+    float uv[2];
 };
 
 struct SceneConstants
 {
     Mat4 worldViewProjection;
     Mat4 world;
+    UINT useTexture;
+    float padding[3];
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -71,13 +80,18 @@ cbuffer SceneConstants : register(b0)
 {
     float4x4 worldViewProjection;
     float4x4 world;
+    uint useTexture;
+    float3 padding;
 };
+Texture2D diffuseTexture : register(t0);
+SamplerState diffuseSampler : register(s0);
 
 struct VertexInput
 {
     float3 position : POSITION;
     float3 normal : NORMAL;
     float4 color : COLOR;
+    float2 uv : TEXCOORD;
 };
 
 struct PixelInput
@@ -85,6 +99,7 @@ struct PixelInput
     float4 position : SV_POSITION;
     float3 normal : NORMAL;
     float4 color : COLOR;
+    float2 uv : TEXCOORD;
 };
 
 PixelInput VSMain(VertexInput input)
@@ -93,6 +108,7 @@ PixelInput VSMain(VertexInput input)
     output.position = mul(worldViewProjection, float4(input.position, 1.0));
     output.normal = normalize(mul((float3x3)world, input.normal));
     output.color = input.color;
+    output.uv = input.uv;
     return output;
 }
 
@@ -102,8 +118,9 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 lightDirection = normalize(float3(-0.45, 0.8, -0.55));
     float diffuse = saturate(dot(normal, lightDirection));
     float lighting = 0.22 + diffuse * 0.78;
-    float3 color = input.color.rgb * lighting;
-    return float4(color, input.color.a);
+    float4 albedo = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
+    float3 color = albedo.rgb * lighting;
+    return float4(color, albedo.a);
 }
 )";
 
@@ -171,7 +188,7 @@ bool D3D11Renderer::Initialize(const HWND window, const int width, const int hei
         return false;
     }
 
-    LogInfo("Direct3D 11 renderer initialized (3D pipeline, depth buffer, dynamic scene).");
+    LogInfo("Direct3D 11 renderer initialized (textured model pipeline, depth buffer, dynamic scene).");
     return true;
 }
 
@@ -238,6 +255,7 @@ bool D3D11Renderer::CreatePipeline()
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     if (FAILED(m_device->CreateInputLayout(inputElements, static_cast<UINT>(std::size(inputElements)),
             vertexBytecode->GetBufferPointer(), vertexBytecode->GetBufferSize(), m_inputLayout.GetAddressOf())))
@@ -267,6 +285,85 @@ bool D3D11Renderer::CreatePipeline()
     if (FAILED(m_device->CreateBuffer(&indexDescription, &indexData, m_indexBuffer.GetAddressOf())))
     {
         LogError("Could not create the cube index buffer.");
+        return false;
+    }
+
+    const std::filesystem::path modelPath = std::filesystem::path{VANTA_ASSET_DIR} / "models" / "stone_house.obj";
+    renderer::CpuModel model;
+    std::string importError;
+    if (!renderer::LoadWavefrontObj(modelPath, model, importError)) {
+        LogError(importError.c_str());
+        return false;
+    }
+    std::vector<Vertex> modelVertices;
+    modelVertices.reserve(model.vertices.size());
+    for (const renderer::ModelVertex& source : model.vertices) {
+        modelVertices.push_back({{source.position.x, source.position.y, source.position.z},
+            {source.normal.x, source.normal.y, source.normal.z}, {1.0F, 1.0F, 1.0F, 1.0F},
+            {source.u, source.v}});
+    }
+    if (modelVertices.empty() || model.indices.empty() ||
+        modelVertices.size() * sizeof(Vertex) > std::numeric_limits<UINT>::max() ||
+        model.indices.size() * sizeof(unsigned int) > std::numeric_limits<UINT>::max()) {
+        LogError("Imported model has invalid or excessive geometry.");
+        return false;
+    }
+
+    D3D11_BUFFER_DESC modelVertexDescription{};
+    modelVertexDescription.ByteWidth = static_cast<UINT>(modelVertices.size() * sizeof(Vertex));
+    modelVertexDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    modelVertexDescription.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA modelVertexData{};
+    modelVertexData.pSysMem = modelVertices.data();
+    if (FAILED(m_device->CreateBuffer(&modelVertexDescription, &modelVertexData, m_modelVertexBuffer.GetAddressOf()))) {
+        LogError("Could not create the imported model vertex buffer.");
+        return false;
+    }
+
+    D3D11_BUFFER_DESC modelIndexDescription{};
+    modelIndexDescription.ByteWidth = static_cast<UINT>(model.indices.size() * sizeof(unsigned int));
+    modelIndexDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    modelIndexDescription.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA modelIndexData{};
+    modelIndexData.pSysMem = model.indices.data();
+    if (FAILED(m_device->CreateBuffer(&modelIndexDescription, &modelIndexData, m_modelIndexBuffer.GetAddressOf()))) {
+        LogError("Could not create the imported model index buffer.");
+        return false;
+    }
+    m_modelIndexCount = static_cast<UINT>(model.indices.size());
+
+    renderer::CpuTexture image;
+    if (model.diffuseTexture.empty() || !renderer::LoadWicTexture(model.diffuseTexture, image)) {
+        LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
+        return false;
+    }
+    D3D11_TEXTURE2D_DESC textureDescription{};
+    textureDescription.Width = image.width;
+    textureDescription.Height = image.height;
+    textureDescription.MipLevels = 1;
+    textureDescription.ArraySize = 1;
+    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDescription.SampleDesc.Count = 1;
+    textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
+    textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA textureData{};
+    textureData.pSysMem = image.rgba.data();
+    textureData.SysMemPitch = image.width * 4U;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(m_device->CreateTexture2D(&textureDescription, &textureData, texture.GetAddressOf())) ||
+        FAILED(m_device->CreateShaderResourceView(texture.Get(), nullptr, m_diffuseTexture.GetAddressOf()))) {
+        LogError("Could not upload the imported model's diffuse texture.");
+        return false;
+    }
+
+    D3D11_SAMPLER_DESC samplerDescription{};
+    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.MaxLOD = D3D11_FLOAT32_MAX;
+    if (FAILED(m_device->CreateSamplerState(&samplerDescription, m_textureSampler.GetAddressOf()))) {
+        LogError("Could not create the material texture sampler.");
         return false;
     }
 
@@ -365,11 +462,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
     ID3D11Buffer* constantsBuffer = m_sceneConstants.Get();
     m_context->VSSetConstantBuffers(0, 1, &constantsBuffer);
+    m_context->PSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
 
     const auto drawCube = [&](const Mat4& worldTransform)
     {
-        const SceneConstants constants{projection * view * worldTransform, worldTransform};
+        const SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F}};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
@@ -381,13 +479,36 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->DrawIndexed(static_cast<UINT>(std::size(kCubeIndices)), 0, 0);
     };
 
-    // A broad green-topped ground slab makes depth, scale, and lighting readable.
+    // A broad ground slab keeps the existing depth/lighting test environment.
     drawCube(Mat4::Translation({0.0F, -1.15F, 0.0F}) * Mat4::Scale({12.0F, 0.15F, 12.0F}));
 
-    const auto mainRotation = Quaternion::FromAxisAngle({0.45F, 1.0F, 0.2F}, elapsedSeconds * 0.75F);
-    drawCube(Mat4::Rotation(mainRotation.value_or(Quaternion::Identity())));
+    // Render the imported house with its MTL diffuse texture.
+    const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
+    const SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F}};
+    D3D11_MAPPED_SUBRESOURCE houseMapped{};
+    if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
+        *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;
+        m_context->Unmap(m_sceneConstants.Get(), 0);
+        constexpr UINT modelStride = sizeof(Vertex);
+        constexpr UINT modelOffset = 0;
+        ID3D11Buffer* modelVertexBuffer = m_modelVertexBuffer.Get();
+        m_context->IASetVertexBuffers(0, 1, &modelVertexBuffer, &modelStride, &modelOffset);
+        m_context->IASetIndexBuffer(m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+        ID3D11ShaderResourceView* textureView = m_diffuseTexture.Get();
+        ID3D11SamplerState* sampler = m_textureSampler.Get();
+        m_context->PSSetShaderResources(0, 1, &textureView);
+        m_context->PSSetSamplers(0, 1, &sampler);
+        m_context->DrawIndexed(m_modelIndexCount, 0, 0);
+        ID3D11ShaderResourceView* noTexture = nullptr;
+        m_context->PSSetShaderResources(0, 1, &noTexture);
+        ID3D11Buffer* cubeVertexBuffer = m_vertexBuffer.Get();
+        m_context->IASetVertexBuffers(0, 1, &cubeVertexBuffer, &stride, &offset);
+        m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
+    } else {
+        LogError("Could not update constants for the imported model.");
+    }
 
-    const auto propA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F);
+    const auto propA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F + elapsedSeconds * 0.35F);
     const auto propB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);
     const auto propC = Quaternion::FromAxisAngle({0.3F, 1.0F, 0.0F}, 0.35F);
     drawCube(Mat4::Translation({-3.0F, -0.4F, 1.5F}) * Mat4::Rotation(propA.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));

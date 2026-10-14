@@ -7,6 +7,8 @@ add_executable(VantaEngine
     src/core/Engine.cpp
     src/platform/Window.cpp
     src/renderer/D3D11Renderer.cpp
+    src/renderer/ObjLoader.cpp
+    src/renderer/WicTextureLoader.cpp
 )
 
 target_compile_features(VantaEngine PRIVATE cxx_std_23)
@@ -20,12 +22,15 @@ target_compile_definitions(VantaEngine PRIVATE
     NOMINMAX
     UNICODE
     _UNICODE
+    VANTA_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
 )
 
 target_link_libraries(VantaEngine PRIVATE
     d3d11
     dxgi
     d3dcompiler
+    windowscodecs
+    ole32
     user32
 )
 

@@ -2,11 +2,11 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 runtime, lit multi-object 3D test environment, depth testing, and a keyboard-controlled free-fly camera.
+> **Current milestone:** native Win32 runtime, keyboard-controlled free-fly camera, Wavefront OBJ model import, MTL diffuse-texture discovery, and WIC-backed image textures.
 
 ## What runs right now
 
-Launching the engine opens a 1280×720 native window and renders a small real-time 3D test environment: a broad ground surface, a rotating hero cube, and several smaller objects at different positions. It uses the GPU through Direct3D 11; this is not a prerecorded animation or a UI mock-up.
+Launching the engine opens a 1280×720 native window and renders a real-time 3D test environment: a broad ground surface, a low-poly house loaded from a Wavefront OBJ file with an MTL material and diffuse BMP texture, and smaller test objects. Geometry is uploaded to Direct3D 11 buffers and the diffuse image is uploaded as a GPU texture; this is not a prerecorded animation or a UI mock-up.
 
 The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
@@ -17,6 +17,10 @@ The renderer now includes:
 - Window resize handling and a continuously updated frame loop.
 - Multiple world-space objects rendered with individual transforms against a scaled ground slab.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
+- Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
+- MTL `map_Kd` diffuse texture discovery and Windows Imaging Component (WIC) decoding for common Windows-supported image formats.
+- UV interpolation, linear wrap sampling, and texture-aware diffuse lighting in the Direct3D 11 pixel shader.
+- A small sample house asset under `assets/models/` so the importer and texture path are exercised on startup.
 
 ## Camera controls
 
@@ -84,7 +88,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 ## Current limitations
 
 - Windows backend only.
-- The scene is currently a hard-coded procedural test environment using cube geometry; no imported real-world models, texture maps, general-purpose scene graph, or editor yet.
+- The demo model is a low-poly sample house rather than a production-quality real-world asset. The importer currently handles one diffuse texture per OBJ and does not yet support multiple material groups, normal maps, metallic/roughness PBR, skeletal animation, or a scene editor.
 - No mouse-look, model loading, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap
@@ -93,6 +97,6 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 2. 3D math foundation. Implemented.
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Keyboard input and controllable free-fly camera. Implemented.
-5. Mesh/material/resource lifecycle and scene representation.
-6. Model import, profiling, and tools.
+5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
+6. Multiple material groups, material resource lifetime, normal maps/PBR, and scene representation.
 7. Game-facing APIs and packaging.

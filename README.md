@@ -26,7 +26,7 @@ The renderer now includes:
 - A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
-- MTL `map_Kd` diffuse-texture loading through Windows Imaging Component (WIC), plus path discovery for common normal/roughness/metallic map tags. Only the diffuse map is currently uploaded and sampled.
+- MTL diffuse, tangent-space normal, roughness, metallic, and ambient-occlusion map loading through Windows Imaging Component (WIC). Diffuse is decoded as sRGB; numeric data maps remain linear. Missing maps are optional, while referenced maps must decode and upload successfully.
 - UV interpolation, linear wrap sampling, and sRGB diffuse texture sampling in the Direct3D 11 pixel shader.
 - Startup diagnostics for the high-performance D3D12 adapter and its DXR tier, when available.
 - A small sample house asset under `assets/models/` so the importer and texture path are exercised on startup.
@@ -98,7 +98,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 - Windows backend only; the renderer is currently Direct3D 11.
 - The procedural valley has substantially more environmental geometry, but it is still a handcrafted/stylized prototype—not a finished CS2/Fortnite-quality map and not photorealistic scanned assets. Most environment materials still use vertex colors plus shader grain rather than authored PBR texture sets. Terrain and environment geometry are generated once at startup; there is no streaming, LOD system, foliage animation, or baked lighting yet.
-- The active renderer is still Direct3D 11 and uses one directional light. The new PBR shader uses scalar roughness/metallic values, but it does not yet sample normal/roughness/metallic textures or support multiple material groups. The importer remains OBJ/MTL; glTF 2.0 support is not implemented yet.
+- The active renderer is still Direct3D 11 and uses one directional light. Imported OBJ/MTL materials now sample optional normal, roughness, metallic, and ambient-occlusion maps in addition to sRGB base color. Normal mapping currently builds a tangent frame from pixel derivatives; there is no glTF 2.0 importer, multi-material/submesh support, mip-chain generation, or environment IBL yet.
 - The engine now reports D3D12/DXR hardware capability, but it does **not** yet render with DXR or path tracing. That requires a separate D3D12 renderer, acceleration structures, ray-generation/miss/hit shaders, and a working dispatch/presentation path.
 - NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
 - No mouse-look, audio, physics, scripting, or game packaging yet.
@@ -110,7 +110,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
-6. glTF 2.0 import, multi-material meshes, and sampling base-color, normal, roughness, and metallic textures.
+6. glTF 2.0 import, multi-material meshes, authored asset packs, mip-chain generation, and environment IBL.
 7. Direct3D 12 renderer with DXR acceleration structures, ray-traced shadows/reflections, and a small path-tracing test scene.
 8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
 9. PCF directional shadow mapping. Implemented as an initial single-map pass; cascades, contact hardening, and temporal stabilization remain future work.

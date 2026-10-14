@@ -684,6 +684,17 @@ bool D3D12Renderer::CreateTemporalTargets()
         historyDepthHandle.ptr += static_cast<SIZE_T>(5 + i) * m_srvDescriptorSize;
         m_device->CreateShaderResourceView(m_historyDepthTextures[i].Get(), &historyDepthSrv, historyDepthHandle);
     }
+    for (UINT slot = 0; slot < m_modelMaterialTextures.size(); ++slot) {
+        if (!m_modelMaterialTextures[slot] || m_modelMaterialMipLevels[slot] == 0U) continue;
+        D3D12_SHADER_RESOURCE_VIEW_DESC materialSrv{};
+        materialSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        materialSrv.Format = slot == 0U ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+        materialSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        materialSrv.Texture2D.MipLevels = m_modelMaterialMipLevels[slot];
+        D3D12_CPU_DESCRIPTOR_HANDLE materialHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+        materialHandle.ptr += static_cast<SIZE_T>(7U + slot) * m_srvDescriptorSize;
+        m_device->CreateShaderResourceView(m_modelMaterialTextures[slot].Get(), &materialSrv, materialHandle);
+    }
     m_historyWriteIndex = 0;
     m_historyValid = false;
     m_previousViewProjection = Mat4::Identity();
@@ -1058,6 +1069,7 @@ bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8
     srv.Format = textureDesc.Format;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srv.Texture2D.MipLevels = mipLevels;
+    m_modelMaterialMipLevels[descriptorIndex - 7U] = mipLevels;
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvDescriptorSize;
     m_device->CreateShaderResourceView(m_modelMaterialTextures[descriptorIndex - 7U].Get(), &srv, handle);

@@ -1143,10 +1143,13 @@ bool D3D12Renderer::CreateTemporalPipeline()
     constexpr char shader[] = R"(
 Texture2D<float4> hdrScene : register(t0);
 Texture2D<float> sceneDepth : register(t1);
+#if HISTORY_READ_INDEX == 0
 Texture2D<float4> historyColor0 : register(t3);
-Texture2D<float4> historyColor1 : register(t4);
 Texture2D<float> historyDepth0 : register(t5);
+#else
+Texture2D<float4> historyColor1 : register(t4);
 Texture2D<float> historyDepth1 : register(t6);
+#endif
 SamplerState linearClamp : register(s0);
 cbuffer TemporalConstants : register(b1)
 {
@@ -1162,15 +1165,21 @@ VSOut VSMain(uint id : SV_VertexID)
     o.position = float4(o.uv.x * 2.0 - 1.0, 1.0 - o.uv.y * 2.0, 0.0, 1.0);
     return o;
 }
-float4 ReadHistoryColor(float2 uv, int index)
+float4 ReadHistoryColor(float2 uv)
 {
-    return index == 0 ? historyColor0.SampleLevel(linearClamp, uv, 0)
-                      : historyColor1.SampleLevel(linearClamp, uv, 0);
+#if HISTORY_READ_INDEX == 0
+    return historyColor0.SampleLevel(linearClamp, uv, 0);
+#else
+    return historyColor1.SampleLevel(linearClamp, uv, 0);
+#endif
 }
-float ReadHistoryDepth(float2 uv, int index)
+float ReadHistoryDepth(float2 uv)
 {
-    return index == 0 ? historyDepth0.SampleLevel(linearClamp, uv, 0)
-                      : historyDepth1.SampleLevel(linearClamp, uv, 0);
+#if HISTORY_READ_INDEX == 0
+    return historyDepth0.SampleLevel(linearClamp, uv, 0);
+#else
+    return historyDepth1.SampleLevel(linearClamp, uv, 0);
+#endif
 }
 struct TemporalOutput { float4 color : SV_TARGET0; float depth : SV_TARGET1; };
 TemporalOutput PSMain(VSOut input)
@@ -1205,8 +1214,7 @@ TemporalOutput PSMain(VSOut input)
         output.color = float4(current, 1.0);
         return output;
     }
-    int readIndex = (int)temporalParams.y;
-    float oldDepth = ReadHistoryDepth(previousUv, readIndex);
+    float oldDepth = ReadHistoryDepth(previousUv);
     float expectedDepth = previousClip.z / previousClip.w;
     if (abs(oldDepth - expectedDepth) > max(0.0015, expectedDepth * 0.012))
     {
@@ -1228,7 +1236,7 @@ TemporalOutput PSMain(VSOut input)
             neighborhoodMax = max(neighborhoodMax, sampleColor);
         }
     }
-    float3 history = ReadHistoryColor(previousUv, readIndex).rgb;
+    float3 history = ReadHistoryColor(previousUv).rgb;
     float3 expansion = (neighborhoodMax - neighborhoodMin) * 0.12 + 0.002;
     history = clamp(history, neighborhoodMin - expansion, neighborhoodMax + expansion);
     output.color = float4(lerp(current, history, 0.88), 1.0);
@@ -1247,13 +1255,19 @@ TemporalOutput PSMain(VSOut input)
         LogError("Direct3D 12: temporal vertex shader compilation failed.");
         return false;
     }
-    errors.Reset();
-    hr = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_temporal", nullptr, nullptr,
-        "PSMain", "ps_5_0", flags, 0, ps.GetAddressOf(), errors.GetAddressOf());
-    if (FAILED(hr)) {
-        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
-        LogError("Direct3D 12: temporal pixel shader compilation failed.");
-        return false;
+    std::array<Microsoft::WRL::ComPtr<ID3DBlob>, 2> pixelShaders;
+    const D3D_SHADER_MACRO readHistory0[] = {{"HISTORY_READ_INDEX", "0"}, {nullptr, nullptr}};
+    const D3D_SHADER_MACRO readHistory1[] = {{"HISTORY_READ_INDEX", "1"}, {nullptr, nullptr}};
+    const D3D_SHADER_MACRO* historyDefines[] = {readHistory0, readHistory1};
+    for (UINT i = 0; i < 2; ++i) {
+        errors.Reset();
+        hr = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_temporal", historyDefines[i], nullptr,
+            "PSMain", "ps_5_0", flags, 0, pixelShaders[i].GetAddressOf(), errors.GetAddressOf());
+        if (FAILED(hr)) {
+            if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+            LogError("Direct3D 12: temporal pixel shader compilation failed.");
+            return false;
+        }
     }
     for (UINT i = 0; i < kFrameCount; ++i) {
         if (!CreateUploadBuffer(m_device.Get(), 256, m_temporalConstantBuffers[i]) ||
@@ -1265,7 +1279,7 @@ TemporalOutput PSMain(VSOut input)
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();
     pso.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};
-    pso.PS = {ps->GetBufferPointer(), ps->GetBufferSize()};
+    pso.PS = {pixelShaders[0]->GetBufferPointer(), pixelShaders[0]->GetBufferSize()};
     pso.BlendState.AlphaToCoverageEnable = FALSE;
     pso.BlendState.IndependentBlendEnable = FALSE;
     const D3D12_RENDER_TARGET_BLEND_DESC blend = {
@@ -1287,9 +1301,12 @@ TemporalOutput PSMain(VSOut input)
     pso.RTVFormats[1] = DXGI_FORMAT_R32_FLOAT;
     pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
     pso.SampleDesc.Count = 1;
-    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_temporalPipelineState.GetAddressOf())))) {
-        LogError("Direct3D 12: temporal resolve pipeline creation failed.");
-        return false;
+    for (UINT i = 0; i < 2; ++i) {
+        pso.PS = {pixelShaders[i]->GetBufferPointer(), pixelShaders[i]->GetBufferSize()};
+        if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_temporalPipelineStates[i].GetAddressOf())))) {
+            LogError("Direct3D 12: temporal resolve pipeline creation failed.");
+            return false;
+        }
     }
     return true;
 }
@@ -1668,7 +1685,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_historyColorRtvs[m_historyWriteIndex], m_historyDepthRtvs[m_historyWriteIndex]
     };
     m_commandList->OMSetRenderTargets(2, temporalRtvs, FALSE, nullptr);
-    m_commandList->SetPipelineState(m_temporalPipelineState.Get());
+    m_commandList->SetPipelineState(m_temporalPipelineStates[1U - m_historyWriteIndex].Get());
     m_commandList->SetGraphicsRootConstantBufferView(2, m_temporalConstantBuffers[m_frameIndex]->GetGPUVirtualAddress());
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
     D3D12_VIEWPORT temporalViewport{0.0F, 0.0F, static_cast<float>(m_width), static_cast<float>(m_height), 0.0F, 1.0F};

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -193,7 +194,7 @@ bool AppendMesh(const cgltf_mesh& mesh, const float world[16], ImportContext& co
                 context.error = "glTF primitive references a material outside the document.";
                 return false;
             }
-            materialIndex = static_cast<std::uint32_t>(std::distance(context.data.materials, found));
+            materialIndex = static_cast<std::uint32_t>(std::distance(context.data.materials, found)) + 1U;
         }
         context.model.submeshes.push_back({firstIndex,
             static_cast<std::uint32_t>(context.model.indices.size() - firstIndex), materialIndex});
@@ -258,13 +259,13 @@ bool LoadGltf(const std::filesystem::path& path, CpuModel& output, std::string& 
 
     CpuModel model;
     model.materials.reserve(data->materials_count + 1);
+    model.materials.push_back(CpuMaterial{}); // glTF's implicit default material
     for (cgltf_size i = 0; i < data->materials_count; ++i)
     {
         CpuMaterial material;
         if (!ConvertMaterial(&data->materials[i], path, material, error)) return false;
         model.materials.push_back(std::move(material));
     }
-    if (model.materials.empty()) model.materials.push_back(CpuMaterial{});
 
     std::vector<bool> generatedNormals;
     ImportContext context{*data, path, model, generatedNormals, error};

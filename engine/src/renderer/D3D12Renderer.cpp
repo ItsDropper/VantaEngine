@@ -3,6 +3,7 @@
 #include "vanta/core/Log.hpp"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace vanta
 {
@@ -153,6 +154,7 @@ bool D3D12Renderer::WaitForGpu()
 
 bool D3D12Renderer::Resize(int width, int height)
 {
+    if (m_failed) return false;
     if (width <= 0 || height <= 0 ||
         (m_width == static_cast<UINT>(width) && m_height == static_cast<UINT>(height))) return true;
     if (!WaitForGpu()) {
@@ -160,9 +162,13 @@ bool D3D12Renderer::Resize(int width, int height)
         return false;
     }
     for (auto& target : m_renderTargets) target.Reset();
-    if (FAILED(m_swapChain->ResizeBuffers(kFrameCount, static_cast<UINT>(width),
-            static_cast<UINT>(height), DXGI_FORMAT_R8G8B8A8_UNORM, 0))) {
-        LogError("Direct3D 12: swap-chain resize failed.");
+    const HRESULT resizeResult = m_swapChain->ResizeBuffers(kFrameCount, static_cast<UINT>(width),
+            static_cast<UINT>(height), DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    if (FAILED(resizeResult)) {
+        char message[160]{};
+        std::snprintf(message, sizeof(message), "Direct3D 12: swap-chain resize failed (HRESULT 0x%08lX).",
+            static_cast<unsigned long>(resizeResult));
+        LogError(message);
         return false;
     }
     m_width = static_cast<UINT>(width);
@@ -174,6 +180,7 @@ bool D3D12Renderer::Resize(int width, int height)
 
 void D3D12Renderer::Render()
 {
+    if (m_failed) return;
     if (!WaitForFrame(m_frameIndex)) {
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         return;
@@ -207,16 +214,32 @@ void D3D12Renderer::Render()
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
-    if (FAILED(m_swapChain->Present(1, 0))) {
-        LogError("Direct3D 12: Present failed.");
-        return;
-    }
+
+    // Fence every submitted command list even if Present subsequently fails. Otherwise
+    // the allocator could be reset while the GPU is still executing its command list.
     const UINT64 signalValue = m_fenceValues[m_frameIndex] + 1;
-    if (FAILED(m_commandQueue->Signal(m_fence.Get(), signalValue))) {
-        LogError("Direct3D 12: frame fence signal failed.");
+    const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
+    if (FAILED(signalResult)) {
+        char message[180]{};
+        std::snprintf(message, sizeof(message), "Direct3D 12: frame fence signal failed (HRESULT 0x%08lX).",
+            static_cast<unsigned long>(signalResult));
+        LogError(message);
+        m_failed = true;
         return;
     }
     m_fenceValues[m_frameIndex] = signalValue;
+
+    const HRESULT presentResult = m_swapChain->Present(1, 0);
+    if (FAILED(presentResult)) {
+        const HRESULT deviceReason = m_device->GetDeviceRemovedReason();
+        char message[240]{};
+        std::snprintf(message, sizeof(message),
+            "Direct3D 12: Present failed (HRESULT 0x%08lX, device reason 0x%08lX). Backend stopped to prevent log spam.",
+            static_cast<unsigned long>(presentResult), static_cast<unsigned long>(deviceReason));
+        LogError(message);
+        m_failed = true;
+        return;
+    }
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 }
 } // namespace vanta

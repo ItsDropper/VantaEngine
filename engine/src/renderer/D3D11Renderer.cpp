@@ -41,7 +41,7 @@ struct SceneConstants
     float fogStart;
     float materialProperties[4];
     float baseColorFactor[4];
-    float4x4 lightViewProjection;
+    Mat4 lightViewProjection;
 };
 
 constexpr Vertex kCubeVertices[] = {

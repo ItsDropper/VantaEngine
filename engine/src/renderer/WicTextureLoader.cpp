@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <limits>
+#include <utility>
 
 namespace vanta::renderer
 {

@@ -141,6 +141,38 @@ float4 PSMain(PixelInput input) : SV_TARGET
 }
 )";
 
+constexpr char kSkyShaderSource[] = R"(
+struct SkyVertexOutput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+};
+SkyVertexOutput VSMain(uint vertexId : SV_VertexID)
+{
+    SkyVertexOutput output;
+    float2 p = float2((vertexId << 1) & 2, vertexId & 2);
+    output.position = float4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 1.0, 1.0);
+    output.uv = p;
+    return output;
+}
+float4 PSMain(SkyVertexOutput input) : SV_TARGET
+{
+    float t = saturate(input.uv.y);
+    float3 zenith = float3(0.018, 0.035, 0.085);
+    float3 upperSky = float3(0.055, 0.12, 0.22);
+    float3 horizon = float3(0.92, 0.43, 0.22);
+    float3 lowerHorizon = float3(0.36, 0.40, 0.46);
+    float3 sky = lerp(zenith, upperSky, smoothstep(0.0, 0.55, t));
+    sky = lerp(sky, horizon, smoothstep(0.48, 0.78, t) * 0.72);
+    sky = lerp(sky, lowerHorizon, smoothstep(0.74, 1.0, t) * 0.65);
+    float2 sunDelta = (input.uv - float2(0.72, 0.66)) * float2(1.0, 1.7);
+    float sun = exp(-dot(sunDelta, sunDelta) * 120.0);
+    float glow = exp(-dot(sunDelta, sunDelta) * 10.0);
+    sky += float3(1.0, 0.45, 0.18) * (sun * 2.0 + glow * 0.22);
+    return float4(sky, 1.0);
+}
+)";
+
 bool CreateDepthResources(
     ID3D11Device* device,
     const UINT width,
@@ -265,6 +297,36 @@ bool D3D11Renderer::CreatePipeline()
         FAILED(m_device->CreatePixelShader(pixelBytecode->GetBufferPointer(), pixelBytecode->GetBufferSize(), nullptr, m_pixelShader.GetAddressOf())))
     {
         LogError("Could not create the Direct3D shader objects.");
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3DBlob> skyVertexBytecode;
+    Microsoft::WRL::ComPtr<ID3DBlob> skyPixelBytecode;
+    errors.Reset();
+    if (FAILED(D3DCompile(kSkyShaderSource, sizeof(kSkyShaderSource) - 1, "vanta_sky_vertex", nullptr, nullptr,
+            "VSMain", "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, skyVertexBytecode.GetAddressOf(), errors.GetAddressOf()))) {
+        LogError("Sky vertex shader compilation failed.");
+        if (errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        return false;
+    }
+    errors.Reset();
+    if (FAILED(D3DCompile(kSkyShaderSource, sizeof(kSkyShaderSource) - 1, "vanta_sky_pixel", nullptr, nullptr,
+            "PSMain", "ps_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, skyPixelBytecode.GetAddressOf(), errors.GetAddressOf()))) {
+        LogError("Sky pixel shader compilation failed.");
+        if (errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        return false;
+    }
+    if (FAILED(m_device->CreateVertexShader(skyVertexBytecode->GetBufferPointer(), skyVertexBytecode->GetBufferSize(), nullptr, m_skyVertexShader.GetAddressOf())) ||
+        FAILED(m_device->CreatePixelShader(skyPixelBytecode->GetBufferPointer(), skyPixelBytecode->GetBufferSize(), nullptr, m_skyPixelShader.GetAddressOf()))) {
+        LogError("Could not create the sky shader objects.");
+        return false;
+    }
+    D3D11_DEPTH_STENCIL_DESC skyDepthDescription{};
+    skyDepthDescription.DepthEnable = FALSE;
+    skyDepthDescription.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    skyDepthDescription.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    if (FAILED(m_device->CreateDepthStencilState(&skyDepthDescription, m_skyDepthState.GetAddressOf()))) {
+        LogError("Could not create the sky depth state.");
         return false;
     }
 
@@ -592,6 +654,14 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     viewport.MaxDepth = 1.0F;
     m_context->RSSetViewports(1, &viewport);
     m_context->RSSetState(m_rasterizerState.Get());
+
+    // Full-screen atmospheric sky pass: a gradient and solar glow, rendered without depth writes.
+    m_context->OMSetDepthStencilState(m_skyDepthState.Get(), 0);
+    m_context->IASetInputLayout(nullptr);
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_context->VSSetShader(m_skyVertexShader.Get(), nullptr, 0);
+    m_context->PSSetShader(m_skyPixelShader.Get(), nullptr, 0);
+    m_context->Draw(3, 0);
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
 
     const Vec3 cameraPosition{cameraX, cameraY, cameraZ};

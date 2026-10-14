@@ -67,6 +67,7 @@ private:
     UINT m_width = 0;
     UINT m_height = 0;
     UINT m_rtvDescriptorSize = 0;
+    UINT m_dsvDescriptorSize = 0;
     UINT m_srvDescriptorSize = 0;
     UINT m_frameIndex = 0;
     UINT64 m_nextFenceValue = 1;

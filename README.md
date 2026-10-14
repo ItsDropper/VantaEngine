@@ -6,7 +6,7 @@ VantaEngine is an early-stage native C++23 3D game engine designed for direct co
 
 ## What runs right now
 
-Launching the engine opens a 1280×720 native window and renders a real-time 3D test environment: a broad ground surface, a low-poly house loaded from a Wavefront OBJ file with an MTL material and diffuse BMP texture, and smaller test objects. Geometry is uploaded to Direct3D 11 buffers and the diffuse image is uploaded as a GPU texture; this is not a prerecorded animation or a UI mock-up.
+Launching the engine opens a 1280×720 native window and renders a real-time procedural landscape: rolling terrain, a deterministic low-poly pine forest, the imported stone house, and test props. The terrain and forest are generated at startup and uploaded as merged GPU meshes. Geometry is uploaded to Direct3D 11 buffers and the diffuse image is uploaded as a GPU texture; this is not a prerecorded animation or a UI mock-up.
 
 The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
@@ -15,7 +15,9 @@ The renderer now includes:
 - A directional diffuse-lighting shader.
 - A dynamic constant buffer for per-frame transforms.
 - Window resize handling and a continuously updated frame loop.
-- Multiple world-space objects rendered with individual transforms against a scaled ground slab.
+- Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
+- A deterministic pine forest with varied tree heights, tiered low-poly foliage, trunks, and merged geometry to limit draw calls.
+- Per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
 - MTL `map_Kd` diffuse texture discovery and Windows Imaging Component (WIC) decoding for common Windows-supported image formats.
@@ -87,9 +89,11 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 ## Current limitations
 
-- Windows backend only.
-- The demo model is a low-poly sample house rather than a production-quality real-world asset. The importer currently handles one diffuse texture per OBJ and does not yet support multiple material groups, normal maps, metallic/roughness PBR, skeletal animation, or a scene editor.
-- No mouse-look, model loading, audio, physics, scripting, or game packaging yet.
+- Windows backend only; the renderer is currently Direct3D 11.
+- The demo house and procedural forest are stylized low-poly assets, not photorealistic scans. Terrain and tree geometry are generated once at startup; there is no streaming or level-of-detail system yet.
+- Lighting currently uses a single directional light and approximate specular/hemisphere shading. Shadow maps, screen-space ambient occlusion, physically based metallic/roughness materials, normal maps, temporal anti-aliasing, and post-processing are not implemented yet.
+- NVIDIA DLSS and hardware ray tracing are not enabled: DLSS integration needs a supported NVIDIA SDK/runtime and suitable render pipeline, while RTX ray tracing requires a Direct3D 12/DXR backend rather than this D3D11 renderer.
+- No mouse-look, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap
 
@@ -98,5 +102,6 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
-6. Multiple material groups, material resource lifetime, normal maps/PBR, and scene representation.
-7. Game-facing APIs and packaging.
+6. Shadow mapping with PCF filtering, screen-space ambient occlusion, and better material/lighting controls.
+7. Direct3D 12 backend for DXR experiments and optional NVIDIA DLSS integration where supported.
+8. Multiple material groups, normal maps/PBR, scene representation, and game-facing APIs.

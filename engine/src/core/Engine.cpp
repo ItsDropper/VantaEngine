@@ -12,7 +12,7 @@ namespace vanta
 int Engine::Run()
 {
     Window window;
-    if (!window.Create(L"VantaEngine", 1280, 720))
+    if (!window.Create(L"VantaEngine | 3D Preview", 1280, 720))
     {
         LogError("Engine startup failed while creating the window.");
         return 1;
@@ -27,8 +27,9 @@ int Engine::Run()
 
     using Clock = std::chrono::steady_clock;
     auto previousFrame = Clock::now();
+    float elapsedSeconds = 0.0F;
 
-    LogInfo("Main loop started. Press Escape or close the window to exit.");
+    LogInfo("3D scene running. Close the window or press Escape to exit.");
 
     while (window.IsOpen())
     {
@@ -49,11 +50,11 @@ int Engine::Run()
         const std::chrono::duration<double> elapsed = now - previousFrame;
         const double deltaSeconds = ClampDeltaSeconds(elapsed.count());
         previousFrame = now;
-        (void)deltaSeconds; // The simulation/update phase will consume this in the next milestone.
+        elapsedSeconds += static_cast<float>(deltaSeconds);
 
         if (width > 0 && height > 0)
         {
-            renderer.Render();
+            renderer.Render(elapsedSeconds);
         }
     }
 

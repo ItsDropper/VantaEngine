@@ -17,20 +17,27 @@ public:
 
     [[nodiscard]] bool Initialize(HWND window, int width, int height);
     [[nodiscard]] bool Resize(int width, int height);
-    void Render();
+    void Render(float elapsedSeconds);
 
 private:
     [[nodiscard]] bool CreateRenderTarget();
+    [[nodiscard]] bool CreateDepthTarget();
     [[nodiscard]] bool CreatePipeline();
 
     Microsoft::WRL::ComPtr<IDXGISwapChain> m_swapChain;
     Microsoft::WRL::ComPtr<ID3D11Device> m_device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_context;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_renderTarget;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_depthState;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_rasterizerState;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_vertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_indexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
 
     UINT m_width = 0;
     UINT m_height = 0;

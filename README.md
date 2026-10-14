@@ -2,29 +2,38 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 window, Direct3D 11 triangle renderer, and a standalone tested 3D math foundation. The screen still displays the renderer test triangle; camera and mesh rendering are the next milestone.
+> **Current milestone:** native Win32 window and a real-time Direct3D 11 3D scene with indexed cube geometry, perspective camera, depth testing, directional lighting, and continuous rotation.
+
+## What runs right now
+
+Launching the engine opens a 1280×720 native window and renders a rotating, multi-colored 3D cube against a dark background. It uses the GPU through Direct3D 11; this is not a prerecorded animation or a UI mock-up.
+
+The renderer now includes:
+- Indexed triangle geometry with per-face normals and color.
+- Left-handed perspective and view matrices from the engine's math layer.
+- A depth/stencil buffer and depth testing.
+- A directional diffuse-lighting shader.
+- A dynamic constant buffer for per-frame transforms.
+- Window resize handling and a continuously updated frame loop.
 
 ## Architecture
 
 - core: runtime entry point, logging, frame-time policy
 - math: Vec3, Vec4, Quaternion, Mat4
 - platform: Win32 window/event lifecycle
-- renderer: Direct3D 11 device, shaders, buffers, swap chain
+- renderer: Direct3D 11 device, shaders, buffers, swap chain, depth target
 - tests: GPU-independent runtime and math tests
 
 ## Math conventions
 
 The math layer is header-only and has no Windows or graphics API dependencies.
 
-- Vec3 supports arithmetic, dot/cross products, and safe normalization. Near-zero vectors return no value instead of producing NaNs.
+- Vec3 supports arithmetic, dot/cross products, and safe normalization.
 - Quaternion supports axis-angle creation, normalization, conjugation, multiplication, and vector rotation.
 - Mat4 uses column-major storage, column vectors, and matrix-times-vector transforms. Translation occupies column 3.
 - LookAtLH is a left-handed view matrix where +Z is forward.
 - Perspective is left-handed and maps normalized depth to Direct3D's [0, 1] range.
 - Matrix composition T * R * S * point applies scale, then rotation, then translation.
-- Invalid projection inputs return a zero matrix; degenerate look-at vectors and invalid quaternion axes return no value.
-
-These conventions match the current Direct3D 11 backend and must be respected by renderer code.
 
 ## Requirements
 
@@ -55,22 +64,22 @@ The clean option removes only generated output in build/.
 
 ## Tests and CI
 
-CTest runs without creating a window or requiring a GPU. Coverage includes frame-delta clamping, vector operations, degenerate normalization, point-versus-direction transforms, matrix composition, quaternion rotation, Direct3D perspective depth mapping, and look-at edge cases.
+CTest runs without creating a window or requiring a GPU. It covers the frame-time policy and the GPU-independent math foundation. The rendering path is exercised by launching the app locally.
 
 GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks provide build/test shortcuts; F5 launches under the MSVC debugger when the C/C++ extension is installed.
 
 ## Current limitations
 
 - Windows backend only.
-- Renderer still draws one triangle; math is not yet wired into rendering.
-- No depth buffer, controllable camera, mesh loading, scene model, audio, physics, scripting, or editor.
+- The scene currently contains one procedural cube; no general-purpose scene graph, asset importer, or editor yet.
+- No input-driven camera, model loading, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap
 
 1. Native runtime and automated workflow. Implemented.
-2. 3D math foundation. This milestone.
-3. Camera, depth buffer, and transform-aware 3D mesh rendering.
+2. 3D math foundation. Implemented.
+3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Input system and controllable camera.
 5. Mesh/material/resource lifecycle and scene representation.
-6. Lighting, model import, profiling, and tools.
+6. Model import, profiling, and tools.
 7. Game-facing APIs and packaging.

@@ -107,9 +107,13 @@ public:
         P ridge{x,y+h+0.9F*scale,z};
         P lf{x-w-0.35F*scale,y+h,z-d-0.35F*scale}, lb{x-w-0.35F*scale,y+h,z+d+0.35F*scale};
         P rf{x+w+0.35F*scale,y+h,z-d-0.35F*scale}, rb{x+w+0.35F*scale,y+h,z+d+0.35F*scale};
-        quad(lf,lb,ridge,ridge,0.18F,0.20F,0.19F); // intentionally replaced below with roof triangles
-        tri(lf,lb,ridge,0.16F,0.18F,0.18F); tri(ridge,rb,rf,0.13F,0.15F,0.16F);
-        quad(lf,rf,rb,lb,0.11F,0.12F,0.12F);
+        P ridgeFront{x,y+h+0.9F*scale,z-d-0.35F*scale};
+        P ridgeBack{x,y+h+0.9F*scale,z+d+0.35F*scale};
+        quad(lf,ridgeFront,ridgeBack,lb,0.16F,0.18F,0.18F);
+        quad(ridgeFront,rf,rb,ridgeBack,0.13F,0.15F,0.16F);
+        // Exposed fascia boards give the roof a readable, finished silhouette.
+        beam(lf,lb,0.07F*scale,0.28F,0.17F,0.09F);
+        beam(rf,rb,0.07F*scale,0.25F,0.15F,0.08F);
         box({x,y+0.82F*scale,z-d-0.09F*scale},{0.42F*scale,0.78F*scale,0.08F*scale},0.16F,0.095F,0.055F);
         box({x-0.95F*scale,y+1.1F*scale,z-d-0.1F*scale},{0.43F*scale,0.42F*scale,0.09F*scale},0.07F,0.16F,0.18F);
         box({x-0.95F*scale,y+1.1F*scale,z-d-0.2F*scale},{0.51F*scale,0.05F*scale,0.035F*scale},0.24F,0.18F,0.12F);

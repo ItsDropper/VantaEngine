@@ -38,3 +38,10 @@ add_executable(VantaEngineProceduralWorldTests
 )
 vanta_configure_test(VantaEngineProceduralWorldTests)
 add_test(NAME VantaEngine.ProceduralWorldTests COMMAND VantaEngineProceduralWorldTests)
+
+add_executable(VantaEngineGltfImportTests
+    gltf_import_tests.cpp
+    ../engine/src/renderer/GltfLoader.cpp
+)
+vanta_configure_test(VantaEngineGltfImportTests)
+add_test(NAME VantaEngine.GltfImportTests COMMAND VantaEngineGltfImportTests)

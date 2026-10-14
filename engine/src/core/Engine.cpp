@@ -5,14 +5,16 @@
 #include "vanta/platform/Window.hpp"
 #include "vanta/renderer/D3D11Renderer.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace vanta
 {
 int Engine::Run()
 {
     Window window;
-    if (!window.Create(L"VantaEngine | 3D Preview", 1280, 720))
+    if (!window.Create(L"VantaEngine | Camera Playground", 1280, 720))
     {
         LogError("Engine startup failed while creating the window.");
         return 1;
@@ -28,8 +30,13 @@ int Engine::Run()
     using Clock = std::chrono::steady_clock;
     auto previousFrame = Clock::now();
     float elapsedSeconds = 0.0F;
+    float cameraX = 3.4F;
+    float cameraY = 2.6F;
+    float cameraZ = -5.5F;
+    float cameraYaw = -0.554F;
+    float cameraPitch = -0.360F;
 
-    LogInfo("3D scene running. Close the window or press Escape to exit.");
+    LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
 
     while (window.IsOpen())
     {
@@ -39,22 +46,40 @@ int Engine::Run()
             break;
         }
 
+        const auto now = Clock::now();
+        const std::chrono::duration<double> elapsed = now - previousFrame;
+        const float deltaSeconds = static_cast<float>(ClampDeltaSeconds(elapsed.count()));
+        previousFrame = now;
+        elapsedSeconds += deltaSeconds;
+
+        constexpr float moveSpeed = 4.5F;
+        constexpr float lookSpeed = 1.65F;
+        if (window.IsKeyDown(VK_LEFT)) cameraYaw -= lookSpeed * deltaSeconds;
+        if (window.IsKeyDown(VK_RIGHT)) cameraYaw += lookSpeed * deltaSeconds;
+        if (window.IsKeyDown(VK_UP)) cameraPitch += lookSpeed * deltaSeconds;
+        if (window.IsKeyDown(VK_DOWN)) cameraPitch -= lookSpeed * deltaSeconds;
+        cameraPitch = std::clamp(cameraPitch, -1.50F, 1.50F);
+
+        const float forwardX = std::sin(cameraYaw);
+        const float forwardZ = std::cos(cameraYaw);
+        const float rightX = std::cos(cameraYaw);
+        const float rightZ = -std::sin(cameraYaw);
+        if (window.IsKeyDown('W')) { cameraX += forwardX * moveSpeed * deltaSeconds; cameraZ += forwardZ * moveSpeed * deltaSeconds; }
+        if (window.IsKeyDown('S')) { cameraX -= forwardX * moveSpeed * deltaSeconds; cameraZ -= forwardZ * moveSpeed * deltaSeconds; }
+        if (window.IsKeyDown('D')) { cameraX += rightX * moveSpeed * deltaSeconds; cameraZ += rightZ * moveSpeed * deltaSeconds; }
+        if (window.IsKeyDown('A')) { cameraX -= rightX * moveSpeed * deltaSeconds; cameraZ -= rightZ * moveSpeed * deltaSeconds; }
+        if (window.IsKeyDown('E')) cameraY += moveSpeed * deltaSeconds;
+        if (window.IsKeyDown('Q')) cameraY -= moveSpeed * deltaSeconds;
+
         const int width = window.Width();
         const int height = window.Height();
         if (width > 0 && height > 0 && !renderer.Resize(width, height))
         {
             return 1;
         }
-
-        const auto now = Clock::now();
-        const std::chrono::duration<double> elapsed = now - previousFrame;
-        const double deltaSeconds = ClampDeltaSeconds(elapsed.count());
-        previousFrame = now;
-        elapsedSeconds += static_cast<float>(deltaSeconds);
-
         if (width > 0 && height > 0)
         {
-            renderer.Render(elapsedSeconds);
+            renderer.Render(elapsedSeconds, cameraX, cameraY, cameraZ, cameraYaw, cameraPitch);
         }
     }
 

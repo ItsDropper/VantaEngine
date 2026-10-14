@@ -90,8 +90,8 @@ constexpr unsigned short kCubeIndices[] = {
 constexpr char kShaderSource[] = R"(
 cbuffer SceneConstants : register(b0)
 {
-    row_major float4x4 worldViewProjection;
-    row_major float4x4 world;
+    float4x4 worldViewProjection;
+    float4x4 world;
     uint useTexture;
     float3 padding;
     float3 cameraPosition;
@@ -101,7 +101,7 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
-    row_major float4x4 lightViewProjection[3];
+    float4x4 lightViewProjection[3];
     float4 cascadeSplits;
 };
 Texture2D diffuseTexture : register(t0);
@@ -361,8 +361,8 @@ float4 PSMain(PixelInput input) : SV_TARGET
 constexpr char kShadowShaderSource[] = R"(
 cbuffer SceneConstants : register(b0)
 {
-    row_major float4x4 worldViewProjection;
-    row_major float4x4 world;
+    float4x4 worldViewProjection;
+    float4x4 world;
     uint useTexture;
     float3 padding;
     float3 cameraPosition;
@@ -372,7 +372,7 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
-    row_major float4x4 lightViewProjection[3];
+    float4x4 lightViewProjection[3];
     float4 cascadeSplits;
 };
 struct VertexInput { float3 position : POSITION; };

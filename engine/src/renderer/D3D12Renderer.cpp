@@ -279,11 +279,8 @@ float4 PSMain(PSInput input) : SV_TARGET
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
     float3 fogColor = float3(0.36, 0.37, 0.34);
-    // Keep the world grounded and neutral: the stylized outdoor scene should not
-    // inherit a cyan cast from ambient/specular energy. Preserve authored albedo,
-    // then apply a restrained warm-neutral white balance before HDR tone mapping.
+    // Preserve material colors. Channel-biased grading tints every surface.
     float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
-    litColor *= float3(1.04, 1.10, 0.78);
     return float4(litColor, 1.0);
 }
 )";

@@ -413,7 +413,7 @@ bool D3D11Renderer::CreateShadowResources()
 
     D3D11_RASTERIZER_DESC rasterDescription{};
     rasterDescription.FillMode = D3D11_FILL_SOLID;
-    rasterDescription.CullMode = D3D11_CULL_BACK;
+    rasterDescription.CullMode = D3D11_CULL_NONE;
     rasterDescription.DepthClipEnable = TRUE;
     rasterDescription.DepthBias = 120;
     rasterDescription.SlopeScaledDepthBias = 1.5F;

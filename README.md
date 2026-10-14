@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 window and a real-time Direct3D 11 3D scene with indexed cube geometry, perspective camera, depth testing, directional lighting, and continuous rotation.
+> **Current milestone:** native Win32 runtime, lit indexed 3D cube, depth testing, and a keyboard-controlled free-fly camera.
 
 ## What runs right now
 
@@ -15,6 +15,17 @@ The renderer now includes:
 - A directional diffuse-lighting shader.
 - A dynamic constant buffer for per-frame transforms.
 - Window resize handling and a continuously updated frame loop.
+
+## Camera controls
+
+The camera is controllable while the VantaEngine window is focused:
+
+- **W / A / S / D** — move horizontally relative to the camera direction.
+- **Q / E** — move down / up.
+- **Arrow keys** — look around.
+- **Escape** — exit.
+
+Movement is delta-time based, so it remains consistent across frame rates. The camera uses the engine math layer to build a view matrix each frame.
 
 ## Architecture
 
@@ -72,14 +83,14 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 - Windows backend only.
 - The scene currently contains one procedural cube; no general-purpose scene graph, asset importer, or editor yet.
-- No input-driven camera, model loading, audio, physics, scripting, or game packaging yet.
+- No mouse-look, model loading, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap
 
 1. Native runtime and automated workflow. Implemented.
 2. 3D math foundation. Implemented.
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
-4. Input system and controllable camera.
+4. Keyboard input and controllable free-fly camera. Implemented.
 5. Mesh/material/resource lifecycle and scene representation.
 6. Model import, profiling, and tools.
 7. Game-facing APIs and packaging.

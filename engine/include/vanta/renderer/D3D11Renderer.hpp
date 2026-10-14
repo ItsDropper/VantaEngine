@@ -58,6 +58,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_postProcessPixelShader;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_depthShaderResource;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_shadowTexture;
     std::array<Microsoft::WRL::ComPtr<ID3D11DepthStencilView>, 3> m_shadowDepthStencil;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_shadowShaderResource;

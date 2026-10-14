@@ -1895,6 +1895,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->RSSetViewports(1, &viewport);
     m_commandList->RSSetScissorRects(1, &scissor);
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+    // The shadow pass leaves its depth-only PSO active; restore the scene PSO before drawing color.
+    m_commandList->SetPipelineState(m_pipelineState.Get());
     ID3D12DescriptorHeap* sceneHeaps[] = {m_srvHeap.Get()};
     m_commandList->SetDescriptorHeaps(1, sceneHeaps);
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());

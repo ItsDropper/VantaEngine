@@ -89,8 +89,17 @@ public:
         }
     }
     void beam(P a,P b,float radius,float r,float g,float bl) {
-        P d=b-a; float len=std::sqrt(Dot(d,d)); if(len<0.001F)return;
-        P mid=(a+b)*0.5F; cylinder({mid.x-radius,mid.y-len*0.5F,mid.z-radius},radius*1.4F,len,5,r,g,bl,0.98F);
+        P d=b-a; const float len=std::sqrt(Dot(d,d)); if(len<0.001F)return;
+        const P along=d*(1.0F/len);
+        P side=Normalize(Cross(along,{0.0F,1.0F,0.0F}));
+        if(Dot(side,side)<0.1F) side={1.0F,0.0F,0.0F};
+        const P up=Normalize(Cross(side,along));
+        const P a0=a+side*radius+up*radius, a1=a-side*radius+up*radius;
+        const P a2=a-side*radius-up*radius, a3=a+side*radius-up*radius;
+        const P b0=b+side*radius+up*radius, b1=b-side*radius+up*radius;
+        const P b2=b-side*radius-up*radius, b3=b+side*radius-up*radius;
+        quad(a0,b0,b1,a1,r,g,bl); quad(a1,b1,b2,a2,r*0.9F,g*0.9F,bl*0.9F);
+        quad(a2,b2,b3,a3,r*0.8F,g*0.8F,bl*0.8F); quad(a3,b3,b0,a0,r*0.95F,g*0.95F,bl*0.95F);
     }
     void cabin(float x,float z,float scale) {
         const float y=Height(x,z);

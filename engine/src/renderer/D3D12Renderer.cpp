@@ -106,6 +106,10 @@ cbuffer SceneConstants : register(b0)
 };
 Texture2DArray<float> shadowMap : register(t2);
 Texture2D modelAlbedoTexture : register(t7);
+Texture2D modelNormalTexture : register(t8);
+Texture2D modelRoughnessTexture : register(t9);
+Texture2D modelMetallicTexture : register(t10);
+Texture2D modelOcclusionTexture : register(t11);
 SamplerState linearClamp : register(s0);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
@@ -189,12 +193,24 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
 float4 PSMain(PSInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
+    uint materialFlags = (uint)(input.material.w + 0.5);
+    if ((materialFlags & 2U) != 0U)
+    {
+        float3 tangentNormal = modelNormalTexture.Sample(linearClamp, input.uv).xyz * 2.0 - 1.0;
+        float3 dp1 = ddx(input.worldPosition);
+        float3 dp2 = ddy(input.worldPosition);
+        float2 duv1 = ddx(input.uv);
+        float2 duv2 = ddy(input.uv);
+        float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
+        float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
+        n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
+    }
     float3 v = normalize(cameraPosition.xyz - input.worldPosition);
     float3 l = normalize(float3(-0.42, 0.82, -0.36));
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
-    float3 sampledAlbedo = modelAlbedoTexture.Sample(linearClamp, input.uv).rgb;
-    albedo *= lerp(float3(1.0, 1.0, 1.0), sampledAlbedo, saturate(input.material.z));
+    if ((materialFlags & 1U) != 0U)
+        albedo *= modelAlbedoTexture.Sample(linearClamp, input.uv).rgb;
     // World-space multi-frequency noise breaks up large flat color regions without
     // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
     // grass and exposed-rock response while leaving trees and buildings mostly intact.
@@ -214,9 +230,23 @@ float4 PSMain(PSInput input) : SV_TARGET
     albedo = lerp(albedo, rockAlbedo, rockMask * 0.88);
     // Fine world-space breakup adds surface detail at multiple viewing distances.
     albedo *= 0.94 + 0.10 * fine + 0.07 * (macroNoise - 0.5);
+    float importedMaterial = saturate(input.material.z);
     float roughness = saturate(lerp(0.72 + 0.16 * fine + terrainColorMask * 0.12,
-        input.material.x + 0.05 * fine, saturate(input.material.z)));
-    float metallic = saturate(lerp(0.025, input.material.y, saturate(input.material.z)));
+        input.material.x + 0.05 * fine, importedMaterial));
+    float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
+    if ((materialFlags & 4U) != 0U)
+    {
+        float roughnessSample = modelRoughnessTexture.Sample(linearClamp, input.uv).r;
+        if ((materialFlags & 32U) != 0U)
+            roughnessSample = modelRoughnessTexture.Sample(linearClamp, input.uv).g;
+        roughness = saturate(roughness * roughnessSample);
+    }
+    if ((materialFlags & 8U) != 0U)
+        metallic = saturate(metallic * modelMetallicTexture.Sample(linearClamp, input.uv).r);
+    if ((materialFlags & 32U) != 0U)
+        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearClamp, input.uv).b);
+    float ambientOcclusion = (materialFlags & 16U) != 0U
+        ? modelOcclusionTexture.Sample(linearClamp, input.uv).r : 1.0;
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
@@ -228,7 +258,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * float3(4.2, 3.65, 2.9) * ndl * shadow;
     float3 sky = lerp(float3(0.055, 0.052, 0.048), float3(0.20, 0.31, 0.46), saturate(n.y * 0.5 + 0.5));
-    float3 ambient = sky * albedo * (1.0 - metallic) * 1.35;
+    float3 ambient = sky * albedo * (1.0 - metallic) * 1.35 * ambientOcclusion;
     float3 reflectedSky = lerp(float3(0.10, 0.13, 0.18), float3(0.56, 0.64, 0.72), saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
@@ -549,7 +579,7 @@ bool D3D12Renderer::CreateHdrTarget()
     m_device->CreateRenderTargetView(m_hdrTexture.Get(), nullptr, rtv);
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDescription{};
-    srvDescription.NumDescriptors = 8;
+    srvDescription.NumDescriptors = 12;
     srvDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(m_device->CreateDescriptorHeap(&srvDescription, IID_PPV_ARGS(m_srvHeap.GetAddressOf())))) {
@@ -976,7 +1006,7 @@ bool D3D12Renderer::CreatePipeline()
 
     D3D12_DESCRIPTOR_RANGE srvRange{};
     srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    srvRange.NumDescriptors = 8;
+    srvRange.NumDescriptors = 12;
     srvRange.BaseShaderRegister = 0;
     srvRange.RegisterSpace = 0;
     srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;

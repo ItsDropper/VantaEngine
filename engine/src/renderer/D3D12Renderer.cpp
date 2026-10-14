@@ -272,13 +272,13 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * float3(4.2, 3.65, 2.9) * ndl * shadow;
-    float3 sky = lerp(float3(0.105, 0.090, 0.072), float3(0.24, 0.27, 0.29), saturate(n.y * 0.5 + 0.5));
+    float3 sky = lerp(float3(0.12, 0.105, 0.085), float3(0.20, 0.19, 0.17), saturate(n.y * 0.5 + 0.5));
     float3 ambient = sky * albedo * (1.0 - metallic) * 1.05 * ambientOcclusion;
-    float3 reflectedSky = lerp(float3(0.12, 0.12, 0.10), float3(0.49, 0.49, 0.44), saturate(reflect(-v, n).y * 0.5 + 0.5));
+    float3 reflectedSky = lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25), saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
-    float3 fogColor = float3(0.36, 0.37, 0.34);
+    float3 fogColor = float3(0.30, 0.29, 0.26);
     // Preserve material colors. Channel-biased grading tints every surface.
     float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
     return float4(litColor, 1.0);
@@ -1605,15 +1605,13 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (depth >= 0.99999)
     {
         float horizon = saturate(1.0 - abs(input.uv.y - 0.52) * 1.7);
-        float3 skyTop = float3(0.060, 0.065, 0.060);
-        float3 horizonColor = float3(0.43, 0.42, 0.37);
+        float3 skyTop = float3(0.075, 0.070, 0.060);
+        float3 horizonColor = float3(0.35, 0.33, 0.28);
         float3 sky = lerp(skyTop, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
         float2 sunUv = input.uv - float2(0.73, 0.27);
         float sun = exp(-dot(sunUv, sunUv) * 1900.0);
         float halo = exp(-dot(sunUv, sunUv) * 85.0);
         sky += float3(7.0, 4.6, 2.4) * sun + float3(0.8, 0.38, 0.13) * halo;
-        // Neutral daylight white balance: remove the cyan cast from the sky pass.
-        sky *= float3(1.10, 1.02, 0.68);
         return float4(pow(ACES(max(sky, 0.0)), 1.0 / 2.2), 1.0);
     }
     uint width, height;
@@ -1646,9 +1644,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         }
     }
     color += bloom * (0.45 / 25.0);
-    // Final display-referred white balance applies to the complete world, including
-    // imported models and temporally accumulated pixels, not just terrain albedo.
-    color *= float3(1.12, 1.05, 0.62);
+    // Keep display transform channel-neutral; tint correction belongs in lighting,
+    // not in a global per-channel multiplier applied to every material.
     color = ACES(color * 1.05);
     color = pow(max(color, 0.0), 1.0 / 2.2);
     return float4(color, 1.0);

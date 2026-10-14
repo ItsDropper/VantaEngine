@@ -305,10 +305,22 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 radiance = float3(4.2, 3.45, 2.55);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
-    float3 sky = lerp(float3(0.025, 0.035, 0.055), float3(0.22, 0.30, 0.38), saturate(n.y));
+    // Analytic environment lighting approximates a prefiltered sky environment:
+    // diffuse irradiance follows the normal hemisphere; roughness broadens reflections.
+    float3 skyZenith = float3(0.18, 0.29, 0.43);
+    float3 skyGround = float3(0.055, 0.052, 0.045);
+    float3 diffuseIrradiance = lerp(skyGround, skyZenith, saturate(n.y * 0.5 + 0.5));
+    float3 reflectionDirection = reflect(-v, n);
+    float environmentHorizon = pow(saturate(1.0 - abs(reflectionDirection.y)), 1.6);
+    float3 environmentReflection = lerp(
+        lerp(skyGround, skyZenith, saturate(reflectionDirection.y * 0.5 + 0.5)),
+        float3(0.78, 0.47, 0.29), environmentHorizon * 0.32);
+    environmentReflection = lerp(environmentReflection, diffuseIrradiance, roughness * roughness);
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
-    float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25) * ambientOcclusion;
+    float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * ambientOcclusion;
+    float3 specularAmbient = environmentReflection * f * (1.0 - roughness * 0.72) * ambientOcclusion;
+    float3 ambient = diffuseAmbient * 0.72 + specularAmbient * 0.85;
     // Keep scene shading in linear HDR. Tone mapping and display transfer happen once
     // after the full scene has been composited, so bright highlights can bloom correctly.
     float3 color = direct + ambient;
@@ -321,6 +333,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
 
 constexpr char kPostProcessShaderSource[] = R"(
 Texture2D sceneTexture : register(t0);
+Texture2D depthTexture : register(t1);
 SamplerState sceneSampler : register(s0);
 struct PixelInput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 float3 ACESFilm(float3 x)
@@ -330,6 +343,34 @@ float3 ACESFilm(float3 x)
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 scene = sceneTexture.Sample(sceneSampler, input.uv).rgb;
+    uint depthWidth, depthHeight;
+    depthTexture.GetDimensions(depthWidth, depthHeight);
+    float2 depthTexel = 1.0 / float2(max(depthWidth, 1u), max(depthHeight, 1u));
+    float centerDepth = depthTexture.SampleLevel(sceneSampler, input.uv, 0).r;
+    float occlusion = 0.0;
+    float validSamples = 0.0;
+    // Depth-aware screen-space contact occlusion. Ignore sky/far-plane pixels.
+    if (centerDepth < 0.9999)
+    {
+        const float2 offsets[12] = {
+            float2(1,0), float2(-1,0), float2(0,1), float2(0,-1),
+            float2(2,1), float2(-2,1), float2(2,-1), float2(-2,-1),
+            float2(1,2), float2(-1,2), float2(1,-2), float2(-1,-2)
+        };
+        [unroll] for (int i = 0; i < 12; ++i)
+        {
+            float sampleDepth = depthTexture.SampleLevel(sceneSampler,
+                saturate(input.uv + offsets[i] * depthTexel * 2.0), 0).r;
+            if (sampleDepth < 0.9999)
+            {
+                float delta = centerDepth - sampleDepth;
+                float rangeWeight = saturate(1.0 - abs(delta) * 140.0);
+                occlusion += step(0.00018, delta) * rangeWeight;
+                validSamples += 1.0;
+            }
+        }
+    }
+    float ao = 1.0 - saturate(occlusion / max(validSamples, 1.0)) * 0.42;
     float2 texel;
     // A wide, thresholded 5x5 gather creates a restrained highlight bloom without
     // blurring the whole frame. UV offsets are scaled by the actual scene texture size
@@ -350,7 +391,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
         }
     }
     bloom *= (1.0 / 25.0);
-    float3 hdr = max(scene + bloom * 0.28, 0.0) * 1.08;
+    float3 hdr = max(scene * ao + bloom * 0.28, 0.0) * 1.08;
     float3 mapped = ACESFilm(hdr);
     // Convert linear-light output to display-referred sRGB-like output.
     mapped = pow(max(mapped, 0.0), 1.0 / 2.2);
@@ -419,22 +460,31 @@ bool CreateDepthResources(
     const UINT width,
     const UINT height,
     Microsoft::WRL::ComPtr<ID3D11Texture2D>& texture,
-    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>& view)
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>& view,
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& shaderResource)
 {
     D3D11_TEXTURE2D_DESC description{};
     description.Width = width;
     description.Height = height;
     description.MipLevels = 1;
     description.ArraySize = 1;
-    description.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    description.Format = DXGI_FORMAT_R24G8_TYPELESS;
     description.SampleDesc.Count = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    description.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 
+    D3D11_DEPTH_STENCIL_VIEW_DESC depthViewDescription{};
+    depthViewDescription.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthViewDescription.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDescription{};
+    shaderViewDescription.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    shaderViewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    shaderViewDescription.Texture2D.MipLevels = 1;
     if (FAILED(device->CreateTexture2D(&description, nullptr, texture.GetAddressOf())) ||
-        FAILED(device->CreateDepthStencilView(texture.Get(), nullptr, view.GetAddressOf())))
+        FAILED(device->CreateDepthStencilView(texture.Get(), &depthViewDescription, view.GetAddressOf())) ||
+        FAILED(device->CreateShaderResourceView(texture.Get(), &shaderViewDescription, shaderResource.GetAddressOf())))
     {
-        LogError("Could not create the depth buffer.");
+        LogError("Could not create the shader-readable depth buffer.");
         return false;
     }
     return true;
@@ -519,7 +569,8 @@ bool D3D11Renderer::CreateDepthTarget()
 {
     m_depthTexture.Reset();
     m_depthStencil.Reset();
-    return CreateDepthResources(m_device.Get(), m_width, m_height, m_depthTexture, m_depthStencil);
+    m_depthShaderResource.Reset();
+    return CreateDepthResources(m_device.Get(), m_width, m_height, m_depthTexture, m_depthStencil, m_depthShaderResource);
 }
 
 
@@ -1384,12 +1435,14 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->VSSetShader(m_skyVertexShader.Get(), nullptr, 0);
     m_context->PSSetShader(m_postProcessPixelShader.Get(), nullptr, 0);
     ID3D11ShaderResourceView* hdrView = m_hdrShaderResource.Get();
-    m_context->PSSetShaderResources(0, 1, &hdrView);
+    ID3D11ShaderResourceView* depthView = m_depthShaderResource.Get();
+    ID3D11ShaderResourceView* postViews[] = {hdrView, depthView};
+    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(postViews)), postViews);
     ID3D11SamplerState* postSampler = m_textureSampler.Get();
     m_context->PSSetSamplers(0, 1, &postSampler);
     m_context->Draw(3, 0);
-    ID3D11ShaderResourceView* noHdrView = nullptr;
-    m_context->PSSetShaderResources(0, 1, &noHdrView);
+    ID3D11ShaderResourceView* noHdrViews[2]{};
+    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noHdrViews)), noHdrViews);
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
     (void)m_swapChain->Present(1, 0);
 }

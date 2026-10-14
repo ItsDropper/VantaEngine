@@ -4,6 +4,7 @@
 #include "vanta/core/Log.hpp"
 #include "vanta/platform/Window.hpp"
 #include "vanta/renderer/D3D11Renderer.hpp"
+#include "vanta/renderer/D3D12Renderer.hpp"
 #include "vanta/renderer/NvidiaRendering.hpp"
 
 #include <algorithm>
@@ -12,13 +13,38 @@
 
 namespace vanta
 {
-int Engine::Run()
+int Engine::Run(const bool useD3D12)
 {
     Window window;
     if (!window.Create(L"VantaEngine | Camera Playground", 1280, 720))
     {
         LogError("Engine startup failed while creating the window.");
         return 1;
+    }
+
+    if (useD3D12)
+    {
+        LogInfo("Rendering backend: Direct3D 12 (selected explicitly).");
+        D3D12Renderer renderer;
+        if (!renderer.Initialize(window.NativeHandle(), window.Width(), window.Height()))
+        {
+            LogError("Engine startup failed while initializing the Direct3D 12 backend.");
+            return 1;
+        }
+        while (window.IsOpen())
+        {
+            window.PollEvents();
+            if (!window.IsOpen()) break;
+            const int width = window.Width();
+            const int height = window.Height();
+            if (width > 0 && height > 0)
+            {
+                if (!renderer.Resize(width, height)) return 1;
+                renderer.Render();
+            }
+        }
+        LogInfo("Direct3D 12 backend shut down cleanly.");
+        return 0;
     }
 
     const auto graphicsCapabilities = renderer::QueryNvidiaRenderingCapabilities();

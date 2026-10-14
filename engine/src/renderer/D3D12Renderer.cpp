@@ -654,20 +654,129 @@ bool D3D12Renderer::CreateSceneGeometry()
     std::vector<unsigned int> indices;
     AppendTerrain(vertices, indices);
     renderer::BuildDetailedWorld(vertices, indices);
-    if (vertices.empty() || indices.empty() || indices.size() > UINT_MAX) {
-        LogError("Direct3D 12: procedural scene mesh is empty or too large.");
+    std::vector<std::array<float, 4>> materialParameters(vertices.size(), {0.78F, 0.0F, 0.0F, 0.0F});
+
+    const std::filesystem::path modelDirectory = std::filesystem::path{VANTA_ASSET_DIR} / "models";
+    const std::array<std::filesystem::path, 3> modelCandidates = {
+        modelDirectory / "stone_house.glb", modelDirectory / "stone_house.gltf", modelDirectory / "stone_house.obj"
+    };
+    renderer::CpuModel model;
+    std::string importError;
+    bool modelLoaded = false;
+    for (const auto& path : modelCandidates) {
+        if (!std::filesystem::exists(path)) continue;
+        const std::string extension = path.extension().string();
+        const bool loaded = (extension == ".glb" || extension == ".gltf")
+            ? renderer::LoadGltf(path, model, importError)
+            : renderer::LoadWavefrontObj(path, model, importError);
+        if (loaded) {
+            modelLoaded = true;
+            break;
+        }
+        LogError(importError.c_str());
+    }
+
+    renderer::CpuTexture diffuseTexture;
+    bool hasDiffuseTexture = false;
+    if (modelLoaded) {
+        if (model.materials.empty()) {
+            renderer::CpuMaterial material;
+            material.diffuseTexture = model.diffuseTexture;
+            material.normalTexture = model.normalTexture;
+            material.roughnessTexture = model.roughnessTexture;
+            material.metallicTexture = model.metallicTexture;
+            material.ambientOcclusionTexture = model.ambientOcclusionTexture;
+            material.baseColor = model.baseColor;
+            material.roughness = model.roughness;
+            material.metallic = model.metallic;
+            model.materials.push_back(material);
+        }
+        if (model.submeshes.empty())
+            model.submeshes.push_back({0U, static_cast<std::uint32_t>(model.indices.size()), 0U});
+        const auto texturePath = model.materials.front().diffuseTexture;
+        if (!texturePath.empty() && std::filesystem::exists(texturePath)) {
+            hasDiffuseTexture = renderer::LoadWicTexture(texturePath, diffuseTexture);
+            if (!hasDiffuseTexture) LogError("Direct3D 12: could not decode imported model base-color texture; using material factors.");
+        }
+        constexpr float modelScale = 1.8F;
+        constexpr float modelX = 8.0F;
+        constexpr float modelZ = 7.0F;
+        const float modelY = TerrainHeight(modelX, modelZ) + 0.025F;
+        bool validModel = !model.vertices.empty() && !model.indices.empty();
+        for (const auto& submesh : model.submeshes) {
+            if (submesh.materialIndex >= model.materials.size() ||
+                static_cast<std::uint64_t>(submesh.firstIndex) + submesh.indexCount > model.indices.size() ||
+                (submesh.indexCount % 3U) != 0U) {
+                validModel = false;
+                break;
+            }
+        }
+        if (validModel) {
+            for (const renderer::CpuSubmesh& submesh : model.submeshes) {
+                const renderer::CpuMaterial& material = model.materials[submesh.materialIndex];
+                const bool useDiffuse = hasDiffuseTexture && material.diffuseTexture == texturePath;
+                for (UINT offset = 0; offset < submesh.indexCount; ++offset) {
+                    const unsigned int sourceIndex = model.indices[submesh.firstIndex + offset];
+                    if (sourceIndex >= model.vertices.size()) { validModel = false; break; }
+                    const renderer::ModelVertex& source = model.vertices[sourceIndex];
+                    const unsigned int destinationIndex = static_cast<unsigned int>(vertices.size());
+                    vertices.push_back({
+                        {source.position.x * modelScale + modelX, source.position.y * modelScale + modelY,
+                         source.position.z * modelScale + modelZ},
+                        {source.normal.x, source.normal.y, source.normal.z},
+                        {material.baseColor.x, material.baseColor.y, material.baseColor.z, 1.0F},
+                        {source.u, source.v}
+                    });
+                    materialParameters.push_back({std::clamp(material.roughness, 0.04F, 1.0F),
+                        std::clamp(material.metallic, 0.0F, 1.0F), useDiffuse ? 1.0F : 0.0F, 0.0F});
+                    indices.push_back(destinationIndex);
+                }
+                if (!validModel) break;
+            }
+            if (!validModel) LogError("Direct3D 12: imported model contained an invalid index; omitting it.");
+        } else {
+            LogError("Direct3D 12: imported model has invalid geometry or material ranges; omitting it.");
+        }
+    }
+
+    if (diffuseTexture.width == 0 || diffuseTexture.height == 0 ||
+        diffuseTexture.rgba.size() < static_cast<std::size_t>(diffuseTexture.width) * diffuseTexture.height * 4U) {
+        diffuseTexture.width = 1;
+        diffuseTexture.height = 1;
+        diffuseTexture.rgba = {255, 255, 255, 255};
+        hasDiffuseTexture = false;
+    }
+    if (!CreateModelAlbedoTexture(diffuseTexture.width, diffuseTexture.height, diffuseTexture.rgba.data())) return false;
+
+    if (vertices.empty() || indices.empty() || indices.size() > UINT_MAX ||
+        vertices.size() != materialParameters.size() ||
+        vertices.size() > UINT_MAX / sizeof(D3D12WorldVertex)) {
+        LogError("Direct3D 12: procedural/imported scene mesh is empty or too large.");
         return false;
     }
-    const UINT64 vertexBytes = static_cast<UINT64>(vertices.size()) * sizeof(renderer::WorldVertex);
+    std::vector<D3D12WorldVertex> gpuVertices;
+    gpuVertices.reserve(vertices.size());
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const renderer::WorldVertex& source = vertices[i];
+        D3D12WorldVertex vertex{};
+        std::copy(std::begin(source.position), std::end(source.position), std::begin(vertex.position));
+        std::copy(std::begin(source.normal), std::end(source.normal), std::begin(vertex.normal));
+        std::copy(std::begin(source.color), std::end(source.color), std::begin(vertex.color));
+        std::copy(std::begin(source.uv), std::end(source.uv), std::begin(vertex.uv));
+        std::copy(materialParameters[i].begin(), materialParameters[i].end(), std::begin(vertex.material));
+        gpuVertices.push_back(vertex);
+    }
+    const UINT64 vertexBytes = static_cast<UINT64>(gpuVertices.size()) * sizeof(D3D12WorldVertex);
     const UINT64 indexBytes = static_cast<UINT64>(indices.size()) * sizeof(unsigned int);
-    if (!CreateUploadBuffer(m_device.Get(), vertexBytes, m_vertexBuffer) ||
+    if (vertexBytes > UINT_MAX || indexBytes > UINT_MAX ||
+        !CreateUploadBuffer(m_device.Get(), vertexBytes, m_vertexBuffer) ||
         !CreateUploadBuffer(m_device.Get(), indexBytes, m_indexBuffer)) {
         LogError("Direct3D 12: scene geometry buffer allocation failed.");
         return false;
     }
     void* mapped = nullptr;
     if (FAILED(m_vertexBuffer->Map(0, nullptr, &mapped))) return false;
-    std::memcpy(mapped, vertices.data(), static_cast<size_t>(vertexBytes));
+    std::memcpy(mapped, gpuVertices.data(), static_cast<size_t>(vertexBytes));
     m_vertexBuffer->Unmap(0, nullptr);
     if (FAILED(m_indexBuffer->Map(0, nullptr, &mapped))) return false;
     std::memcpy(mapped, indices.data(), static_cast<size_t>(indexBytes));
@@ -675,11 +784,91 @@ bool D3D12Renderer::CreateSceneGeometry()
 
     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
     m_vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
-    m_vertexBufferView.StrideInBytes = sizeof(renderer::WorldVertex);
+    m_vertexBufferView.StrideInBytes = sizeof(D3D12WorldVertex);
     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_indexBufferView.SizeInBytes = static_cast<UINT>(indexBytes);
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     m_indexCount = static_cast<UINT>(indices.size());
+    LogInfo("Direct3D 12: loaded procedural environment and imported base-color PBR model geometry.");
+    return true;
+}
+
+bool D3D12Renderer::CreateModelAlbedoTexture(UINT width, UINT height, const std::uint8_t* rgba)
+{
+    if (width == 0 || height == 0 || rgba == nullptr) return false;
+    D3D12_HEAP_PROPERTIES defaultHeap{};
+    defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    defaultHeap.CreationNodeMask = 1;
+    defaultHeap.VisibleNodeMask = 1;
+    D3D12_RESOURCE_DESC textureDesc{};
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    textureDesc.Width = width;
+    textureDesc.Height = height;
+    textureDesc.DepthOrArraySize = 1;
+    textureDesc.MipLevels = 1;
+    textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(m_modelAlbedoTexture.GetAddressOf())))) {
+        LogError("Direct3D 12: imported model texture allocation failed.");
+        return false;
+    }
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT rows = 0;
+    UINT64 rowSize = 0;
+    UINT64 uploadBytes = 0;
+    m_device->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint, &rows, &rowSize, &uploadBytes);
+    Microsoft::WRL::ComPtr<ID3D12Resource> upload;
+    if (rows != height || rowSize < static_cast<UINT64>(width) * 4U ||
+        !CreateUploadBuffer(m_device.Get(), uploadBytes, upload)) {
+        LogError("Direct3D 12: imported model texture staging allocation failed.");
+        return false;
+    }
+    void* mapped = nullptr;
+    if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
+    const auto* sourceBytes = rgba;
+    auto* destinationBytes = static_cast<std::uint8_t*>(mapped) + footprint.Offset;
+    for (UINT row = 0; row < height; ++row)
+        std::memcpy(destinationBytes + static_cast<std::size_t>(row) * footprint.Footprint.RowPitch,
+            sourceBytes + static_cast<std::size_t>(row) * width * 4U, static_cast<std::size_t>(width) * 4U);
+    upload->Unmap(0, nullptr);
+
+    if (FAILED(m_commandAllocators[0]->Reset()) || FAILED(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr))) {
+        LogError("Direct3D 12: texture upload command recording reset failed.");
+        return false;
+    }
+    D3D12_TEXTURE_COPY_LOCATION destination{};
+    destination.pResource = m_modelAlbedoTexture.Get();
+    destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    destination.SubresourceIndex = 0;
+    D3D12_TEXTURE_COPY_LOCATION source{};
+    source.pResource = upload.Get();
+    source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    source.PlacedFootprint = footprint;
+    m_commandList->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    D3D12_RESOURCE_BARRIER toShaderResource{};
+    toShaderResource.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    toShaderResource.Transition.pResource = m_modelAlbedoTexture.Get();
+    toShaderResource.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    toShaderResource.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    toShaderResource.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &toShaderResource);
+    if (FAILED(m_commandList->Close())) return false;
+    ID3D12CommandList* commandLists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, commandLists);
+    if (!WaitForGpu()) {
+        LogError("Direct3D 12: waiting for model texture upload failed.");
+        return false;
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srv.Texture2D.MipLevels = 1;
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += static_cast<SIZE_T>(7) * m_srvDescriptorSize;
+    m_device->CreateShaderResourceView(m_modelAlbedoTexture.Get(), &srv, handle);
     return true;
 }
 

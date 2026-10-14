@@ -11,8 +11,8 @@ namespace
 int failures = 0;
 void Check(bool condition, const char* name)
 {
-    if (condition) std::cout << "PASS: " << name << '\\n';
-    else { std::cerr << "FAIL: " << name << '\\n'; ++failures; }
+    if (condition) std::cout << "PASS: " << name << '\n';
+    else { std::cerr << "FAIL: " << name << '\n'; ++failures; }
 }
 }
 
@@ -50,7 +50,7 @@ int main()
     std::string error;
     const bool loaded = vanta::renderer::LoadGltf(path, model, error);
     Check(loaded, "loads a glTF 2.0 scene with an embedded geometry buffer");
-    if (!loaded) std::cerr << error << '\\n';
+    if (!loaded) std::cerr << error << '\n';
     Check(model.vertices.size() == 3 && model.indices.size() == 3,
         "imports indexed triangle geometry");
     Check(model.submeshes.size() == 1 && model.submeshes[0].indexCount == 3 &&

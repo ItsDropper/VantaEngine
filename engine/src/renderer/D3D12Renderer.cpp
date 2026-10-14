@@ -67,6 +67,18 @@ Mat4 OrthographicLH(float width, float height, float nearZ, float farZ)
     return result;
 }
 
+float Halton(std::uint32_t index, std::uint32_t base)
+{
+    float result = 0.0F;
+    float fraction = 1.0F / static_cast<float>(base);
+    while (index > 0U) {
+        result += fraction * static_cast<float>(index % base);
+        index /= base;
+        fraction /= static_cast<float>(base);
+    }
+    return result;
+}
+
 bool InvertMatrix(const Mat4& input, Mat4& output)
 {
     float augmented[4][8]{};
@@ -1613,8 +1625,11 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
                        std::cos(cameraYaw) * std::cos(cameraPitch)};
     const auto view = Mat4::LookAtLH(eye, eye + forward, {0.0F, 1.0F, 0.0F});
     if (!view) return;
-    const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(68.0F),
+    Mat4 projection = Mat4::Perspective(math::DegreesToRadians(68.0F),
         static_cast<float>(m_width) / static_cast<float>(m_height), 0.08F, 260.0F);
+    const std::uint32_t jitterIndex = static_cast<std::uint32_t>(m_renderFrameNumber % 8U) + 1U;
+    projection.At(0, 2) += (Halton(jitterIndex, 2U) - 0.5F) * 2.0F / static_cast<float>(m_width);
+    projection.At(1, 2) += (Halton(jitterIndex, 3U) - 0.5F) * 2.0F / static_cast<float>(m_height);
     SceneConstants constants{};
     constants.viewProjection = projection * *view;
     const Vec3 lightDirection = *Vec3{-0.42F, 0.82F, -0.36F}.Normalized();
@@ -1867,6 +1882,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_previousCameraZ = cameraZ;
     m_previousCameraYaw = cameraYaw;
     m_previousCameraPitch = cameraPitch;
+    ++m_renderFrameNumber;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 }
 } // namespace vanta

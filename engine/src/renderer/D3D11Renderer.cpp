@@ -1239,7 +1239,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     }
 
     // Restore the main color/depth targets and camera viewport.
-    ID3D11RenderTargetView* mainTarget = m_renderTarget.Get();
+    // Continue drawing the 3D scene into the HDR target; the swap-chain target is only for final compositing.
+    ID3D11RenderTargetView* mainTarget = m_hdrRenderTarget.Get();
     m_context->OMSetRenderTargets(1, &mainTarget, m_depthStencil.Get());
     D3D11_VIEWPORT mainViewport{};
     mainViewport.Width = static_cast<float>(m_width);

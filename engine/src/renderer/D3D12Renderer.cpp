@@ -383,6 +383,7 @@ std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UI
         }
     }
     return result;
+}
 } // namespace
 
 D3D12Renderer::~D3D12Renderer()

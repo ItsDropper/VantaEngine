@@ -5,6 +5,7 @@
 #include "vanta/renderer/ObjLoader.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
 #include "vanta/renderer/WicTextureLoader.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -850,9 +851,12 @@ bool D3D11Renderer::CreatePipeline()
                 const float waveA = std::sin((u * 9.0F + std::sin(v * 17.0F) * 0.12F) * 6.2831853F);
                 const float waveB = std::cos((v * 13.0F + std::sin(u * 11.0F) * 0.08F) * 6.2831853F);
                 const float grain = 0.5F + 0.5F * std::sin((u * 3.0F + std::sin(v * 5.0F) * 0.04F) * 6.2831853F);
-                const unsigned int hash = (x * 374761393U + y * 668265263U + 1442695041U) ^
-                    ((x + 31U) * (y + 17U) * 2246822519U);
-                const float noise = static_cast<float>((hash ^ (hash >> 13U)) & 255U) / 255.0F;
+                // Integer-frequency waves are periodic at the tile boundary, so wrap sampling
+                // remains seamless even when the GPU selects lower mip levels.
+                const float noise = std::clamp(0.5F +
+                    0.24F * std::sin((u * 37.0F + std::cos(v * 2.0F * 3.14159265F * 11.0F) * 0.035F) * 6.2831853F) +
+                    0.20F * std::cos((v * 29.0F + std::sin(u * 2.0F * 3.14159265F * 13.0F) * 0.03F) * 6.2831853F) +
+                    0.06F * std::sin((u * 71.0F + v * 53.0F) * 6.2831853F), 0.0F, 1.0F);
                 float r = 0.0F, g = 0.0F, b = 0.0F;
                 if (kind == 0) { // moss and short grass
                     const float value = 0.70F + 0.22F * noise + 0.08F * waveA + 0.04F * waveB;

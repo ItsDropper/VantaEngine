@@ -90,6 +90,8 @@ cbuffer SceneConstants : register(b0)
     float fogDensity;
     float3 sunDirection;
     float fogStart;
+    float4 materialProperties;
+    float4 baseColorFactor;
 };
 Texture2D diffuseTexture : register(t0);
 SamplerState diffuseSampler : register(s0);
@@ -122,22 +124,62 @@ PixelInput VSMain(VertexInput input)
     return output;
 }
 
+float DistributionGGX(float3 n, float3 h, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float nDotH = saturate(dot(n, h));
+    float nDotH2 = nDotH * nDotH;
+    float denominator = nDotH2 * (a2 - 1.0) + 1.0;
+    return a2 / max(3.14159265 * denominator * denominator, 0.0001);
+}
+float GeometrySchlickGGX(float nDotV, float roughness)
+{
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return nDotV / max(nDotV * (1.0 - k) + k, 0.0001);
+}
+float GeometrySmith(float3 n, float3 v, float3 l, float roughness)
+{
+    return GeometrySchlickGGX(saturate(dot(n, v)), roughness) *
+           GeometrySchlickGGX(saturate(dot(n, l)), roughness);
+}
+float3 FresnelSchlick(float cosTheta, float3 f0)
+{
+    return f0 + (1.0 - f0) * pow(1.0 - saturate(cosTheta), 5.0);
+}
+float3 ACESFilm(float3 x)
+{
+    return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}
 float4 PSMain(PixelInput input) : SV_TARGET
 {
-    float3 normal = normalize(input.normal);
-    float3 lightDirection = normalize(-sunDirection);
-    float diffuse = saturate(dot(normal, lightDirection));
-    float3 viewDirection = normalize(cameraPosition - input.worldPosition);
-    float3 halfDirection = normalize(lightDirection + viewDirection);
-    float specular = pow(saturate(dot(normal, halfDirection)), 36.0) * 0.16;
-    float3 skyFill = lerp(float3(0.035, 0.055, 0.085), float3(0.24, 0.32, 0.40), saturate(normal.y));
-    float3 lighting = skyFill + diffuse * float3(1.0, 0.82, 0.62) * 1.25;
-    float4 albedo = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
-    float3 litColor = albedo.rgb * lighting + specular;
+    float3 n = normalize(input.normal);
+    float3 v = normalize(cameraPosition - input.worldPosition);
+    float3 l = normalize(-sunDirection);
+    float3 h = normalize(v + l);
+    float roughness = clamp(materialProperties.x, 0.04, 1.0);
+    float metallic = saturate(materialProperties.y);
+    float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
+    float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
+    float nDotL = saturate(dot(n, l));
+    float nDotV = max(saturate(dot(n, v)), 0.001);
+    float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
+    float3 f = FresnelSchlick(saturate(dot(h, v)), f0);
+    float ndf = DistributionGGX(n, h, roughness);
+    float geometry = GeometrySmith(n, v, l, roughness);
+    float3 specular = (ndf * geometry * f) / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);
+    float3 kD = (1.0 - f) * (1.0 - metallic);
+    float3 radiance = float3(4.2, 3.45, 2.55);
+    float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL;
+    float3 sky = lerp(float3(0.025, 0.035, 0.055), float3(0.22, 0.30, 0.38), saturate(n.y));
+    float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25);
+    float3 color = ACESFilm(direct + ambient);
+    color = pow(max(color, 0.0), 1.0 / 2.2);
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
-    float3 fogColor = float3(0.29, 0.39, 0.49);
-    return float4(lerp(litColor, fogColor, fog), albedo.a);
+    float3 fogColor = float3(0.42, 0.48, 0.55);
+    return float4(lerp(color, fogColor, fog), sampled.a * baseColorFactor.a);
 }
 )";
 
@@ -554,7 +596,7 @@ bool D3D11Renderer::CreatePipeline()
     textureDescription.Height = image.height;
     textureDescription.MipLevels = 1;
     textureDescription.ArraySize = 1;
-    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    textureDescription.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     textureDescription.SampleDesc.Count = 1;
     textureDescription.Usage = D3D11_USAGE_IMMUTABLE;
     textureDescription.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -688,7 +730,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const auto drawCube = [&](const Mat4& worldTransform)
     {
         const SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F},
-            {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F};
+            {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
+            {0.32F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
@@ -703,7 +746,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     // Render terrain and forest as merged static meshes; the ground is now a real walkable-scale landscape.
     const Mat4 identity = Mat4::Identity();
     const SceneConstants worldConstants{projection * view, identity, 0U, {0.0F, 0.0F, 0.0F},
-        {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F};
+        {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
+        {0.92F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
     D3D11_MAPPED_SUBRESOURCE worldMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &worldMapped))) {
         *static_cast<SceneConstants*>(worldMapped.pData) = worldConstants;
@@ -728,7 +772,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     // Render the imported house with its MTL diffuse texture.
     const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
     const SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F},
-        {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F};
+        {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
+        {model.roughness, model.metallic, 0.0F, 0.0F},
+        {model.baseColor.x, model.baseColor.y, model.baseColor.z, 1.0F}};
     D3D11_MAPPED_SUBRESOURCE houseMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
         *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;

@@ -1013,15 +1013,23 @@ bool D3D12Renderer::CreateSceneGeometry()
     return true;
 }
 
-bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8_t* rgba,
-                                              UINT descriptorIndex, bool srgb)
+bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers,
+                                                    const std::vector<std::uint8_t>& rgbaLayers,
+                                                    UINT descriptorIndex, bool srgb)
 {
-    if (width == 0 || height == 0 || rgba == nullptr || descriptorIndex < 7U || descriptorIndex >= 12U) return false;
-    std::vector<std::vector<std::uint8_t>> mipPixels;
-    const std::size_t baseBytes = static_cast<std::size_t>(width) * height * 4U;
-    mipPixels.emplace_back(rgba, rgba + baseBytes);
-    UINT mipWidth = width;
-    UINT mipHeight = height;
+    if (width == 0 || height == 0 || layers == 0 ||
+        layers > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION ||
+        descriptorIndex < 7U || descriptorIndex >= 12U) return false;
+    const std::size_t layerBytes = static_cast<std::size_t>(width) * height * 4U;
+    if (layerBytes == 0U || rgbaLayers.size() < layerBytes * layers) return false;
+
+    UINT mipLevels = 1;
+    for (UINT w = width, h = height; w > 1U || h > 1U; ++mipLevels) {
+        w = std::max(1U, w / 2U);
+        h = std::max(1U, h / 2U);
+    }
+    const std::size_t subresourceCount = static_cast<std::size_t>(layers) * mipLevels;
+    std::vector<std::vector<std::uint8_t>> subresources(subresourceCount);
     const auto toLinear = [](float c) {
         return c <= 0.04045F ? c / 12.92F : std::pow((c + 0.055F) / 1.055F, 2.4F);
     };
@@ -1029,37 +1037,45 @@ bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8
         c = std::clamp(c, 0.0F, 1.0F);
         return c <= 0.0031308F ? c * 12.92F : 1.055F * std::pow(c, 1.0F / 2.4F) - 0.055F;
     };
-    while (mipWidth > 1U || mipHeight > 1U) {
-        const UINT nextWidth = std::max(1U, mipWidth / 2U);
-        const UINT nextHeight = std::max(1U, mipHeight / 2U);
-        const auto& previous = mipPixels.back();
-        std::vector<std::uint8_t> next(static_cast<std::size_t>(nextWidth) * nextHeight * 4U);
-        for (UINT y = 0; y < nextHeight; ++y) {
-            for (UINT x = 0; x < nextWidth; ++x) {
-                for (UINT channel = 0; channel < 4; ++channel) {
-                    float sum = 0.0F;
-                    for (UINT oy = 0; oy < 2; ++oy) {
-                        for (UINT ox = 0; ox < 2; ++ox) {
-                            const UINT sx = std::min(mipWidth - 1U, x * 2U + ox);
-                            const UINT sy = std::min(mipHeight - 1U, y * 2U + oy);
-                            float value = static_cast<float>(previous[(static_cast<std::size_t>(sy) * mipWidth + sx) * 4U + channel]) / 255.0F;
-                            if (srgb && channel < 3U) value = toLinear(value);
-                            sum += value;
+    for (UINT layer = 0; layer < layers; ++layer) {
+        const std::size_t baseOffset = static_cast<std::size_t>(layer) * layerBytes;
+        subresources[static_cast<std::size_t>(layer) * mipLevels].assign(
+            rgbaLayers.begin() + static_cast<std::ptrdiff_t>(baseOffset),
+            rgbaLayers.begin() + static_cast<std::ptrdiff_t>(baseOffset + layerBytes));
+        UINT previousWidth = width;
+        UINT previousHeight = height;
+        for (UINT mip = 1; mip < mipLevels; ++mip) {
+            const UINT nextWidth = std::max(1U, previousWidth / 2U);
+            const UINT nextHeight = std::max(1U, previousHeight / 2U);
+            const auto& previous = subresources[static_cast<std::size_t>(layer) * mipLevels + mip - 1U];
+            std::vector<std::uint8_t> next(static_cast<std::size_t>(nextWidth) * nextHeight * 4U);
+            for (UINT y = 0; y < nextHeight; ++y) {
+                for (UINT x = 0; x < nextWidth; ++x) {
+                    for (UINT channel = 0; channel < 4; ++channel) {
+                        float sum = 0.0F;
+                        for (UINT oy = 0; oy < 2; ++oy) {
+                            for (UINT ox = 0; ox < 2; ++ox) {
+                                const UINT sx = std::min(previousWidth - 1U, x * 2U + ox);
+                                const UINT sy = std::min(previousHeight - 1U, y * 2U + oy);
+                                float value = static_cast<float>(previous[
+                                    (static_cast<std::size_t>(sy) * previousWidth + sx) * 4U + channel]) / 255.0F;
+                                if (srgb && channel < 3U) value = toLinear(value);
+                                sum += value;
+                            }
                         }
+                        float value = sum * 0.25F;
+                        if (srgb && channel < 3U) value = toSrgb(value);
+                        next[(static_cast<std::size_t>(y) * nextWidth + x) * 4U + channel] =
+                            static_cast<std::uint8_t>(std::clamp(std::lround(value * 255.0F), 0L, 255L));
                     }
-                    float value = sum * 0.25F;
-                    if (srgb && channel < 3U) value = toSrgb(value);
-                    next[(static_cast<std::size_t>(y) * nextWidth + x) * 4U + channel] =
-                        static_cast<std::uint8_t>(std::clamp(std::lround(value * 255.0F), 0L, 255L));
                 }
             }
+            subresources[static_cast<std::size_t>(layer) * mipLevels + mip] = std::move(next);
+            previousWidth = nextWidth;
+            previousHeight = nextHeight;
         }
-        mipPixels.push_back(std::move(next));
-        mipWidth = nextWidth;
-        mipHeight = nextHeight;
     }
 
-    const UINT mipLevels = static_cast<UINT>(mipPixels.size());
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
     defaultHeap.CreationNodeMask = 1;
@@ -1068,7 +1084,7 @@ bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     textureDesc.Width = width;
     textureDesc.Height = height;
-    textureDesc.DepthOrArraySize = 1;
+    textureDesc.DepthOrArraySize = static_cast<UINT16>(layers);
     textureDesc.MipLevels = static_cast<UINT16>(mipLevels);
     textureDesc.Format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     textureDesc.SampleDesc.Count = 1;
@@ -1076,57 +1092,65 @@ bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
             IID_PPV_ARGS(m_modelMaterialTextures[descriptorIndex - 7U].GetAddressOf())))) {
-        LogError("Direct3D 12: imported material texture allocation failed.");
+        LogError("Direct3D 12: imported material texture-array allocation failed.");
         return false;
     }
 
-    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(mipLevels);
-    std::vector<UINT> rowCounts(mipLevels);
-    std::vector<UINT64> rowSizes(mipLevels);
+    const UINT totalSubresources = static_cast<UINT>(subresourceCount);
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(totalSubresources);
+    std::vector<UINT> rowCounts(totalSubresources);
+    std::vector<UINT64> rowSizes(totalSubresources);
     UINT64 uploadBytes = 0;
-    m_device->GetCopyableFootprints(&textureDesc, 0, mipLevels, 0,
+    m_device->GetCopyableFootprints(&textureDesc, 0, totalSubresources, 0,
         footprints.data(), rowCounts.data(), rowSizes.data(), &uploadBytes);
     Microsoft::WRL::ComPtr<ID3D12Resource> upload;
     if (!CreateUploadBuffer(m_device.Get(), uploadBytes, upload)) {
-        LogError("Direct3D 12: material texture staging allocation failed.");
+        LogError("Direct3D 12: material texture-array staging allocation failed.");
         return false;
     }
     void* mapped = nullptr;
     if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
-    mipWidth = width;
-    mipHeight = height;
-    for (UINT mip = 0; mip < mipLevels; ++mip) {
-        if (rowCounts[mip] != mipHeight || rowSizes[mip] < static_cast<UINT64>(mipWidth) * 4U) {
-            upload->Unmap(0, nullptr);
-            LogError("Direct3D 12: material mip footprint is invalid.");
-            return false;
+    for (UINT layer = 0; layer < layers; ++layer) {
+        UINT mipWidth = width;
+        UINT mipHeight = height;
+        for (UINT mip = 0; mip < mipLevels; ++mip) {
+            const UINT subresource = layer * mipLevels + mip;
+            if (rowCounts[subresource] != mipHeight ||
+                rowSizes[subresource] < static_cast<UINT64>(mipWidth) * 4U) {
+                upload->Unmap(0, nullptr);
+                LogError("Direct3D 12: material texture-array mip footprint is invalid.");
+                return false;
+            }
+            auto* destination = static_cast<std::uint8_t*>(mapped) + footprints[subresource].Offset;
+            const auto& pixels = subresources[subresource];
+            for (UINT row = 0; row < mipHeight; ++row)
+                std::memcpy(destination + static_cast<std::size_t>(row) * footprints[subresource].Footprint.RowPitch,
+                    pixels.data() + static_cast<std::size_t>(row) * mipWidth * 4U,
+                    static_cast<std::size_t>(mipWidth) * 4U);
+            mipWidth = std::max(1U, mipWidth / 2U);
+            mipHeight = std::max(1U, mipHeight / 2U);
         }
-        auto* destination = static_cast<std::uint8_t*>(mapped) + footprints[mip].Offset;
-        const auto& pixels = mipPixels[mip];
-        for (UINT row = 0; row < mipHeight; ++row)
-            std::memcpy(destination + static_cast<std::size_t>(row) * footprints[mip].Footprint.RowPitch,
-                pixels.data() + static_cast<std::size_t>(row) * mipWidth * 4U,
-                static_cast<std::size_t>(mipWidth) * 4U);
-        mipWidth = std::max(1U, mipWidth / 2U);
-        mipHeight = std::max(1U, mipHeight / 2U);
     }
     upload->Unmap(0, nullptr);
 
     if (FAILED(m_commandAllocators[0]->Reset()) ||
         FAILED(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr))) {
-        LogError("Direct3D 12: material upload command recording reset failed.");
+        LogError("Direct3D 12: material texture-array upload command reset failed.");
         return false;
     }
-    for (UINT mip = 0; mip < mipLevels; ++mip) {
-        D3D12_TEXTURE_COPY_LOCATION destination{};
-        destination.pResource = m_modelMaterialTextures[descriptorIndex - 7U].Get();
-        destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        destination.SubresourceIndex = mip;
-        D3D12_TEXTURE_COPY_LOCATION source{};
-        source.pResource = upload.Get();
-        source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        source.PlacedFootprint = footprints[mip];
-        m_commandList->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    for (UINT layer = 0; layer < layers; ++layer) {
+        for (UINT mip = 0; mip < mipLevels; ++mip) {
+            const UINT subresource = layer * mipLevels + mip;
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource = m_modelMaterialTextures[descriptorIndex - 7U].Get();
+            destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            destination.SubresourceIndex = subresource;
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = upload.Get();
+            source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            source.PlacedFootprint = footprints[subresource];
+            m_commandList->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+        }
     }
     D3D12_RESOURCE_BARRIER toShaderResource{};
     toShaderResource.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -1139,16 +1163,19 @@ bool D3D12Renderer::CreateModelTexture(UINT width, UINT height, const std::uint8
     ID3D12CommandList* commandLists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, commandLists);
     if (!WaitForGpu()) {
-        LogError("Direct3D 12: waiting for material texture upload failed.");
+        LogError("Direct3D 12: waiting for material texture-array upload failed.");
         return false;
     }
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Format = textureDesc.Format;
-    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srv.Texture2D.MipLevels = mipLevels;
+    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+    srv.Texture2DArray.MipLevels = mipLevels;
+    srv.Texture2DArray.ArraySize = layers;
+    srv.Texture2DArray.FirstArraySlice = 0;
     m_modelMaterialMipLevels[descriptorIndex - 7U] = mipLevels;
+    m_modelMaterialLayerCount = layers;
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvDescriptorSize;
     m_device->CreateShaderResourceView(m_modelMaterialTextures[descriptorIndex - 7U].Get(), &srv, handle);

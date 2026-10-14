@@ -1089,6 +1089,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->VSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetConstantBuffers(0, 1, &constantsBuffer);
     m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* environmentMaterialTextures[] = {
+        m_grassAlbedoTexture.Get(), m_rockAlbedoTexture.Get(), m_woodAlbedoTexture.Get()};
+    m_context->PSSetShaderResources(6, static_cast<UINT>(std::size(environmentMaterialTextures)),
+        environmentMaterialTextures);
+    ID3D11SamplerState* environmentSampler = m_textureSampler.Get();
+    m_context->PSSetSamplers(0, 1, &environmentSampler);
 
     const auto drawCube = [&](const Mat4& worldTransform)
     {

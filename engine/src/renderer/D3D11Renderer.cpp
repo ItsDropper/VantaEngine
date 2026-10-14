@@ -595,7 +595,7 @@ bool D3D11Renderer::Initialize(const HWND window, const int width, const int hei
         return false;
     }
 
-    LogInfo("Direct3D 11 renderer initialized (textured model pipeline, depth buffer, dynamic scene).");
+    LogInfo("Direct3D 11 renderer initialized (PBR scene, cascaded shadows, HDR post-processing, temporal AA).");
     return true;
 }
 
@@ -1596,8 +1596,13 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     } else {
         temporalConstants.inverseCurrentViewProjection = Mat4::Identity();
     }
+    const float cameraDeltaX = cameraX - m_previousCameraX;
+    const float cameraDeltaY = cameraY - m_previousCameraY;
+    const float cameraDeltaZ = cameraZ - m_previousCameraZ;
+    const bool cameraCut = cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY +
+        cameraDeltaZ * cameraDeltaZ > 9.0F;
     temporalConstants.previousViewProjection = m_previousViewProjection;
-    temporalConstants.historyValid = (m_historyValid && inverseValid) ? 1U : 0U;
+    temporalConstants.historyValid = (m_historyValid && inverseValid && !cameraCut) ? 1U : 0U;
     D3D11_MAPPED_SUBRESOURCE temporalMapped{};
     if (SUCCEEDED(m_context->Map(m_postProcessTemporalBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &temporalMapped))) {
         *static_cast<TemporalConstants*>(temporalMapped.pData) = temporalConstants;
@@ -1612,6 +1617,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noPostViews)), noPostViews);
     m_historyValid = inverseValid;
     m_previousViewProjection = currentViewProjection;
+    m_previousCameraX = cameraX;
+    m_previousCameraY = cameraY;
+    m_previousCameraZ = cameraZ;
     m_historyWriteIndex = 1U - writeIndex;
     ++m_frameIndex;
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);

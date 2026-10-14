@@ -44,5 +44,6 @@ private:
     UINT m_height = 0;
     UINT m_rtvDescriptorSize = 0;
     UINT m_frameIndex = 0;
+    bool m_failed = false;
 };
 } // namespace vanta

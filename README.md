@@ -6,7 +6,7 @@ VantaEngine is an early-stage native C++23 3D game engine designed for direct co
 
 ## What runs right now
 
-Launching the engine opens a 1280×720 native window and renders a real-time procedural landscape: rolling terrain, a deterministic low-poly pine forest, the imported stone house, and test props. The terrain and forest are generated at startup and uploaded as merged GPU meshes. Geometry is uploaded to Direct3D 11 buffers and the diffuse image is uploaded as a GPU texture; this is not a prerecorded animation or a UI mock-up.
+Launching the engine opens a 1280×720 native window and renders a real-time forest-valley environment: rolling terrain, a winding gravel road with worn center markings and shoulders, a rocky stream, multiple timber cabins with pitched roofs, board siding, windows, doors, porches and chimneys, timber fences, utility poles, fallen logs, angular boulders, undergrowth, and thousands of grass blades. These deterministic scene meshes are generated at startup and merged into a small number of GPU buffers. Geometry is rendered live through Direct3D 11; this is not a prerecorded animation or a UI mock-up.
 
 The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
@@ -18,7 +18,10 @@ The renderer now includes:
 - A dynamic constant buffer for per-frame transforms.
 - Window resize handling and a continuously updated frame loop.
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
-- A deterministic pine forest with varied tree heights, tiered low-poly foliage, trunks, and merged geometry to limit draw calls.
+- A deterministic, dense conifer forest with varied trunk and crown sizes, layered boughs, shrubs, angular boulders, fallen timber, and merged geometry to limit draw calls.
+- A winding gravel access road with shoulders, broken center paint, and a stream with irregular rock banks.
+- Multiple timber cabins with pitched roofs, fascia, siding seams, stone footings, doors, window frames, porch boards, steps, and chimneys.
+- Timber fence runs, roadside utility poles, thousands of crossed grass blades, and stable world-space surface grain for more visual breakup.
 - A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
@@ -93,7 +96,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 ## Current limitations
 
 - Windows backend only; the renderer is currently Direct3D 11.
-- The demo house and procedural forest are stylized low-poly assets, not photorealistic scans. Terrain and tree geometry are generated once at startup; there is no streaming or level-of-detail system yet.
+- The procedural valley has substantially more environmental geometry, but it is still a handcrafted/stylized prototype—not a finished CS2/Fortnite-quality map and not photorealistic scanned assets. Most environment materials still use vertex colors plus shader grain rather than authored PBR texture sets. Terrain and environment geometry are generated once at startup; there is no streaming, LOD system, foliage animation, or baked lighting yet.
 - The active renderer is still Direct3D 11 and uses one directional light. The new PBR shader uses scalar roughness/metallic values, but it does not yet sample normal/roughness/metallic textures or support multiple material groups. The importer remains OBJ/MTL; glTF 2.0 support is not implemented yet.
 - The engine now reports D3D12/DXR hardware capability, but it does **not** yet render with DXR or path tracing. That requires a separate D3D12 renderer, acceleration structures, ray-generation/miss/hit shaders, and a working dispatch/presentation path.
 - NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
@@ -110,3 +113,4 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 7. Direct3D 12 renderer with DXR acceleration structures, ray-traced shadows/reflections, and a small path-tracing test scene.
 8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
 9. PCF shadow mapping, screen-space ambient occlusion, temporal anti-aliasing, and scene representation.
+10. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.

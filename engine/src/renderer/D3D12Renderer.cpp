@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <iterator>
 #include <cstring>
 #include <vector>
 #include <d3dcompiler.h>
@@ -170,8 +171,6 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         DXGI_ADAPTER_DESC1 description{};
         if (FAILED(adapter->GetDesc1(&description)) || (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) continue;
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
-            wchar_t adapterName[128]{};
-            WideCharToMultiByte(CP_UTF8, 0, description.Description, -1, nullptr, 0, nullptr, nullptr);
             LogInfo("Direct3D 12 hardware adapter selected.");
             break;
         }

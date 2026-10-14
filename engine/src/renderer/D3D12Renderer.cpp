@@ -215,9 +215,11 @@ void D3D12Renderer::Render()
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
 
-    // Fence every submitted command list even if Present subsequently fails. Otherwise
-    // the allocator could be reset while the GPU is still executing its command list.
-    const UINT64 signalValue = m_fenceValues[m_frameIndex] + 1;
+    const HRESULT presentResult = m_swapChain->Present(1, 0);
+
+    // Fence values must increase globally across the queue, not independently per
+    // back buffer. Signal even after a failed Present so submitted commands can retire.
+    const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {
         char message[180]{};
@@ -229,7 +231,6 @@ void D3D12Renderer::Render()
     }
     m_fenceValues[m_frameIndex] = signalValue;
 
-    const HRESULT presentResult = m_swapChain->Present(1, 0);
     if (FAILED(presentResult)) {
         const HRESULT deviceReason = m_device->GetDeviceRemovedReason();
         char message[240]{};

@@ -1714,7 +1714,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     for (UINT cascade = 0; cascade < 3; ++cascade) {
-        m_commandList->OMSetRenderTargets(0, nullptr, &m_shadowDsvHandles[cascade]);
+        m_commandList->OMSetRenderTargets(0, nullptr, FALSE, &m_shadowDsvHandles[cascade]);
         m_commandList->ClearDepthStencilView(m_shadowDsvHandles[cascade], D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
         m_commandList->SetGraphicsRootConstantBufferView(0,
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);

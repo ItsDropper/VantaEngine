@@ -4,6 +4,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <cstdint>
 
 namespace vanta
@@ -38,7 +39,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_shadowTexture;
-    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_shadowDepthStencil;
+    std::array<Microsoft::WRL::ComPtr<ID3D11DepthStencilView>, 3> m_shadowDepthStencil;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_shadowShaderResource;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_shadowSampler;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowRasterizerState;

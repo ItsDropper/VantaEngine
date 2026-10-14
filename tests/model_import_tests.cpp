@@ -63,6 +63,6 @@ int main()
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
 
-    std::cout << (5 - failures) << "/5 model import tests passed.\n";
+    std::cout << (6 - failures) << "/6 model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

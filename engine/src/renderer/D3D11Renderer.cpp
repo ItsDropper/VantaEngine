@@ -817,6 +817,93 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
 
+    // Directional sunlight shadow map: render scene depth from the sun's viewpoint.
+    const Vec3 lightPosition{30.0F, 65.0F, -40.0F};
+    const Mat4 lightView = Mat4::LookAtLH(lightPosition, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F})
+        .value_or(Mat4::Identity());
+    Mat4 lightProjection{};
+    lightProjection.At(0, 0) = 2.0F / 110.0F;
+    lightProjection.At(1, 1) = 2.0F / 110.0F;
+    lightProjection.At(2, 2) = 1.0F / 180.0F;
+    lightProjection.At(2, 3) = -0.1F / 180.0F;
+    lightProjection.At(3, 3) = 1.0F;
+    const Mat4 lightViewProjection = lightProjection * lightView;
+
+    // Unbind last frame's shadow SRV before binding the same resource as a depth target.
+    ID3D11ShaderResourceView* noShadowTexture = nullptr;
+    m_context->PSSetShaderResources(1, 1, &noShadowTexture);
+    m_context->OMSetRenderTargets(0, nullptr, m_shadowDepthStencil.Get());
+    D3D11_VIEWPORT shadowViewport{};
+    shadowViewport.Width = 2048.0F;
+    shadowViewport.Height = 2048.0F;
+    shadowViewport.MinDepth = 0.0F;
+    shadowViewport.MaxDepth = 1.0F;
+    m_context->RSSetViewports(1, &shadowViewport);
+    m_context->RSSetState(m_shadowRasterizerState.Get());
+    m_context->ClearDepthStencilView(m_shadowDepthStencil.Get(), D3D11_CLEAR_DEPTH, 1.0F, 0);
+    m_context->IASetInputLayout(m_shadowInputLayout.Get());
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_context->VSSetShader(m_shadowVertexShader.Get(), nullptr, 0);
+    m_context->PSSetShader(nullptr, nullptr, 0);
+    ID3D11Buffer* shadowConstantsBuffer = m_sceneConstants.Get();
+    m_context->VSSetConstantBuffers(0, 1, &shadowConstantsBuffer);
+
+    const auto drawShadowMesh = [&](ID3D11Buffer* vertices, ID3D11Buffer* indices, DXGI_FORMAT indexFormat,
+                                    UINT indexCount, const Mat4& worldTransform) {
+        SceneConstants constants{};
+        constants.world = worldTransform;
+        constants.lightViewProjection = lightViewProjection;
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
+        *static_cast<SceneConstants*>(mapped.pData) = constants;
+        m_context->Unmap(m_sceneConstants.Get(), 0);
+        constexpr UINT vertexStride = sizeof(Vertex);
+        constexpr UINT vertexOffset = 0;
+        m_context->IASetVertexBuffers(0, 1, &vertices, &vertexStride, &vertexOffset);
+        m_context->IASetIndexBuffer(indices, indexFormat, 0);
+        m_context->DrawIndexed(indexCount, 0, 0);
+    };
+    drawShadowMesh(m_terrainVertexBuffer.Get(), m_terrainIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+                   m_terrainIndexCount, Mat4::Identity());
+    drawShadowMesh(m_forestVertexBuffer.Get(), m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+                   m_forestIndexCount, Mat4::Identity());
+    const Mat4 shadowHouseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
+    drawShadowMesh(m_modelVertexBuffer.Get(), m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
+                   m_modelIndexCount, shadowHouseWorld);
+    const auto shadowPropA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F + elapsedSeconds * 0.35F);
+    const auto shadowPropB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);
+    const auto shadowPropC = Quaternion::FromAxisAngle({0.3F, 1.0F, 0.0F}, 0.35F);
+    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+        static_cast<UINT>(std::size(kCubeIndices)),
+        Mat4::Translation({-3.0F, -0.4F, 1.5F}) * Mat4::Rotation(shadowPropA.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+        static_cast<UINT>(std::size(kCubeIndices)),
+        Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(shadowPropB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+        static_cast<UINT>(std::size(kCubeIndices)),
+        Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(shadowPropC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
+        static_cast<UINT>(std::size(kCubeIndices)),
+        Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+
+    // Restore the main color/depth targets and camera viewport.
+    ID3D11RenderTargetView* mainTarget = m_renderTarget.Get();
+    m_context->OMSetRenderTargets(1, &mainTarget, m_depthStencil.Get());
+    D3D11_VIEWPORT mainViewport{};
+    mainViewport.Width = static_cast<float>(m_width);
+    mainViewport.Height = static_cast<float>(m_height);
+    mainViewport.MinDepth = 0.0F;
+    mainViewport.MaxDepth = 1.0F;
+    m_context->RSSetViewports(1, &mainViewport);
+    m_context->RSSetState(m_rasterizerState.Get());
+    m_context->IASetInputLayout(m_inputLayout.Get());
+    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+    m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* shadowView = m_shadowShaderResource.Get();
+    m_context->PSSetShaderResources(1, 1, &shadowView);
+    ID3D11SamplerState* shadowSampler = m_shadowSampler.Get();
+    m_context->PSSetSamplers(1, 1, &shadowSampler);
+
     constexpr UINT stride = sizeof(Vertex);
     constexpr UINT offset = 0;
     ID3D11Buffer* vertexBuffer = m_vertexBuffer.Get();
@@ -832,9 +919,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     const auto drawCube = [&](const Mat4& worldTransform)
     {
-        const SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F},
+        SceneConstants constants{projection * view * worldTransform, worldTransform, 0U, {0.0F, 0.0F, 0.0F},
             {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
             {0.32F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
+        constants.lightViewProjection = lightViewProjection;
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
@@ -848,9 +936,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     // Render terrain and forest as merged static meshes; the ground is now a real walkable-scale landscape.
     const Mat4 identity = Mat4::Identity();
-    const SceneConstants worldConstants{projection * view, identity, 0U, {0.0F, 0.0F, 0.0F},
+    SceneConstants worldConstants{projection * view, identity, 0U, {0.0F, 0.0F, 0.0F},
         {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
         {0.92F, 0.0F, 0.0F, 0.0F}, {1.0F, 1.0F, 1.0F, 1.0F}};
+    worldConstants.lightViewProjection = lightViewProjection;
     D3D11_MAPPED_SUBRESOURCE worldMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &worldMapped))) {
         *static_cast<SceneConstants*>(worldMapped.pData) = worldConstants;
@@ -874,10 +963,11 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     // Render the imported house with its MTL diffuse texture.
     const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
-    const SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F},
+    SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F},
         {cameraX, cameraY, cameraZ}, 0.018F, {-0.45F, -0.8F, 0.55F}, 5.0F,
         {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
         {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
+    houseConstants.lightViewProjection = lightViewProjection;
     D3D11_MAPPED_SUBRESOURCE houseMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
         *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;

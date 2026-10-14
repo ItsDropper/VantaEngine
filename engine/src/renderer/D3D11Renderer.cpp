@@ -106,6 +106,9 @@ Texture2D normalTexture : register(t2);
 Texture2D roughnessTexture : register(t3);
 Texture2D metallicTexture : register(t4);
 Texture2D ambientOcclusionTexture : register(t5);
+Texture2D grassAlbedoTexture : register(t6);
+Texture2D rockAlbedoTexture : register(t7);
+Texture2D woodAlbedoTexture : register(t8);
 SamplerState diffuseSampler : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
 
@@ -237,13 +240,29 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float medium = ValueNoise(input.worldPosition * 0.83 + 17.0);
         float fine = HashNoise(floor(input.worldPosition * 17.0));
         float fleck = HashNoise(floor(input.worldPosition * 61.0 + 3.0));
+        // World-space tiled albedo maps add coherent surface character without UV seams:
+        // green-dominant vertices use moss/grass, warm vertices use weathered timber,
+        // and neutral vertices use fractured stone/gravel.
+        float3 baseVertexColor = max(input.color.rgb, 0.001);
+        float grassWeight = step(baseVertexColor.r * 1.12, baseVertexColor.g) *
+                            step(baseVertexColor.b * 1.08, baseVertexColor.g);
+        float woodWeight = (1.0 - grassWeight) * step(baseVertexColor.g * 1.12, baseVertexColor.r);
+        float2 materialUv = input.worldPosition.xz * 0.72;
+        float3 grassAlbedo = grassAlbedoTexture.Sample(diffuseSampler, materialUv).rgb;
+        float3 rockAlbedo = rockAlbedoTexture.Sample(diffuseSampler, materialUv * 0.8).rgb;
+        float3 woodAlbedo = woodAlbedoTexture.Sample(diffuseSampler,
+            float2(input.worldPosition.x * 0.9, input.worldPosition.y * 1.8)).rgb;
+        float3 generatedAlbedo = lerp(rockAlbedo, grassAlbedo, grassWeight);
+        generatedAlbedo = lerp(generatedAlbedo, woodAlbedo, woodWeight);
+        albedo *= lerp(float3(1.0, 1.0, 1.0), generatedAlbedo, 0.58);
         albedo *= lerp(0.78, 1.16, broad)
                 * lerp(0.88, 1.12, medium)
                 * lerp(0.94, 1.06, fine)
                 * lerp(0.97, 1.035, fleck);
-        // Fine luminance variation approximates small surface relief until real normal maps are used.
+        // High-frequency grain and mineral flecks add non-uniform response at grazing angles.
         float micro = ValueNoise(input.worldPosition * 24.0);
-        albedo *= lerp(0.97, 1.03, micro);
+        albedo *= lerp(0.94, 1.05, micro);
+        roughness = saturate(roughness + (medium - 0.5) * 0.14);
     }
     float nDotL = saturate(dot(n, l));
     float nDotV = max(saturate(dot(n, v)), 0.001);

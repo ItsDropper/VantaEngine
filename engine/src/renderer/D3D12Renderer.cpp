@@ -1615,7 +1615,9 @@ float4 PSMain(VSOut input) : SV_TARGET
         float sun = exp(-dot(sunUv, sunUv) * 1900.0);
         float halo = exp(-dot(sunUv, sunUv) * 85.0);
         sky += float3(7.0, 4.6, 2.4) * sun + float3(0.8, 0.38, 0.13) * halo;
-        return float4(pow(ACES(sky), 1.0 / 2.2), 1.0);
+        // Neutral daylight white balance: remove the cyan cast from the sky pass.
+        sky *= float3(1.10, 1.02, 0.68);
+        return float4(pow(ACES(max(sky, 0.0)), 1.0 / 2.2), 1.0);
     }
     uint width, height;
     hdrScene.GetDimensions(width, height);
@@ -1646,7 +1648,10 @@ float4 PSMain(VSOut input) : SV_TARGET
             bloom += sampleColor * smoothstep(1.0, 2.8, luminance);
         }
     }
-    color += bloom * (0.65 / 25.0);
+    color += bloom * (0.45 / 25.0);
+    // Final display-referred white balance applies to the complete world, including
+    // imported models and temporally accumulated pixels, not just terrain albedo.
+    color *= float3(1.12, 1.05, 0.62);
     color = ACES(color * 1.05);
     color = pow(max(color, 0.0), 1.0 / 2.2);
     return float4(color, 1.0);

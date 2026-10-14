@@ -22,6 +22,10 @@ public:
     [[nodiscard]] HWND NativeHandle() const noexcept { return m_handle; }
     [[nodiscard]] int Width() const noexcept { return m_width; }
     [[nodiscard]] int Height() const noexcept { return m_height; }
+    [[nodiscard]] bool IsKeyDown(int virtualKey) const noexcept
+    {
+        return GetForegroundWindow() == m_handle && (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+    }
 
 private:
     static LRESULT CALLBACK WindowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam);

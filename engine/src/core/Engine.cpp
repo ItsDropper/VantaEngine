@@ -23,11 +23,8 @@ int Engine::Run()
 
     const auto graphicsCapabilities = renderer::QueryNvidiaRenderingCapabilities();
     LogInfo(graphicsCapabilities.diagnostic.c_str());
-    if (graphicsCapabilities.nvidiaAdapter && graphicsCapabilities.raytracingSupported) {
-        LogInfo("This NVIDIA adapter reports DXR support; the DXR rendering backend is not enabled yet.");
-    } else {
-        LogInfo("NVIDIA DLSS and DXR rendering are not enabled in this build.");
-    }
+    LogInfo("Rendering backend: Direct3D 11 (active).");
+    LogInfo("NVIDIA DLSS, AMD FSR, Intel XeSS, and DXR rendering are not integrated yet.");
 
     D3D11Renderer renderer;
     if (!renderer.Initialize(window.NativeHandle(), window.Width(), window.Height()))

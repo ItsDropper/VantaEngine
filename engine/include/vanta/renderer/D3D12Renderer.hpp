@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace vanta
 {
@@ -89,6 +90,16 @@ private:
     UINT m_rtvDescriptorSize = 0;
     UINT m_dsvDescriptorSize = 0;
     UINT m_srvDescriptorSize = 0;
+    std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 3> m_shadowDsvHandles{};
+    UINT m_historyWriteIndex = 0;
+    std::uint64_t m_renderFrameNumber = 0;
+    bool m_historyValid = false;
+    math::Mat4 m_previousViewProjection = math::Mat4::Identity();
+    float m_previousCameraX = 0.0F;
+    float m_previousCameraY = 0.0F;
+    float m_previousCameraZ = 0.0F;
+    float m_previousCameraYaw = 0.0F;
+    float m_previousCameraPitch = 0.0F;
     UINT m_frameIndex = 0;
     UINT64 m_nextFenceValue = 1;
     UINT m_indexCount = 0;

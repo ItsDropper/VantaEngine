@@ -31,3 +31,10 @@ add_executable(VantaEngineModelImportTests
 )
 vanta_configure_test(VantaEngineModelImportTests)
 add_test(NAME VantaEngine.ModelImportTests COMMAND VantaEngineModelImportTests)
+
+add_executable(VantaEngineProceduralWorldTests
+    procedural_world_tests.cpp
+    ../engine/src/renderer/ProceduralWorld.cpp
+)
+vanta_configure_test(VantaEngineProceduralWorldTests)
+add_test(NAME VantaEngine.ProceduralWorldTests COMMAND VantaEngineProceduralWorldTests)

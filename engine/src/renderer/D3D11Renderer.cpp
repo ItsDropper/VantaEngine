@@ -3,6 +3,7 @@
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
 #include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/renderer/ProceduralWorld.hpp"
 #include "vanta/renderer/WicTextureLoader.hpp"
 #include <filesystem>
 #include <limits>
@@ -164,6 +165,13 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float metallic = saturate(materialProperties.y);
     float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
+    if (useTexture == 0)
+    {
+        float3 cell = floor(input.worldPosition * 3.7);
+        float grain = frac(sin(dot(cell, float3(127.1, 311.7, 74.7))) * 43758.5453);
+        float broad = 0.5 + 0.5 * sin(input.worldPosition.x * 0.83 + sin(input.worldPosition.z * 0.57));
+        albedo *= lerp(0.86, 1.10, grain) * lerp(0.94, 1.04, broad);
+    }
     float nDotL = saturate(dot(n, l));
     float nDotV = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
@@ -518,61 +526,18 @@ bool D3D11Renderer::CreatePipeline()
     }
     m_terrainIndexCount = static_cast<UINT>(terrainIndices.size());
 
-    // Build a deterministic low-poly pine forest into one mesh to keep draw-call overhead low.
-    std::vector<Vertex> forestVertices;
+    // Merge the road, stream, timber buildings, dense trees, shrubs, rocks,
+    // grass, fencing, logs and utility poles into one static environment mesh.
+    std::vector<renderer::WorldVertex> generatedWorldVertices;
     std::vector<unsigned int> forestIndices;
-    const auto addTriangle = [&](const Vec3& a, const Vec3& b, const Vec3& c, const float r, const float g, const float blue) {
-        const Vec3 edgeA = b - a;
-        const Vec3 edgeB = c - a;
-        const Vec3 cross = edgeA.Cross(edgeB);
-        const float length = std::sqrt(cross.x * cross.x + cross.y * cross.y + cross.z * cross.z);
-        if (length < 0.0001F) return;
-        const Vec3 n{cross.x / length, cross.y / length, cross.z / length};
-        const unsigned int base = static_cast<unsigned int>(forestVertices.size());
-        const Vertex vA{{a.x,a.y,a.z},{n.x,n.y,n.z},{r,g,blue,1.0F},{0,0}};
-        const Vertex vB{{b.x,b.y,b.z},{n.x,n.y,n.z},{r,g,blue,1.0F},{0,1}};
-        const Vertex vC{{c.x,c.y,c.z},{n.x,n.y,n.z},{r,g,blue,1.0F},{1,0}};
-        forestVertices.insert(forestVertices.end(), {vA,vB,vC});
-        forestIndices.insert(forestIndices.end(), {base,base+1U,base+2U});
-    };
-    const auto hash01 = [](const int a, const int b) {
-        const float value = std::sin(static_cast<float>(a * 127 + b * 311 + 47) * 12.9898F) * 43758.5453F;
-        return value - std::floor(value);
-    };
-    for (int tz = -8; tz <= 8; ++tz) {
-        for (int tx = -8; tx <= 8; ++tx) {
-            const float x = static_cast<float>(tx) * 7.2F + (hash01(tx, tz) - 0.5F) * 4.0F;
-            const float z = static_cast<float>(tz) * 7.2F + (hash01(tz, tx) - 0.5F) * 4.0F;
-            if (x * x + z * z < 85.0F || std::abs(x) > 57.0F || std::abs(z) > 57.0F) continue;
-            const float ground = terrainHeight(x, z);
-            const float treeHeight = 3.6F + hash01(tx + 9, tz - 5) * 2.4F;
-            const float radius = 0.75F + hash01(tx - 4, tz + 2) * 0.55F;
-            const float trunkRadius = 0.12F + hash01(tx + 2, tz + 8) * 0.07F;
-            const Vec3 trunkA{x-trunkRadius,ground,z-trunkRadius}, trunkB{x+trunkRadius,ground,z-trunkRadius};
-            const Vec3 trunkC{x+trunkRadius,ground+treeHeight*0.42F,z-trunkRadius}, trunkD{x-trunkRadius,ground+treeHeight*0.42F,z-trunkRadius};
-            const Vec3 trunkE{x-trunkRadius,ground,z+trunkRadius}, trunkF{x+trunkRadius,ground,z+trunkRadius};
-            const Vec3 trunkG{x+trunkRadius,ground+treeHeight*0.42F,z+trunkRadius}, trunkH{x-trunkRadius,ground+treeHeight*0.42F,z+trunkRadius};
-            const float bark = 0.22F + hash01(tx, tz + 12) * 0.08F;
-            addTriangle(trunkA,trunkB,trunkC,bark,0.12F,0.065F); addTriangle(trunkA,trunkC,trunkD,bark,0.12F,0.065F);
-            addTriangle(trunkF,trunkE,trunkH,bark,0.12F,0.065F); addTriangle(trunkF,trunkH,trunkG,bark,0.12F,0.065F);
-            addTriangle(trunkE,trunkA,trunkD,bark,0.12F,0.065F); addTriangle(trunkE,trunkD,trunkH,bark,0.12F,0.065F);
-            addTriangle(trunkB,trunkF,trunkG,bark,0.12F,0.065F); addTriangle(trunkB,trunkG,trunkC,bark,0.12F,0.065F);
-            constexpr int sides = 7;
-            for (int tier = 0; tier < 3; ++tier) {
-                const float baseY = ground + treeHeight * (0.22F + static_cast<float>(tier) * 0.20F);
-                const float tipY = baseY + treeHeight * 0.48F;
-                const float tierRadius = radius * (1.0F - static_cast<float>(tier) * 0.23F);
-                const Vec3 tip{x,tipY,z};
-                for (int side = 0; side < sides; ++side) {
-                    const float a0 = static_cast<float>(side) * 6.2831853F / sides;
-                    const float a1 = static_cast<float>(side+1) * 6.2831853F / sides;
-                    const Vec3 p0{x+std::cos(a0)*tierRadius,baseY,z+std::sin(a0)*tierRadius};
-                    const Vec3 p1{x+std::cos(a1)*tierRadius,baseY,z+std::sin(a1)*tierRadius};
-                    const float shade = 0.72F + hash01(tx + side, tz + tier) * 0.24F;
-                    addTriangle(p0,p1,tip,0.035F*shade,0.20F*shade,0.105F*shade);
-                }
-            }
-        }
+    renderer::BuildDetailedWorld(generatedWorldVertices, forestIndices);
+    std::vector<Vertex> forestVertices;
+    forestVertices.reserve(generatedWorldVertices.size());
+    for (const renderer::WorldVertex& source : generatedWorldVertices) {
+        forestVertices.push_back({{source.position[0],source.position[1],source.position[2]},
+            {source.normal[0],source.normal[1],source.normal[2]},
+            {source.color[0],source.color[1],source.color[2],source.color[3]},
+            {source.uv[0],source.uv[1]}});
     }
     D3D11_BUFFER_DESC forestVertexDesc{};
     forestVertexDesc.ByteWidth = static_cast<UINT>(forestVertices.size() * sizeof(Vertex));

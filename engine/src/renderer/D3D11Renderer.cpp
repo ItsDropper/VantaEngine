@@ -327,7 +327,7 @@ bool D3D11Renderer::Initialize(const HWND window, const int width, const int hei
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
 
-    if (!CreateRenderTarget() || !CreateDepthTarget() || !CreatePipeline())
+    if (!CreateRenderTarget() || !CreateDepthTarget() || !CreateShadowResources() || !CreatePipeline())
     {
         return false;
     }
@@ -357,6 +357,72 @@ bool D3D11Renderer::CreateDepthTarget()
     m_depthTexture.Reset();
     m_depthStencil.Reset();
     return CreateDepthResources(m_device.Get(), m_width, m_height, m_depthTexture, m_depthStencil);
+}
+
+
+bool D3D11Renderer::CreateShadowResources()
+{
+    constexpr UINT shadowSize = 2048;
+    D3D11_TEXTURE2D_DESC textureDescription{};
+    textureDescription.Width = shadowSize;
+    textureDescription.Height = shadowSize;
+    textureDescription.MipLevels = 1;
+    textureDescription.ArraySize = 1;
+    textureDescription.Format = DXGI_FORMAT_R32_TYPELESS;
+    textureDescription.SampleDesc.Count = 1;
+    textureDescription.Usage = D3D11_USAGE_DEFAULT;
+    textureDescription.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(m_device->CreateTexture2D(&textureDescription, nullptr, m_shadowTexture.GetAddressOf()))) {
+        LogError("Could not create the shadow-map texture.");
+        return false;
+    }
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC depthViewDescription{};
+    depthViewDescription.Format = DXGI_FORMAT_D32_FLOAT;
+    depthViewDescription.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    if (FAILED(m_device->CreateDepthStencilView(m_shadowTexture.Get(), &depthViewDescription, m_shadowDepthStencil.GetAddressOf()))) {
+        LogError("Could not create the shadow-map depth view.");
+        return false;
+    }
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC resourceDescription{};
+    resourceDescription.Format = DXGI_FORMAT_R32_FLOAT;
+    resourceDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    resourceDescription.Texture2D.MipLevels = 1;
+    if (FAILED(m_device->CreateShaderResourceView(m_shadowTexture.Get(), &resourceDescription, m_shadowShaderResource.GetAddressOf()))) {
+        LogError("Could not create the shadow-map shader view.");
+        return false;
+    }
+
+    D3D11_SAMPLER_DESC samplerDescription{};
+    samplerDescription.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+    samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+    samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+    samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+    samplerDescription.BorderColor[0] = 1.0F;
+    samplerDescription.BorderColor[1] = 1.0F;
+    samplerDescription.BorderColor[2] = 1.0F;
+    samplerDescription.BorderColor[3] = 1.0F;
+    samplerDescription.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+    samplerDescription.MinLOD = 0.0F;
+    samplerDescription.MaxLOD = 0.0F;
+    if (FAILED(m_device->CreateSamplerState(&samplerDescription, m_shadowSampler.GetAddressOf()))) {
+        LogError("Could not create the shadow comparison sampler.");
+        return false;
+    }
+
+    D3D11_RASTERIZER_DESC rasterDescription{};
+    rasterDescription.FillMode = D3D11_FILL_SOLID;
+    rasterDescription.CullMode = D3D11_CULL_BACK;
+    rasterDescription.DepthClipEnable = TRUE;
+    rasterDescription.DepthBias = 120;
+    rasterDescription.SlopeScaledDepthBias = 1.5F;
+    rasterDescription.DepthBiasClamp = 0.01F;
+    if (FAILED(m_device->CreateRasterizerState(&rasterDescription, m_shadowRasterizerState.GetAddressOf()))) {
+        LogError("Could not create the shadow rasterizer state.");
+        return false;
+    }
+    return true;
 }
 
 bool D3D11Renderer::CreatePipeline()
@@ -392,6 +458,28 @@ bool D3D11Renderer::CreatePipeline()
         FAILED(m_device->CreatePixelShader(pixelBytecode->GetBufferPointer(), pixelBytecode->GetBufferSize(), nullptr, m_pixelShader.GetAddressOf())))
     {
         LogError("Could not create the Direct3D shader objects.");
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3DBlob> shadowVertexBytecode;
+    errors.Reset();
+    if (FAILED(D3DCompile(kShadowShaderSource, sizeof(kShadowShaderSource) - 1, "vanta_shadow_vertex", nullptr, nullptr,
+            "VSMain", "vs_4_0", D3DCOMPILE_ENABLE_STRICTNESS, 0, shadowVertexBytecode.GetAddressOf(), errors.GetAddressOf()))) {
+        LogError("Shadow vertex shader compilation failed.");
+        if (errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        return false;
+    }
+    if (FAILED(m_device->CreateVertexShader(shadowVertexBytecode->GetBufferPointer(), shadowVertexBytecode->GetBufferSize(), nullptr,
+            m_shadowVertexShader.GetAddressOf()))) {
+        LogError("Could not create the shadow vertex shader.");
+        return false;
+    }
+    constexpr D3D11_INPUT_ELEMENT_DESC shadowInputElement = {
+        "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0
+    };
+    if (FAILED(m_device->CreateInputLayout(&shadowInputElement, 1, shadowVertexBytecode->GetBufferPointer(),
+            shadowVertexBytecode->GetBufferSize(), m_shadowInputLayout.GetAddressOf()))) {
+        LogError("Could not create the shadow input layout.");
         return false;
     }
 

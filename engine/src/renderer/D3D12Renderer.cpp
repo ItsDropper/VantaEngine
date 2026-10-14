@@ -707,7 +707,7 @@ bool D3D12Renderer::CreateSceneGeometry()
     std::vector<unsigned int> indices;
     AppendTerrain(vertices, indices);
     renderer::BuildDetailedWorld(vertices, indices);
-    std::vector<std::array<float, 4>> materialParameters(vertices.size(), {0.78F, 0.0F, 0.0F, 0.0F});
+    std::vector<std::array<float, 4>> materialParameters(vertices.size(), std::array<float, 4>{0.78F, 0.0F, 0.0F, 0.0F});
 
     const std::filesystem::path modelDirectory = std::filesystem::path{VANTA_ASSET_DIR} / "models";
     const std::array<std::filesystem::path, 3> modelCandidates = {

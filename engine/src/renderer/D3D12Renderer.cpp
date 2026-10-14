@@ -868,14 +868,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         if (validModel) {
             for (const renderer::CpuSubmesh& submesh : model.submeshes) {
                 const renderer::CpuMaterial& material = model.materials[submesh.materialIndex];
-                UINT flags = 0;
-                if (hasMaterialTexture[0] && material.diffuseTexture == texturePaths[0]) flags |= 1U;
-                if (hasMaterialTexture[1] && material.normalTexture == texturePaths[1]) flags |= 2U;
-                if (hasMaterialTexture[2] && material.roughnessTexture == texturePaths[2]) flags |= 4U;
-                if (hasMaterialTexture[3] && material.metallicTexture == texturePaths[3]) flags |= 8U;
-                if (hasMaterialTexture[4] && material.ambientOcclusionTexture == texturePaths[4]) flags |= 16U;
-                if (material.packedMetallicRoughness && hasMaterialTexture[2] &&
-                    material.roughnessTexture == texturePaths[2]) flags |= 32U;
+                const UINT flags = materialTextureFlags[submesh.materialIndex];
                 for (UINT offset = 0; offset < submesh.indexCount; ++offset) {
                     const unsigned int sourceIndex = model.indices[submesh.firstIndex + offset];
                     if (sourceIndex >= model.vertices.size()) { validModel = false; break; }
@@ -885,7 +878,7 @@ bool D3D12Renderer::CreateSceneGeometry()
                         {source.position.x * modelScale + modelX, source.position.y * modelScale + modelY,
                          source.position.z * modelScale + modelZ},
                         {source.normal.x, source.normal.y, source.normal.z},
-                        {material.baseColor.x, material.baseColor.y, material.baseColor.z, 1.0F},
+                        {material.baseColor.x, material.baseColor.y, material.baseColor.z, static_cast<float>(submesh.materialIndex)},
                         {source.u, 1.0F - source.v}
                     });
                     materialParameters.push_back({std::clamp(material.roughness, 0.04F, 1.0F),

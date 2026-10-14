@@ -248,9 +248,16 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float grassWeight = step(baseVertexColor.r * 1.12, baseVertexColor.g) *
                             step(baseVertexColor.b * 1.08, baseVertexColor.g);
         float woodWeight = (1.0 - grassWeight) * step(baseVertexColor.g * 1.12, baseVertexColor.r);
-        float2 materialUv = input.worldPosition.xz * 0.72;
-        float3 grassAlbedo = grassAlbedoTexture.Sample(diffuseSampler, materialUv).rgb;
-        float3 rockAlbedo = rockAlbedoTexture.Sample(diffuseSampler, materialUv * 0.8).rgb;
+        float3 projectionWeights = abs(n);
+        projectionWeights /= max(projectionWeights.x + projectionWeights.y + projectionWeights.z, 0.0001);
+        float3 grassX = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.zy * 0.72).rgb;
+        float3 grassY = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xz * 0.72).rgb;
+        float3 grassZ = grassAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xy * 0.72).rgb;
+        float3 grassAlbedo = grassX * projectionWeights.x + grassY * projectionWeights.y + grassZ * projectionWeights.z;
+        float3 rockX = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.zy * 0.58).rgb;
+        float3 rockY = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xz * 0.58).rgb;
+        float3 rockZ = rockAlbedoTexture.Sample(diffuseSampler, input.worldPosition.xy * 0.58).rgb;
+        float3 rockAlbedo = rockX * projectionWeights.x + rockY * projectionWeights.y + rockZ * projectionWeights.z;
         float3 woodAlbedo = woodAlbedoTexture.Sample(diffuseSampler,
             float2(input.worldPosition.x * 0.9, input.worldPosition.y * 1.8)).rgb;
         float3 generatedAlbedo = lerp(rockAlbedo, grassAlbedo, grassWeight);

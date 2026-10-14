@@ -11,9 +11,10 @@ int main(const int argc, char** argv)
         return 0;
     }
 
-    const bool useD3D12 = argc > 1 && std::string_view{argv[1]} == "--backend=d3d12";
+    const bool useD3D11 = argc > 1 && std::string_view{argv[1]} == "--backend=d3d11";
+    const bool useD3D12 = !useD3D11;
     vanta::LogInfo("VantaEngine 0.2.0");
-    vanta::LogInfo(useD3D12 ? "Backend: Win32 + Direct3D 12" : "Backend: Win32 + Direct3D 11");
+    vanta::LogInfo(useD3D12 ? "Backend: Win32 + Direct3D 12 (default)" : "Backend: Win32 + Direct3D 11 (compatibility mode)");
 
     vanta::Engine engine;
     return engine.Run(useD3D12);

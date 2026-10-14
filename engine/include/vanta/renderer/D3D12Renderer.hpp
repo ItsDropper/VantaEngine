@@ -78,7 +78,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_postProcessPipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_shadowPipelineState;
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_temporalPipelineState;
+    std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 2> m_temporalPipelineStates;
     std::array<UINT64, kFrameCount> m_fenceValues{};
     HANDLE m_fenceEvent = nullptr;
     std::array<void*, kFrameCount> m_mappedConstants{};

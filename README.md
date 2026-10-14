@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, and D3D12/DXR hardware capability diagnostics.
+> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, a 2048×2048 directional shadow map with 3×3 percentage-closer filtering, and D3D12/DXR hardware capability diagnostics.
 
 ## What runs right now
 
@@ -15,7 +15,8 @@ The renderer now includes:
 - Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
 - Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
 - sRGB diffuse texture sampling and ACES-style tone mapping for more physically plausible light response.
-- A dynamic constant buffer for per-frame transforms.
+- A dynamic constant buffer for per-frame transforms and light-space transforms.
+- A 2048×2048 directional shadow depth pass for terrain, forest, imported house, and props, with slope-aware depth bias and 3×3 PCF filtering.
 - Window resize handling and a continuously updated frame loop.
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
 - A deterministic, dense conifer forest with varied trunk and crown sizes, layered boughs, shrubs, angular boulders, fallen timber, and merged geometry to limit draw calls.
@@ -112,5 +113,6 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 6. glTF 2.0 import, multi-material meshes, and sampling base-color, normal, roughness, and metallic textures.
 7. Direct3D 12 renderer with DXR acceleration structures, ray-traced shadows/reflections, and a small path-tracing test scene.
 8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
-9. PCF shadow mapping, screen-space ambient occlusion, temporal anti-aliasing, and scene representation.
-10. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.
+9. PCF directional shadow mapping. Implemented as an initial single-map pass; cascades, contact hardening, and temporal stabilization remain future work.
+10. Screen-space ambient occlusion, temporal anti-aliasing, and scene representation.
+11. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.

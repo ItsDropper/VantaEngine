@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, three 2048×2048 cascaded directional shadow maps with 3×3 percentage-closer filtering, and D3D12/DXR hardware capability diagnostics.
+> **Current milestone:** native Direct3D 11 scene renderer with Wavefront OBJ/MTL and glTF/GLB assets, Cook–Torrance PBR material shading, ACES-style tone mapping, three 2048×2048 cascaded directional shadow maps with 3×3 percentage-closer filtering, depth-based contact occlusion, temporal anti-aliasing, and an experimental Direct3D 12 presentation backend.
 
 ## What runs right now
 
@@ -15,7 +15,9 @@ The renderer now includes:
 - Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
 - Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
 - sRGB diffuse texture sampling, GPU-generated mip chains for diffuse and linear PBR maps, seamless procedural grass/stone/wood albedo textures with triplanar projection, and ACES-style tone mapping for more physically plausible light response.
-- A linear `R16G16B16A16_FLOAT` HDR scene target followed by full-screen ACES tone mapping, display transfer, and a thresholded 5×5 highlight-bloom pass. Scene shading remains linear until final composition instead of tone-mapping each material before the scene is complete.
+- A linear `R16G16B16A16_FLOAT` HDR scene target followed by full-screen ACES tone mapping, display transfer, thresholded 5×5 highlight bloom, and a depth-neighborhood screen-space contact-occlusion approximation. Scene shading remains linear until final composition.
+- Temporal anti-aliasing with an eight-sample Halton projection-jitter sequence, depth-based world-position reconstruction, previous-frame view-projection reprojection, ping-pong HDR history, neighborhood clipping, and camera-teleport history rejection. This reduces sub-pixel shimmer, but there are no per-object motion vectors yet, so moving objects can still ghost.
+- Analytic hemisphere/environment reflection lighting for PBR materials. This is an environment-lighting approximation, not full HDR environment-map convolution or a split-sum BRDF.
 - A dynamic constant buffer for per-frame transforms and light-space transforms.
 - Three camera-relative 2048×2048 cascaded directional shadow depth passes for terrain, forest, imported house, and props, with distance-based cascade selection, slope-aware depth bias, and 3×3 PCF filtering.
 - Window resize handling and a continuously updated frame loop.
@@ -30,7 +32,8 @@ The renderer now includes:
 - glTF 2.0/GLB static-mesh import with scene-node transforms, indexed triangle primitives, UVs, imported or generated normals, per-primitive submeshes, multiple PBR materials, base-color/normal/occlusion maps, metallic-roughness factors, and the glTF packed G (roughness) / B (metallic) channel convention. External texture images are supported; embedded data-URI/GLB images currently return a clear import error.
 - MTL diffuse, tangent-space normal, roughness, metallic, and ambient-occlusion map loading through Windows Imaging Component (WIC). Diffuse is decoded as sRGB; numeric data maps remain linear. Missing maps are optional, while referenced maps must decode and upload successfully.
 - UV interpolation, linear wrap sampling, sRGB diffuse sampling, and GPU-generated mip chains for diffuse, normal, roughness, metallic, and ambient-occlusion maps. Numeric maps remain in linear space.
-- Startup diagnostics for the high-performance D3D12 adapter and its DXR tier, when available.
+- Startup diagnostics for NVIDIA, AMD, and Intel adapter capabilities, including D3D12 and DXR support where available.
+- An opt-in Direct3D 12 backend (`--backend=d3d12`) with hardware adapter selection, WARP fallback, flip-model swap chain, per-frame command allocators, explicit resource barriers, RTV descriptors, resize handling, and fence synchronization. It currently clears and presents a frame; the scene/material/shadow pipeline remains on D3D11.
 - A small sample house asset under `assets/models/` so the OBJ importer and texture path are exercised on startup. If `stone_house.glb` or `stone_house.gltf` is placed in that directory, the engine prefers it over the OBJ sample.
 
 ## Camera controls
@@ -70,7 +73,7 @@ The math layer is header-only and has no Windows or graphics API dependencies.
 - Visual Studio CMake/Ninja components, or CMake 3.25+ and Ninja on PATH
 - PowerShell 5.1+
 
-No third-party runtime dependencies: the engine uses Win32, Direct3D 11, DXGI, and the Windows SDK shader compiler.
+No third-party runtime dependencies: the engine uses Win32, Direct3D 11/12, DXGI, and the Windows SDK shader compiler.
 
 ## Build, test, run
 
@@ -98,10 +101,10 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 ## Current limitations
 
-- Windows backend only; the renderer is currently Direct3D 11.
+- Windows backend only. The complete scene renderer remains Direct3D 11; `--backend=d3d12` currently exercises an experimental clear-and-present path rather than rendering the valley.
 - The procedural valley now includes denser ground clutter, tree roots, bark seams, road gravel, ferns, leaf litter, twigs, and layered world-space material variation. It remains a handcrafted prototype, not photorealistic scanned assets: geometry silhouettes and most environment materials still need authored models and complete PBR texture sets. Terrain and environment geometry are generated once at startup; there is no streaming, LOD system, foliage animation, or baked lighting yet.
-- The active renderer is still Direct3D 11 and uses one directional light. Imported OBJ/MTL materials now sample optional normal, roughness, metallic, and ambient-occlusion maps in addition to sRGB base color. Normal mapping currently builds a tangent frame from pixel derivatives; there is no glTF 2.0 importer, multi-material/submesh support, or environment IBL yet. Texture mip chains are generated on the GPU at startup. The environment's grass, stone and timber texture tiles are synthesized deterministically at startup and sampled with world-space/triplanar mapping; they are not artist-authored scanned materials.
-- The engine now reports D3D12/DXR hardware capability, but it does **not** yet render with DXR or path tracing. That requires a separate D3D12 renderer, acceleration structures, ray-generation/miss/hit shaders, and a working dispatch/presentation path.
+- The active scene renderer is Direct3D 11 and uses one directional light. Screen-space contact occlusion and analytic environment lighting are approximations; neither replaces a production SSAO/GTAO implementation or image-based lighting from prefiltered HDR environment maps. TAA uses camera reprojection but lacks per-object motion vectors and robust disocclusion history rejection, so fast-moving objects may ghost. The environment's grass, stone and timber texture tiles are synthesized deterministically at startup; they are not artist-authored scanned materials.
+- The experimental D3D12 path does **not** yet render the scene and does not use DXR or path tracing. Porting the scene requires a graphics pipeline, descriptor/resource binding, geometry uploads, depth/shadow passes, and render graph/resource lifetime management. DXR additionally needs acceleration structures and ray-generation/miss/hit shaders.
 - NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
 - No mouse-look, audio, physics, scripting, or game packaging yet.
 
@@ -113,8 +116,8 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
 6. glTF 2.0 import, multi-material meshes, authored asset packs, mip-chain generation, and environment IBL.
-7. Direct3D 12 renderer with DXR acceleration structures, ray-traced shadows/reflections, and a small path-tracing test scene.
+7. Experimental D3D12 device/swap-chain/presentation path implemented; port the scene pipeline, then add DXR acceleration structures, ray-traced shadows/reflections, and a path-tracing test scene.
 8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
 9. PCF directional shadow mapping. Implemented as an initial single-map pass; cascades, contact hardening, and temporal stabilization remain future work.
-10. Screen-space ambient occlusion, temporal anti-aliasing, and scene representation.
+10. Initial depth-based contact occlusion and temporal anti-aliasing implemented; improve AO, motion vectors, disocclusion handling, and temporal stability.
 11. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.

@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, a 2048×2048 directional shadow map with 3×3 percentage-closer filtering, and D3D12/DXR hardware capability diagnostics.
+> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, three 2048×2048 cascaded directional shadow maps with 3×3 percentage-closer filtering, and D3D12/DXR hardware capability diagnostics.
 
 ## What runs right now
 
@@ -17,7 +17,7 @@ The renderer now includes:
 - sRGB diffuse texture sampling, GPU-generated mip chains for diffuse and linear PBR maps, seamless procedural grass/stone/wood albedo textures with triplanar projection, and ACES-style tone mapping for more physically plausible light response.
 - A linear `R16G16B16A16_FLOAT` HDR scene target followed by full-screen ACES tone mapping, display transfer, and a thresholded 5×5 highlight-bloom pass. Scene shading remains linear until final composition instead of tone-mapping each material before the scene is complete.
 - A dynamic constant buffer for per-frame transforms and light-space transforms.
-- A 2048×2048 directional shadow depth pass for terrain, forest, imported house, and props, with slope-aware depth bias and 3×3 PCF filtering.
+- Three camera-relative 2048×2048 cascaded directional shadow depth passes for terrain, forest, imported house, and props, with distance-based cascade selection, slope-aware depth bias, and 3×3 PCF filtering.
 - Window resize handling and a continuously updated frame loop.
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
 - A deterministic conifer forest with varied trunk and crown sizes, layered boughs, exposed buttress roots, bark grooves, ferns, shrubs, angular boulders, fallen timber with branch stubs and cut ends, and merged geometry to limit draw calls.

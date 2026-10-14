@@ -27,6 +27,15 @@ public:
                 float cameraYaw, float cameraPitch);
 private:
     static constexpr UINT kFrameCount = 2;
+    struct DrawChunk
+    {
+        std::array<UINT, 3> startIndex{};
+        std::array<UINT, 3> indexCount{};
+        float centerX = 0.0F;
+        float centerY = 0.0F;
+        float centerZ = 0.0F;
+        float radius = 20.0F;
+    };
     [[nodiscard]] bool CreateRenderTargets();
     [[nodiscard]] bool CreateDepthTarget();
     [[nodiscard]] bool CreateHdrTarget();
@@ -83,6 +92,7 @@ private:
     UINT m_frameIndex = 0;
     UINT64 m_nextFenceValue = 1;
     UINT m_indexCount = 0;
+    std::vector<DrawChunk> m_drawChunks;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView{};
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView{};
     bool m_failed = false;

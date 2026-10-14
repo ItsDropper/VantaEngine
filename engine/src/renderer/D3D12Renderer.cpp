@@ -769,38 +769,86 @@ bool D3D12Renderer::CreateSceneGeometry()
         LogError(importError.c_str());
     }
 
-    std::array<renderer::CpuTexture, 5> materialTextures;
-    std::array<bool, 5> hasMaterialTexture{};
-    std::array<std::filesystem::path, 5> texturePaths{};
-    materialTextures[0] = {1, 1, {255, 255, 255, 255}};
-    materialTextures[1] = {1, 1, {128, 128, 255, 255}};
-    materialTextures[2] = {1, 1, {255, 255, 255, 255}};
-    materialTextures[3] = {1, 1, {0, 0, 0, 255}};
-    materialTextures[4] = {1, 1, {255, 255, 255, 255}};
     if (modelLoaded) {
-        const renderer::CpuMaterial& firstMaterial = model.materials.front();
-        texturePaths[0] = firstMaterial.diffuseTexture;
-        texturePaths[1] = firstMaterial.normalTexture;
-        texturePaths[2] = firstMaterial.roughnessTexture;
-        texturePaths[3] = firstMaterial.packedMetallicRoughness
-            ? std::filesystem::path{} : firstMaterial.metallicTexture;
-        texturePaths[4] = firstMaterial.ambientOcclusionTexture;
-        for (UINT slot = 0; slot < texturePaths.size(); ++slot) {
-            if (texturePaths[slot].empty() || !std::filesystem::exists(texturePaths[slot])) continue;
+        if (model.materials.empty()) {
+            renderer::CpuMaterial material;
+            material.diffuseTexture = model.diffuseTexture;
+            material.normalTexture = model.normalTexture;
+            material.roughnessTexture = model.roughnessTexture;
+            material.metallicTexture = model.metallicTexture;
+            material.ambientOcclusionTexture = model.ambientOcclusionTexture;
+            material.baseColor = model.baseColor;
+            material.roughness = model.roughness;
+            material.metallic = model.metallic;
+            model.materials.push_back(material);
+        }
+        if (model.submeshes.empty())
+            model.submeshes.push_back({0U, static_cast<std::uint32_t>(model.indices.size()), 0U});
+    }
+    std::size_t materialCount = modelLoaded ? model.materials.size() : 1U;
+    if (materialCount == 0U || materialCount > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) {
+        LogError("Direct3D 12: imported asset exceeds the supported PBR material-layer limit; using the procedural scene.");
+        modelLoaded = false;
+        model = {};
+        materialCount = 1U;
+    }
+    m_modelMaterialLayerCount = static_cast<UINT>(materialCount);
+    const UINT materialTextureResolution = materialCount <= 8U ? 512U : (materialCount <= 24U ? 256U : 128U);
+    const std::array<renderer::CpuTexture, 5> neutralTextures = {{
+        {1, 1, {255, 255, 255, 255}},
+        {1, 1, {128, 128, 255, 255}},
+        {1, 1, {255, 255, 255, 255}},
+        {1, 1, {0, 0, 0, 255}},
+        {1, 1, {255, 255, 255, 255}}
+    }};
+    std::array<std::vector<renderer::CpuTexture>, 5> materialMaps;
+    std::array<std::vector<bool>, 5> materialMapPresent;
+    std::vector<std::array<std::filesystem::path, 5>> materialPaths(materialCount);
+    std::vector<UINT> materialTextureFlags(materialCount, 0U);
+    for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
+        materialMaps[slot].resize(materialCount, neutralTextures[slot]);
+        materialMapPresent[slot].resize(materialCount, false);
+    }
+    for (std::size_t materialIndex = 0; materialIndex < materialCount && modelLoaded; ++materialIndex) {
+        const renderer::CpuMaterial& material = model.materials[materialIndex];
+        materialPaths[materialIndex][0] = material.diffuseTexture;
+        materialPaths[materialIndex][1] = material.normalTexture;
+        materialPaths[materialIndex][2] = material.roughnessTexture;
+        materialPaths[materialIndex][3] = material.packedMetallicRoughness
+            ? std::filesystem::path{} : material.metallicTexture;
+        materialPaths[materialIndex][4] = material.ambientOcclusionTexture;
+        for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
+            const auto& path = materialPaths[materialIndex][slot];
+            if (path.empty() || !std::filesystem::exists(path)) continue;
             renderer::CpuTexture loadedTexture;
-            if (renderer::LoadWicTexture(texturePaths[slot], loadedTexture) &&
+            if (renderer::LoadWicTexture(path, loadedTexture) &&
                 loadedTexture.width > 0 && loadedTexture.height > 0 &&
                 loadedTexture.rgba.size() >= static_cast<std::size_t>(loadedTexture.width) * loadedTexture.height * 4U) {
-                materialTextures[slot] = std::move(loadedTexture);
-                hasMaterialTexture[slot] = true;
+                materialMaps[slot][materialIndex] = std::move(loadedTexture);
+                materialMapPresent[slot][materialIndex] = true;
             } else {
-                LogError("Direct3D 12: failed to decode an imported material texture; using a neutral fallback.");
+                LogError("Direct3D 12: failed to decode an imported material texture; using a neutral fallback for that map.");
             }
         }
+        if (materialMapPresent[0][materialIndex]) materialTextureFlags[materialIndex] |= 1U;
+        if (materialMapPresent[1][materialIndex]) materialTextureFlags[materialIndex] |= 2U;
+        if (materialMapPresent[2][materialIndex]) materialTextureFlags[materialIndex] |= 4U;
+        if (materialMapPresent[3][materialIndex]) materialTextureFlags[materialIndex] |= 8U;
+        if (materialMapPresent[4][materialIndex]) materialTextureFlags[materialIndex] |= 16U;
+        if (material.packedMetallicRoughness && materialMapPresent[2][materialIndex])
+            materialTextureFlags[materialIndex] |= 32U;
     }
-    for (UINT slot = 0; slot < materialTextures.size(); ++slot) {
-        if (!CreateModelTexture(materialTextures[slot].width, materialTextures[slot].height,
-                materialTextures[slot].rgba.data(), 7U + slot, slot == 0U)) return false;
+    for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
+        std::vector<std::uint8_t> textureLayers;
+        const std::size_t layerBytes = static_cast<std::size_t>(materialTextureResolution) * materialTextureResolution * 4U;
+        textureLayers.reserve(layerBytes * materialCount);
+        for (std::size_t layer = 0; layer < materialCount; ++layer) {
+            auto resampled = ResampleTexture(materialMaps[slot][layer], materialTextureResolution,
+                materialTextureResolution, slot == 0U);
+            textureLayers.insert(textureLayers.end(), resampled.begin(), resampled.end());
+        }
+        if (!CreateModelTextureArray(materialTextureResolution, materialTextureResolution,
+                static_cast<UINT>(materialCount), textureLayers, 7U + slot, slot == 0U)) return false;
     }
 
     if (modelLoaded) {

@@ -41,6 +41,7 @@ struct SceneConstants
     float fogStart;
     float materialProperties[4];
     float baseColorFactor[4];
+    float4x4 lightViewProjection;
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -95,9 +96,12 @@ cbuffer SceneConstants : register(b0)
     float fogStart;
     float4 materialProperties;
     float4 baseColorFactor;
+    float4x4 lightViewProjection;
 };
 Texture2D diffuseTexture : register(t0);
+Texture2D<float> shadowMap : register(t1);
 SamplerState diffuseSampler : register(s0);
+SamplerComparisonState shadowSampler : register(s1);
 
 struct VertexInput
 {
@@ -114,6 +118,7 @@ struct PixelInput
     float4 color : COLOR;
     float2 uv : TEXCOORD;
     float3 worldPosition : TEXCOORD1;
+    float4 shadowPosition : TEXCOORD2;
 };
 
 PixelInput VSMain(VertexInput input)
@@ -122,6 +127,7 @@ PixelInput VSMain(VertexInput input)
     output.position = mul(worldViewProjection, float4(input.position, 1.0));
     output.normal = normalize(mul((float3x3)world, input.normal));
     output.worldPosition = mul(world, float4(input.position, 1.0)).xyz;
+    output.shadowPosition = mul(lightViewProjection, float4(output.worldPosition, 1.0));
     output.color = input.color;
     output.uv = input.uv;
     return output;
@@ -155,6 +161,20 @@ float3 ACESFilm(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
+float CalculateShadow(float4 shadowPosition, float3 normal, float3 lightDirection)
+{
+    float3 projected = shadowPosition.xyz / max(shadowPosition.w, 0.0001);
+    float2 uv = float2(projected.x * 0.5 + 0.5, 0.5 - projected.y * 0.5);
+    if (uv.x <= 0.001 || uv.x >= 0.999 || uv.y <= 0.001 || uv.y >= 0.999 ||
+        projected.z <= 0.0 || projected.z >= 1.0) return 1.0;
+    float bias = max(0.00035 * (1.0 - dot(normal, lightDirection)), 0.00008);
+    float2 texel = 1.0 / 2048.0;
+    float visibility = 0.0;
+    [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+            visibility += shadowMap.SampleCmpLevelZero(shadowSampler, uv + float2(x, y) * texel, projected.z - bias);
+    return visibility / 9.0;
+}
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
@@ -181,7 +201,8 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 specular = (ndf * geometry * f) / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float3 radiance = float3(4.2, 3.45, 2.55);
-    float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL;
+    float shadow = CalculateShadow(input.shadowPosition, n, l);
+    float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
     float3 sky = lerp(float3(0.025, 0.035, 0.055), float3(0.22, 0.30, 0.38), saturate(n.y));
     float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25);
     float3 color = ACESFilm(direct + ambient);
@@ -190,6 +211,28 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
     float3 fogColor = float3(0.42, 0.48, 0.55);
     return float4(lerp(color, fogColor, fog), sampled.a * baseColorFactor.a);
+}
+)";
+
+constexpr char kShadowShaderSource[] = R"(
+cbuffer SceneConstants : register(b0)
+{
+    float4x4 worldViewProjection;
+    float4x4 world;
+    uint useTexture;
+    float3 padding;
+    float3 cameraPosition;
+    float fogDensity;
+    float3 sunDirection;
+    float fogStart;
+    float4 materialProperties;
+    float4 baseColorFactor;
+    float4x4 lightViewProjection;
+};
+struct VertexInput { float3 position : POSITION; };
+float4 VSMain(VertexInput input) : SV_POSITION
+{
+    return mul(lightViewProjection, mul(world, float4(input.position, 1.0)));
 }
 )";
 

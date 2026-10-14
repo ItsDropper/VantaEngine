@@ -24,6 +24,7 @@ struct CpuModel
     std::filesystem::path normalTexture;
     std::filesystem::path roughnessTexture;
     std::filesystem::path metallicTexture;
+    std::filesystem::path ambientOcclusionTexture;
     math::Vec3 baseColor{1.0F, 1.0F, 1.0F};
     float roughness = 0.8F;
     float metallic = 0.0F;

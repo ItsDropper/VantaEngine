@@ -477,11 +477,34 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->DrawIndexed(static_cast<UINT>(std::size(kCubeIndices)), 0, 0);
     };
 
-    // A broad green-topped ground slab makes depth, scale, and lighting readable.
+    // A broad ground slab keeps the existing depth/lighting test environment.
     drawCube(Mat4::Translation({0.0F, -1.15F, 0.0F}) * Mat4::Scale({12.0F, 0.15F, 12.0F}));
 
-    const auto mainRotation = Quaternion::FromAxisAngle({0.45F, 1.0F, 0.2F}, elapsedSeconds * 0.75F);
-    drawCube(Mat4::Rotation(mainRotation.value_or(Quaternion::Identity())));
+    // Render the imported house with its MTL diffuse texture.
+    const Mat4 houseWorld = Mat4::Translation({0.0F, -1.0F, 0.0F}) * Mat4::Scale({0.8F, 0.8F, 0.8F});
+    const SceneConstants houseConstants{projection * view * houseWorld, houseWorld, 1U, {0.0F, 0.0F, 0.0F}};
+    D3D11_MAPPED_SUBRESOURCE houseMapped{};
+    if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
+        *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;
+        m_context->Unmap(m_sceneConstants.Get(), 0);
+        constexpr UINT modelStride = sizeof(Vertex);
+        constexpr UINT modelOffset = 0;
+        ID3D11Buffer* modelVertexBuffer = m_modelVertexBuffer.Get();
+        m_context->IASetVertexBuffers(0, 1, &modelVertexBuffer, &modelStride, &modelOffset);
+        m_context->IASetIndexBuffer(m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+        ID3D11ShaderResourceView* textureView = m_diffuseTexture.Get();
+        ID3D11SamplerState* sampler = m_textureSampler.Get();
+        m_context->PSSetShaderResources(0, 1, &textureView);
+        m_context->PSSetSamplers(0, 1, &sampler);
+        m_context->DrawIndexed(m_modelIndexCount, 0, 0);
+        ID3D11ShaderResourceView* noTexture = nullptr;
+        m_context->PSSetShaderResources(0, 1, &noTexture);
+        ID3D11Buffer* cubeVertexBuffer = m_vertexBuffer.Get();
+        m_context->IASetVertexBuffers(0, 1, &cubeVertexBuffer, &stride, &offset);
+        m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
+    } else {
+        LogError("Could not update constants for the imported model.");
+    }
 
     const auto propA = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, 0.55F);
     const auto propB = Quaternion::FromAxisAngle({0.0F, 1.0F, 0.0F}, -0.8F);

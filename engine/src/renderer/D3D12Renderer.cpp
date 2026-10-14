@@ -272,15 +272,15 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * float3(4.2, 3.65, 2.9) * ndl * shadow;
-    float3 sky = lerp(float3(0.055, 0.052, 0.048), float3(0.20, 0.31, 0.46), saturate(n.y * 0.5 + 0.5));
-    float3 ambient = sky * albedo * (1.0 - metallic) * 1.35 * ambientOcclusion;
-    float3 reflectedSky = lerp(float3(0.10, 0.13, 0.18), float3(0.56, 0.64, 0.72), saturate(reflect(-v, n).y * 0.5 + 0.5));
+    float3 sky = lerp(float3(0.105, 0.090, 0.072), float3(0.24, 0.27, 0.29), saturate(n.y * 0.5 + 0.5));
+    float3 ambient = sky * albedo * (1.0 - metallic) * 1.05 * ambientOcclusion;
+    float3 reflectedSky = lerp(float3(0.12, 0.12, 0.10), float3(0.49, 0.49, 0.44), saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
-    float3 fogColor = float3(0.31, 0.40, 0.49);
+    float3 fogColor = float3(0.36, 0.37, 0.34);
     // Output linear HDR. The post-process pass performs bloom and tone mapping once.
-    return float4(lerp(direct + ambient, fogColor * 1.4, fog), 1.0);
+    return float4(max(lerp(direct + ambient, fogColor * 1.15, fog), 0.0), 1.0);
 }
 )";
 
@@ -1604,8 +1604,8 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (depth >= 0.99999)
     {
         float horizon = saturate(1.0 - abs(input.uv.y - 0.52) * 1.7);
-        float3 skyTop = float3(0.025, 0.055, 0.105);
-        float3 horizonColor = float3(0.50, 0.59, 0.66);
+        float3 skyTop = float3(0.045, 0.065, 0.085);
+        float3 horizonColor = float3(0.48, 0.48, 0.44);
         float3 sky = lerp(skyTop, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
         float2 sunUv = input.uv - float2(0.73, 0.27);
         float sun = exp(-dot(sunUv, sunUv) * 1900.0);

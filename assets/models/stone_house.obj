@@ -28,12 +28,12 @@ f 2/1 1/2 4/3 3/4
 f 1/1 5/2 8/3 4/4
 # Right wall
 f 6/1 2/2 3/3 7/4
-# Front roof slope
-f 8/1 7/2 10/3 9/4
-# Back roof slope
-f 1/1 2/2 9/3 10/4
+# Right roof slope
+f 7/1 3/2 9/3 10/4
+# Left roof slope
+f 8/1 10/2 9/3 4/4
 # Roof end triangles
-f 4/1 9/3 3/2
 f 8/1 10/3 7/2
+f 4/1 3/2 9/3
 # Door recess panel on front
 f 11/1 12/2 13/3 14/4

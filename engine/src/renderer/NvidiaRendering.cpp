@@ -10,7 +10,7 @@
 
 namespace vanta::renderer
 {
-NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities() noexcept
+NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities()
 {
     NvidiaRenderingCapabilities result{};
     Microsoft::WRL::ComPtr<IDXGIFactory6> factory;

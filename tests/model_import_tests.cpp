@@ -23,7 +23,14 @@ int main()
     const auto materialPath = path.parent_path() / "vanta_obj_import_test.mtl";
     {
         std::ofstream material(materialPath);
-        material << "newmtl test_material\nmap_Kd sample_diffuse.bmp\n";
+        material << "newmtl test_material\n"
+                    << "Kd 0.8 0.7 0.6\n"
+                    << "Pr 0.3\n"
+                    << "Pm 0.2\n"
+                    << "map_Kd sample_diffuse.bmp\n"
+                    << "map_Bump sample_normal.png\n"
+                    << "map_Pr sample_roughness.png\n"
+                    << "map_Pm sample_metallic.png\n";
     }
     {
         std::ofstream file(path);
@@ -50,6 +57,14 @@ int main()
         "preserves texture coordinates");
     Check(model.diffuseTexture.filename() == "sample_diffuse.bmp",
         "resolves the MTL diffuse texture relative to the material file");
+    Check(std::abs(model.baseColor.x - 0.8F) < 0.001F && std::abs(model.baseColor.y - 0.7F) < 0.001F,
+        "imports MTL base-color factors");
+    Check(std::abs(model.roughness - 0.3F) < 0.001F && std::abs(model.metallic - 0.2F) < 0.001F,
+        "imports PBR roughness and metallic factors");
+    Check(model.normalTexture.filename() == "sample_normal.png" &&
+          model.roughnessTexture.filename() == "sample_roughness.png" &&
+          model.metallicTexture.filename() == "sample_metallic.png",
+        "resolves normal, roughness, and metallic map paths");
     std::filesystem::remove(path);
     std::filesystem::remove(materialPath);
 
@@ -63,6 +78,6 @@ int main()
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
 
-    std::cout << (7 - failures) << "/7 model import tests passed.\n";
+    std::cout << (10 - failures) << "/10 model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 runtime, keyboard-controlled free-fly camera, Wavefront OBJ model import, MTL diffuse-texture discovery, and WIC-backed image textures.
+> **Current milestone:** native Direct3D 11 renderer with Wavefront OBJ/MTL assets, Cook–Torrance PBR material shading, ACES-style tone mapping, and D3D12/DXR hardware capability diagnostics.
 
 ## What runs right now
 
@@ -12,7 +12,9 @@ The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
 - Left-handed perspective and view matrices from the engine's math layer.
 - A depth/stencil buffer and depth testing.
-- A directional diffuse-lighting shader.
+- Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
+- Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
+- sRGB diffuse texture sampling and ACES-style tone mapping for more physically plausible light response.
 - A dynamic constant buffer for per-frame transforms.
 - Window resize handling and a continuously updated frame loop.
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
@@ -20,8 +22,9 @@ The renderer now includes:
 - A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
-- MTL `map_Kd` diffuse texture discovery and Windows Imaging Component (WIC) decoding for common Windows-supported image formats.
-- UV interpolation, linear wrap sampling, and texture-aware diffuse lighting in the Direct3D 11 pixel shader.
+- MTL `map_Kd` diffuse-texture loading through Windows Imaging Component (WIC), plus path discovery for common normal/roughness/metallic map tags. Only the diffuse map is currently uploaded and sampled.
+- UV interpolation, linear wrap sampling, and sRGB diffuse texture sampling in the Direct3D 11 pixel shader.
+- Startup diagnostics for the high-performance D3D12 adapter and its DXR tier, when available.
 - A small sample house asset under `assets/models/` so the importer and texture path are exercised on startup.
 
 ## Camera controls
@@ -91,8 +94,9 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 
 - Windows backend only; the renderer is currently Direct3D 11.
 - The demo house and procedural forest are stylized low-poly assets, not photorealistic scans. Terrain and tree geometry are generated once at startup; there is no streaming or level-of-detail system yet.
-- Lighting currently uses a single directional light and approximate specular/hemisphere shading. Shadow maps, screen-space ambient occlusion, physically based metallic/roughness materials, normal maps, temporal anti-aliasing, and post-processing are not implemented yet.
-- NVIDIA DLSS and hardware ray tracing are not enabled: DLSS integration needs a supported NVIDIA SDK/runtime and suitable render pipeline, while RTX ray tracing requires a Direct3D 12/DXR backend rather than this D3D11 renderer.
+- The active renderer is still Direct3D 11 and uses one directional light. The new PBR shader uses scalar roughness/metallic values, but it does not yet sample normal/roughness/metallic textures or support multiple material groups. The importer remains OBJ/MTL; glTF 2.0 support is not implemented yet.
+- The engine now reports D3D12/DXR hardware capability, but it does **not** yet render with DXR or path tracing. That requires a separate D3D12 renderer, acceleration structures, ray-generation/miss/hit shaders, and a working dispatch/presentation path.
+- NVIDIA DLSS is **not integrated yet**. DLSS needs NVIDIA Streamline (or the supported DLSS SDK path), motion vectors, depth, render-resolution management, and a compatible D3D12 render pipeline. Capability detection alone does not enable DLSS.
 - No mouse-look, audio, physics, scripting, or game packaging yet.
 
 ## Roadmap
@@ -102,6 +106,7 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
-6. PCF shadow mapping, screen-space ambient occlusion, and better material/lighting controls (techniques used in high-quality real-time renderers).
-7. Direct3D 12 backend for DXR experiments and optional NVIDIA DLSS integration where supported.
-8. Multiple material groups, normal maps/PBR, scene representation, and game-facing APIs.
+6. glTF 2.0 import, multi-material meshes, and sampling base-color, normal, roughness, and metallic textures.
+7. Direct3D 12 renderer with DXR acceleration structures, ray-traced shadows/reflections, and a small path-tracing test scene.
+8. NVIDIA Streamline/DLSS integration after temporal jitter, motion vectors, depth, and render-resolution control are available.
+9. PCF shadow mapping, screen-space ambient occlusion, temporal anti-aliasing, and scene representation.

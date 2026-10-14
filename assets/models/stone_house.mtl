@@ -3,4 +3,6 @@ Ka 0.2 0.2 0.2
 Kd 1.0 1.0 1.0
 Ks 0.05 0.05 0.05
 Ns 12
+Pr 0.72
+Pm 0.0
 map_Kd stone_house_diffuse.bmp

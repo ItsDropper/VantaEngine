@@ -1,6 +1,8 @@
 #include "vanta/renderer/ObjLoader.hpp"
 
 #include <fstream>
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -149,12 +151,46 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
             std::istringstream row(materialLine);
             std::string tag;
             row >> tag;
-            if (tag == "map_Kd") {
-                std::string texture;
-                if (row >> texture) model.diffuseTexture = materialLibrary.parent_path() / texture;
-                break;
+            if (tag.empty() || tag[0] == '#') continue;
+
+            if (tag == "Kd") {
+                if (!(row >> model.baseColor.x >> model.baseColor.y >> model.baseColor.z)) {
+                    error = "Invalid MTL base color in " + materialLibrary.string();
+                    return false;
+                }
+            } else if (tag == "Pr") {
+                if (!(row >> model.roughness)) {
+                    error = "Invalid MTL roughness in " + materialLibrary.string();
+                    return false;
+                }
+            } else if (tag == "Pm") {
+                if (!(row >> model.metallic)) {
+                    error = "Invalid MTL metallic value in " + materialLibrary.string();
+                    return false;
+                }
+            } else if (tag == "Ns") {
+                float shininess = 0.0F;
+                if (row >> shininess) {
+                    // Convert legacy Phong shininess into a roughness approximation.
+                    model.roughness = std::sqrt(2.0F / (std::max(shininess, 0.0F) + 2.0F));
+                }
+            } else if (tag == "map_Kd" || tag == "map_Bump" || tag == "bump" ||
+                       tag == "map_Pr" || tag == "map_Pm") {
+                // MTL map options can precede the filename. The final token is the most
+                // useful portable interpretation for common exports (including Blender).
+                std::string token;
+                std::string filename;
+                while (row >> token) filename = token;
+                if (filename.empty()) continue;
+                const auto texturePath = materialLibrary.parent_path() / filename;
+                if (tag == "map_Kd") model.diffuseTexture = texturePath;
+                else if (tag == "map_Bump" || tag == "bump") model.normalTexture = texturePath;
+                else if (tag == "map_Pr") model.roughnessTexture = texturePath;
+                else if (tag == "map_Pm") model.metallicTexture = texturePath;
             }
         }
+        model.roughness = std::clamp(model.roughness, 0.04F, 1.0F);
+        model.metallic = std::clamp(model.metallic, 0.0F, 1.0F);
     }
 
     output = std::move(model);

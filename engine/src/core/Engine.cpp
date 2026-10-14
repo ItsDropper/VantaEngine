@@ -4,6 +4,7 @@
 #include "vanta/core/Log.hpp"
 #include "vanta/platform/Window.hpp"
 #include "vanta/renderer/D3D11Renderer.hpp"
+#include "vanta/renderer/NvidiaRendering.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -18,6 +19,14 @@ int Engine::Run()
     {
         LogError("Engine startup failed while creating the window.");
         return 1;
+    }
+
+    const auto graphicsCapabilities = renderer::QueryNvidiaRenderingCapabilities();
+    LogInfo(graphicsCapabilities.diagnostic.c_str());
+    if (graphicsCapabilities.nvidiaAdapter && graphicsCapabilities.raytracingSupported) {
+        LogInfo("This NVIDIA adapter reports DXR support; the DXR rendering backend is not enabled yet.");
+    } else {
+        LogInfo("NVIDIA DLSS and DXR rendering are not enabled in this build.");
     }
 
     D3D11Renderer renderer;

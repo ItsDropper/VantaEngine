@@ -7,6 +7,7 @@ add_executable(VantaEngine
     src/core/Engine.cpp
     src/platform/Window.cpp
     src/renderer/D3D11Renderer.cpp
+    src/renderer/NvidiaRendering.cpp
     src/renderer/ObjLoader.cpp
     src/renderer/WicTextureLoader.cpp
 )
@@ -27,6 +28,7 @@ target_compile_definitions(VantaEngine PRIVATE
 
 target_link_libraries(VantaEngine PRIVATE
     d3d11
+    d3d12
     dxgi
     d3dcompiler
     windowscodecs

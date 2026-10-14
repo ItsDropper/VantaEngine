@@ -54,6 +54,9 @@ private:
     UINT m_modelIndexCount = 0;
     UINT m_terrainIndexCount = 0;
     UINT m_forestIndexCount = 0;
+    float m_modelRoughness = 0.72F;
+    float m_modelMetallic = 0.0F;
+    float m_modelBaseColor[3] = {1.0F, 1.0F, 1.0F};
 
     UINT m_width = 0;
     UINT m_height = 0;

@@ -2,7 +2,7 @@
 
 VantaEngine is an early-stage native C++23 3D game engine designed for direct control, a small dependency footprint, and fast iteration without a heavyweight editor.
 
-> **Current milestone:** native Win32 runtime, lit indexed 3D cube, depth testing, and a keyboard-controlled free-fly camera.
+> **Current milestone:** native Win32 runtime, lit multi-object 3D test environment, depth testing, and a keyboard-controlled free-fly camera.
 
 ## What runs right now
 

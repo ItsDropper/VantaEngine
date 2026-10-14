@@ -117,11 +117,11 @@ cbuffer SceneConstants : register(b0)
     float4 cascadeSplits;
 };
 Texture2DArray<float> shadowMap : register(t2);
-Texture2D modelAlbedoTexture : register(t7);
-Texture2D modelNormalTexture : register(t8);
-Texture2D modelRoughnessTexture : register(t9);
-Texture2D modelMetallicTexture : register(t10);
-Texture2D modelOcclusionTexture : register(t11);
+Texture2DArray modelAlbedoTexture : register(t7);
+Texture2DArray modelNormalTexture : register(t8);
+Texture2DArray modelRoughnessTexture : register(t9);
+Texture2DArray modelMetallicTexture : register(t10);
+Texture2DArray modelOcclusionTexture : register(t11);
 SamplerState linearClamp : register(s0);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
@@ -212,7 +212,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float2 duv2 = ddy(input.uv);
     if ((materialFlags & 2U) != 0U)
     {
-        float3 tangentNormal = modelNormalTexture.Sample(linearClamp, input.uv).xyz * 2.0 - 1.0;
+        float3 tangentNormal = modelNormalTexture.Sample(linearClamp, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
         float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
@@ -222,7 +222,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
     if ((materialFlags & 1U) != 0U)
-        albedo *= modelAlbedoTexture.Sample(linearClamp, input.uv).rgb;
+        albedo *= modelAlbedoTexture.Sample(linearClamp, float3(input.uv, input.color.a)).rgb;
     // World-space multi-frequency noise breaks up large flat color regions without
     // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
     // grass and exposed-rock response while leaving trees and buildings mostly intact.
@@ -250,17 +250,17 @@ float4 PSMain(PSInput input) : SV_TARGET
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
     if ((materialFlags & 4U) != 0U)
     {
-        float roughnessSample = modelRoughnessTexture.Sample(linearClamp, input.uv).r;
+        float roughnessSample = modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r;
         if ((materialFlags & 32U) != 0U)
             roughnessSample = modelRoughnessTexture.Sample(linearClamp, input.uv).g;
         roughness = saturate(roughness * roughnessSample);
     }
     if ((materialFlags & 8U) != 0U)
-        metallic = saturate(metallic * modelMetallicTexture.Sample(linearClamp, input.uv).r);
+        metallic = saturate(metallic * modelMetallicTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r);
     if ((materialFlags & 32U) != 0U)
         metallic = saturate(metallic * modelRoughnessTexture.Sample(linearClamp, input.uv).b);
     float ambientOcclusion = (materialFlags & 16U) != 0U
-        ? modelOcclusionTexture.Sample(linearClamp, input.uv).r : 1.0;
+        ? modelOcclusionTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r : 1.0;
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);

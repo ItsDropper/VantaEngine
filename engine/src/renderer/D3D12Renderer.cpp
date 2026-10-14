@@ -706,28 +706,41 @@ bool D3D12Renderer::CreateSceneGeometry()
         LogError(importError.c_str());
     }
 
-    renderer::CpuTexture diffuseTexture;
-    bool hasDiffuseTexture = false;
+    std::array<renderer::CpuTexture, 5> materialTextures;
+    std::array<bool, 5> hasMaterialTexture{};
+    std::array<std::filesystem::path, 5> texturePaths{};
+    materialTextures[0] = {1, 1, {255, 255, 255, 255}};
+    materialTextures[1] = {1, 1, {128, 128, 255, 255}};
+    materialTextures[2] = {1, 1, {255, 255, 255, 255}};
+    materialTextures[3] = {1, 1, {0, 0, 0, 255}};
+    materialTextures[4] = {1, 1, {255, 255, 255, 255}};
     if (modelLoaded) {
-        if (model.materials.empty()) {
-            renderer::CpuMaterial material;
-            material.diffuseTexture = model.diffuseTexture;
-            material.normalTexture = model.normalTexture;
-            material.roughnessTexture = model.roughnessTexture;
-            material.metallicTexture = model.metallicTexture;
-            material.ambientOcclusionTexture = model.ambientOcclusionTexture;
-            material.baseColor = model.baseColor;
-            material.roughness = model.roughness;
-            material.metallic = model.metallic;
-            model.materials.push_back(material);
+        const renderer::CpuMaterial& firstMaterial = model.materials.front();
+        texturePaths[0] = firstMaterial.diffuseTexture;
+        texturePaths[1] = firstMaterial.normalTexture;
+        texturePaths[2] = firstMaterial.roughnessTexture;
+        texturePaths[3] = firstMaterial.packedMetallicRoughness
+            ? std::filesystem::path{} : firstMaterial.metallicTexture;
+        texturePaths[4] = firstMaterial.ambientOcclusionTexture;
+        for (UINT slot = 0; slot < texturePaths.size(); ++slot) {
+            if (texturePaths[slot].empty() || !std::filesystem::exists(texturePaths[slot])) continue;
+            renderer::CpuTexture loadedTexture;
+            if (renderer::LoadWicTexture(texturePaths[slot], loadedTexture) &&
+                loadedTexture.width > 0 && loadedTexture.height > 0 &&
+                loadedTexture.rgba.size() >= static_cast<std::size_t>(loadedTexture.width) * loadedTexture.height * 4U) {
+                materialTextures[slot] = std::move(loadedTexture);
+                hasMaterialTexture[slot] = true;
+            } else {
+                LogError("Direct3D 12: failed to decode an imported material texture; using a neutral fallback.");
+            }
         }
-        if (model.submeshes.empty())
-            model.submeshes.push_back({0U, static_cast<std::uint32_t>(model.indices.size()), 0U});
-        const auto texturePath = model.materials.front().diffuseTexture;
-        if (!texturePath.empty() && std::filesystem::exists(texturePath)) {
-            hasDiffuseTexture = renderer::LoadWicTexture(texturePath, diffuseTexture);
-            if (!hasDiffuseTexture) LogError("Direct3D 12: could not decode imported model base-color texture; using material factors.");
-        }
+    }
+    for (UINT slot = 0; slot < materialTextures.size(); ++slot) {
+        if (!CreateModelTexture(materialTextures[slot].width, materialTextures[slot].height,
+                materialTextures[slot].rgba.data(), 7U + slot, slot == 0U)) return false;
+    }
+
+    if (modelLoaded) {
         constexpr float modelScale = 1.8F;
         constexpr float modelX = 8.0F;
         constexpr float modelZ = 7.0F;
@@ -744,7 +757,14 @@ bool D3D12Renderer::CreateSceneGeometry()
         if (validModel) {
             for (const renderer::CpuSubmesh& submesh : model.submeshes) {
                 const renderer::CpuMaterial& material = model.materials[submesh.materialIndex];
-                const bool useDiffuse = hasDiffuseTexture && material.diffuseTexture == texturePath;
+                UINT flags = 0;
+                if (hasMaterialTexture[0] && material.diffuseTexture == texturePaths[0]) flags |= 1U;
+                if (hasMaterialTexture[1] && material.normalTexture == texturePaths[1]) flags |= 2U;
+                if (hasMaterialTexture[2] && material.roughnessTexture == texturePaths[2]) flags |= 4U;
+                if (hasMaterialTexture[3] && material.metallicTexture == texturePaths[3]) flags |= 8U;
+                if (hasMaterialTexture[4] && material.ambientOcclusionTexture == texturePaths[4]) flags |= 16U;
+                if (material.packedMetallicRoughness && hasMaterialTexture[2] &&
+                    material.roughnessTexture == texturePaths[2]) flags |= 32U;
                 for (UINT offset = 0; offset < submesh.indexCount; ++offset) {
                     const unsigned int sourceIndex = model.indices[submesh.firstIndex + offset];
                     if (sourceIndex >= model.vertices.size()) { validModel = false; break; }
@@ -755,28 +775,19 @@ bool D3D12Renderer::CreateSceneGeometry()
                          source.position.z * modelScale + modelZ},
                         {source.normal.x, source.normal.y, source.normal.z},
                         {material.baseColor.x, material.baseColor.y, material.baseColor.z, 1.0F},
-                        {source.u, source.v}
+                        {source.u, 1.0F - source.v}
                     });
                     materialParameters.push_back({std::clamp(material.roughness, 0.04F, 1.0F),
-                        std::clamp(material.metallic, 0.0F, 1.0F), useDiffuse ? 1.0F : 0.0F, 0.0F});
+                        std::clamp(material.metallic, 0.0F, 1.0F), 1.0F, static_cast<float>(flags)});
                     indices.push_back(destinationIndex);
                 }
                 if (!validModel) break;
             }
-            if (!validModel) LogError("Direct3D 12: imported model contained an invalid index; omitting it.");
+            if (!validModel) LogError("Direct3D 12: imported model contained an invalid index; some malformed triangles were skipped.");
         } else {
             LogError("Direct3D 12: imported model has invalid geometry or material ranges; omitting it.");
         }
     }
-
-    if (diffuseTexture.width == 0 || diffuseTexture.height == 0 ||
-        diffuseTexture.rgba.size() < static_cast<std::size_t>(diffuseTexture.width) * diffuseTexture.height * 4U) {
-        diffuseTexture.width = 1;
-        diffuseTexture.height = 1;
-        diffuseTexture.rgba = {255, 255, 255, 255};
-        hasDiffuseTexture = false;
-    }
-    if (!CreateModelAlbedoTexture(diffuseTexture.width, diffuseTexture.height, diffuseTexture.rgba.data())) return false;
 
     if (vertices.empty() || indices.empty() || indices.size() > UINT_MAX ||
         vertices.size() != materialParameters.size() || (indices.size() % 3U) != 0U) {

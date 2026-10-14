@@ -271,6 +271,16 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float micro = ValueNoise(input.worldPosition * 24.0);
         albedo *= lerp(0.94, 1.05, micro);
         roughness = saturate(roughness + (medium - 0.5) * 0.14);
+        // Derivative-based procedural bump gives untextured world surfaces subtle relief
+        // without requiring per-vertex tangents on the merged procedural mesh.
+        float heightField = ValueNoise(input.worldPosition * 8.5) * 0.7 +
+                            ValueNoise(input.worldPosition * 22.0) * 0.3;
+        float3 dpdx = ddx(input.worldPosition);
+        float3 tangent = normalize(dpdx - n * dot(dpdx, n));
+        float3 bitangent = normalize(cross(n, tangent));
+        float heightDx = ddx(heightField);
+        float heightDy = ddy(heightField);
+        n = normalize(n - tangent * heightDx * 1.8 - bitangent * heightDy * 1.8);
     }
     float nDotL = saturate(dot(n, l));
     float nDotV = max(saturate(dot(n, v)), 0.001);

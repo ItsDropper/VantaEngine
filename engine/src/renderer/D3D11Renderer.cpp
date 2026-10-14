@@ -297,12 +297,52 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
     float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25) * ambientOcclusion;
-    float3 color = ACESFilm(direct + ambient);
-    color = pow(max(color, 0.0), 1.0 / 2.2);
+    // Keep scene shading in linear HDR. Tone mapping and display transfer happen once
+    // after the full scene has been composited, so bright highlights can bloom correctly.
+    float3 color = direct + ambient;
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
     float3 fogColor = float3(0.42, 0.48, 0.55);
     return float4(lerp(color, fogColor, fog), sampled.a * baseColorFactor.a);
+}
+)";
+
+constexpr char kPostProcessShaderSource[] = R"(
+Texture2D sceneTexture : register(t0);
+SamplerState sceneSampler : register(s0);
+struct PixelInput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
+float3 ACESFilm(float3 x)
+{
+    return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}
+float4 PSMain(PixelInput input) : SV_TARGET
+{
+    float3 scene = sceneTexture.Sample(sceneSampler, input.uv).rgb;
+    float2 texel;
+    // A wide, thresholded 5x5 gather creates a restrained highlight bloom without
+    // blurring the whole frame. UV offsets are scaled by the actual scene texture size
+    // through Sample's implicit derivatives on the normalized coordinates below.
+    uint width, height;
+    sceneTexture.GetDimensions(width, height);
+    texel = 1.0 / float2(max(width, 1u), max(height, 1u));
+    float3 bloom = 0.0;
+    [unroll] for (int y = -2; y <= 2; ++y)
+    {
+        [unroll] for (int x = -2; x <= 2; ++x)
+        {
+            float2 uv = saturate(input.uv + float2(x, y) * texel * 4.0);
+            float3 sampleColor = sceneTexture.Sample(sceneSampler, uv).rgb;
+            float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
+            float contribution = smoothstep(0.8, 2.4, luminance);
+            bloom += sampleColor * contribution;
+        }
+    }
+    bloom *= (1.0 / 25.0);
+    float3 hdr = max(scene + bloom * 0.28, 0.0) * 1.08;
+    float3 mapped = ACESFilm(hdr);
+    // Convert linear-light output to display-referred sRGB-like output.
+    mapped = pow(max(mapped, 0.0), 1.0 / 2.2);
+    return float4(mapped, 1.0);
 }
 )";
 
@@ -439,7 +479,24 @@ bool D3D11Renderer::CreateRenderTarget()
     }
     if (FAILED(m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, m_renderTarget.GetAddressOf())))
     {
-        LogError("Could not create the render-target view.");
+        LogError("Could not create the swap-chain render-target view.");
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC hdrDescription{};
+    hdrDescription.Width = m_width;
+    hdrDescription.Height = m_height;
+    hdrDescription.MipLevels = 1;
+    hdrDescription.ArraySize = 1;
+    hdrDescription.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    hdrDescription.SampleDesc.Count = 1;
+    hdrDescription.Usage = D3D11_USAGE_DEFAULT;
+    hdrDescription.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(m_device->CreateTexture2D(&hdrDescription, nullptr, m_hdrTexture.GetAddressOf())) ||
+        FAILED(m_device->CreateRenderTargetView(m_hdrTexture.Get(), nullptr, m_hdrRenderTarget.GetAddressOf())) ||
+        FAILED(m_device->CreateShaderResourceView(m_hdrTexture.Get(), nullptr, m_hdrShaderResource.GetAddressOf())))
+    {
+        LogError("Could not create the HDR scene target.");
         return false;
     }
     return true;
@@ -595,6 +652,21 @@ bool D3D11Renderer::CreatePipeline()
     if (FAILED(m_device->CreateVertexShader(skyVertexBytecode->GetBufferPointer(), skyVertexBytecode->GetBufferSize(), nullptr, m_skyVertexShader.GetAddressOf())) ||
         FAILED(m_device->CreatePixelShader(skyPixelBytecode->GetBufferPointer(), skyPixelBytecode->GetBufferSize(), nullptr, m_skyPixelShader.GetAddressOf()))) {
         LogError("Could not create the sky shader objects.");
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3DBlob> postProcessBytecode;
+    errors.Reset();
+    if (FAILED(D3DCompile(kPostProcessShaderSource, sizeof(kPostProcessShaderSource) - 1,
+            "vanta_postprocess", nullptr, nullptr, "PSMain", "ps_4_0",
+            D3DCOMPILE_ENABLE_STRICTNESS, 0, postProcessBytecode.GetAddressOf(), errors.GetAddressOf()))) {
+        LogError("HDR post-processing shader compilation failed.");
+        if (errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        return false;
+    }
+    if (FAILED(m_device->CreatePixelShader(postProcessBytecode->GetBufferPointer(),
+            postProcessBytecode->GetBufferSize(), nullptr, m_postProcessPixelShader.GetAddressOf()))) {
+        LogError("Could not create the HDR post-processing shader.");
         return false;
     }
     D3D11_DEPTH_STENCIL_DESC skyDepthDescription{};
@@ -962,6 +1034,9 @@ bool D3D11Renderer::Resize(const int width, const int height)
 
     m_context->OMSetRenderTargets(0, nullptr, nullptr);
     m_renderTarget.Reset();
+    m_hdrRenderTarget.Reset();
+    m_hdrShaderResource.Reset();
+    m_hdrTexture.Reset();
     m_depthStencil.Reset();
     m_depthTexture.Reset();
 
@@ -981,9 +1056,9 @@ bool D3D11Renderer::Resize(const int width, const int height)
 void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY, const float cameraZ, const float cameraYaw, const float cameraPitch)
 {
     constexpr float clearColor[] = {0.018F, 0.025F, 0.055F, 1.0F};
-    ID3D11RenderTargetView* target = m_renderTarget.Get();
+    ID3D11RenderTargetView* target = m_hdrRenderTarget.Get();
     m_context->OMSetRenderTargets(1, &target, m_depthStencil.Get());
-    m_context->ClearRenderTargetView(m_renderTarget.Get(), clearColor);
+    m_context->ClearRenderTargetView(m_hdrRenderTarget.Get(), clearColor);
     m_context->ClearDepthStencilView(m_depthStencil.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0F, 0);
 
     D3D11_VIEWPORT viewport{};
@@ -1205,6 +1280,25 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     drawCube(Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(propB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     drawCube(Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(propC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     drawCube(Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+
+    // Composite the complete linear HDR scene into the swap chain. The HDR target must
+    // be unbound before it is sampled, otherwise D3D11 reports a read/write hazard.
+    ID3D11RenderTargetView* backBufferTarget = m_renderTarget.Get();
+    m_context->OMSetRenderTargets(1, &backBufferTarget, nullptr);
+    m_context->RSSetViewports(1, &mainViewport);
+    m_context->OMSetDepthStencilState(m_skyDepthState.Get(), 0);
+    m_context->IASetInputLayout(nullptr);
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_context->VSSetShader(m_skyVertexShader.Get(), nullptr, 0);
+    m_context->PSSetShader(m_postProcessPixelShader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* hdrView = m_hdrShaderResource.Get();
+    m_context->PSSetShaderResources(0, 1, &hdrView);
+    ID3D11SamplerState* postSampler = m_textureSampler.Get();
+    m_context->PSSetSamplers(0, 1, &postSampler);
+    m_context->Draw(3, 0);
+    ID3D11ShaderResourceView* noHdrView = nullptr;
+    m_context->PSSetShaderResources(0, 1, &noHdrView);
+    m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
     (void)m_swapChain->Present(1, 0);
 }
 } // namespace vanta

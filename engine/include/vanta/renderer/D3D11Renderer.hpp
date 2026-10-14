@@ -31,6 +31,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Device> m_device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_context;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_renderTarget;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> m_hdrTexture;
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_hdrRenderTarget;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_hdrShaderResource;
+    Microsoft::WRL::ComPtr<ID3D11PixelShader> m_postProcessPixelShader;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_shadowTexture;

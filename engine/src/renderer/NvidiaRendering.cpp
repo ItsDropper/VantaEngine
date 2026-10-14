@@ -47,6 +47,7 @@ NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities()
 
     std::ostringstream adapters;
     bool foundHardwareAdapter = false;
+    bool firstAdapterRecord = true;
     for (UINT index = 0;; ++index) {
         Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
         const HRESULT adapterResult = factory->EnumAdapterByGpuPreference(
@@ -99,7 +100,8 @@ NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities()
                 ? static_cast<std::uint32_t>(options.RaytracingTier) : 0U;
         }
 
-        if (adapters.tellp() > 0) adapters << "; ";
+        if (!firstAdapterRecord) adapters << "; ";
+        firstAdapterRecord = false;
         adapters << adapterName << " [" << vendor << ", D3D12=yes, DXR="
                  << (supportsRaytracing ? "yes" : "no");
         if (supportsRaytracing) adapters << " tier " << static_cast<unsigned>(options.RaytracingTier);

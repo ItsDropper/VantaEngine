@@ -230,6 +230,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float macroNoise = TerrainNoise(worldXZ * 0.115);
     float detailNoise = TerrainNoise(worldXZ * 1.65);
     float fine = detailNoise * 2.0 - 1.0;
+    float importedMaterial = saturate(input.material.z);
     float terrainColorMask = (1.0 - importedMaterial) *
         smoothstep(0.055, 0.20, albedo.g - max(albedo.r, albedo.b) * 0.42) *
         (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
@@ -244,7 +245,6 @@ float4 PSMain(PSInput input) : SV_TARGET
     // Terrain breakup is isolated from authored model textures and their material factors.
     terrainAlbedo *= 0.94 + 0.10 * fine + 0.07 * (macroNoise - 0.5);
     albedo = lerp(albedo, terrainAlbedo, terrainColorMask);
-    float importedMaterial = saturate(input.material.z);
     float roughness = saturate(lerp(0.72 + 0.16 * fine + terrainColorMask * 0.12,
         input.material.x + 0.05 * fine, importedMaterial));
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));

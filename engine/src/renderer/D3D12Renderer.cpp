@@ -746,7 +746,6 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     toRenderTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     toRenderTarget.Transition.pResource = m_hdrTexture.Get();
     toRenderTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    toRenderTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
     toRenderTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     toRenderTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &toRenderTarget);
@@ -771,6 +770,14 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
 
+    D3D12_RESOURCE_BARRIER depthToSample{};
+    depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    depthToSample.Transition.pResource = m_depthTexture.Get();
+    depthToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    depthToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    depthToSample.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &depthToSample);
+
     D3D12_RESOURCE_BARRIER hdrToSample{};
     hdrToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     hdrToSample.Transition.pResource = m_hdrTexture.Get();
@@ -794,6 +801,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
+    D3D12_RESOURCE_BARRIER depthToWrite = depthToSample;
+    depthToWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    depthToWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+    m_commandList->ResourceBarrier(1, &depthToWrite);
     D3D12_RESOURCE_BARRIER toPresent = backToTarget;
     toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;

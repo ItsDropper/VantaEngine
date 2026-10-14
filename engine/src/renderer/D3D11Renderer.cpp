@@ -31,6 +31,14 @@ struct Vertex
     float uv[2];
 };
 
+struct TemporalConstants
+{
+    Mat4 inverseCurrentViewProjection;
+    Mat4 previousViewProjection;
+    UINT historyValid = 0;
+    float padding[3]{};
+};
+
 struct SceneConstants
 {
     Mat4 worldViewProjection;
@@ -334,13 +342,26 @@ float4 PSMain(PixelInput input) : SV_TARGET
 constexpr char kPostProcessShaderSource[] = R"(
 Texture2D sceneTexture : register(t0);
 Texture2D depthTexture : register(t1);
+Texture2D historyTexture : register(t2);
 SamplerState sceneSampler : register(s0);
+cbuffer TemporalConstants : register(b0)
+{
+    float4x4 inverseCurrentViewProjection;
+    float4x4 previousViewProjection;
+    uint historyValid;
+    float3 temporalPadding;
+};
+struct PostProcessOutput
+{
+    float4 displayColor : SV_TARGET0;
+    float4 historyColor : SV_TARGET1;
+};
 struct PixelInput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 float3 ACESFilm(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
-float4 PSMain(PixelInput input) : SV_TARGET
+PostProcessOutput PSMain(PixelInput input)
 {
     float3 scene = sceneTexture.Sample(sceneSampler, input.uv).rgb;
     uint depthWidth, depthHeight;
@@ -391,11 +412,57 @@ float4 PSMain(PixelInput input) : SV_TARGET
         }
     }
     bloom *= (1.0 / 25.0);
-    float3 hdr = max(scene * ao + bloom * 0.28, 0.0) * 1.08;
+    float3 currentHdr = max(scene * ao, 0.0);
+    float3 temporalHdr = currentHdr;
+    if (historyValid != 0)
+    {
+        float depth = centerDepth;
+        float2 historyUv = input.uv;
+        if (depth < 0.9999)
+        {
+            float4 clipPosition = float4(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depth, 1.0);
+            float4 worldPosition = mul(inverseCurrentViewProjection, clipPosition);
+            worldPosition /= max(abs(worldPosition.w), 0.00001) * sign(worldPosition.w);
+            float4 previousClip = mul(previousViewProjection, worldPosition);
+            if (previousClip.w > 0.0001)
+            {
+                float2 previousNdc = previousClip.xy / previousClip.w;
+                historyUv = float2(previousNdc.x * 0.5 + 0.5, 0.5 - previousNdc.y * 0.5);
+            }
+            else
+            {
+                historyUv = float2(-1.0, -1.0);
+            }
+        }
+        // Neighborhood clipping rejects much of the stale history at disocclusions
+        // and high-contrast edges, limiting trails without requiring motion vectors.
+        if (all(historyUv >= 0.001) && all(historyUv <= 0.999))
+        {
+            float3 neighborhoodMin = currentHdr;
+            float3 neighborhoodMax = currentHdr;
+            [unroll] for (int y = -1; y <= 1; ++y)
+            {
+                [unroll] for (int x = -1; x <= 1; ++x)
+                {
+                    float2 tapUv = saturate(input.uv + float2(x, y) * depthTexel);
+                    float3 tap = max(sceneTexture.SampleLevel(sceneSampler, tapUv, 0).rgb * ao, 0.0);
+                    neighborhoodMin = min(neighborhoodMin, tap);
+                    neighborhoodMax = max(neighborhoodMax, tap);
+                }
+            }
+            float3 history = historyTexture.SampleLevel(sceneSampler, historyUv, 0).rgb;
+            history = clamp(history, neighborhoodMin - 0.04, neighborhoodMax + 0.04);
+            // Conservative accumulation favors the current frame to reduce moving-object ghosting.
+            temporalHdr = lerp(currentHdr, history, 0.86);
+        }
+    }
+    float3 hdr = max(temporalHdr + bloom * 0.28, 0.0) * 1.08;
     float3 mapped = ACESFilm(hdr);
-    // Convert linear-light output to display-referred sRGB-like output.
     mapped = pow(max(mapped, 0.0), 1.0 / 2.2);
-    return float4(mapped, 1.0);
+    PostProcessOutput output;
+    output.displayColor = float4(mapped, 1.0);
+    output.historyColor = float4(temporalHdr, 1.0);
+    return output;
 }
 )";
 
@@ -562,6 +629,31 @@ bool D3D11Renderer::CreateRenderTarget()
         LogError("Could not create the HDR scene target.");
         return false;
     }
+    return CreateTemporalTargets();
+}
+
+bool D3D11Renderer::CreateTemporalTargets()
+{
+    for (std::size_t i = 0; i < m_historyTextures.size(); ++i) {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = m_width;
+        description.Height = m_height;
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(m_device->CreateTexture2D(&description, nullptr, m_historyTextures[i].GetAddressOf())) ||
+            FAILED(m_device->CreateRenderTargetView(m_historyTextures[i].Get(), nullptr, m_historyRenderTargets[i].GetAddressOf())) ||
+            FAILED(m_device->CreateShaderResourceView(m_historyTextures[i].Get(), nullptr, m_historyShaderResources[i].GetAddressOf()))) {
+            LogError("Could not create temporal history targets.");
+            return false;
+        }
+    }
+    m_historyValid = false;
+    m_historyWriteIndex = 0;
+    m_frameIndex = 0;
     return true;
 }
 
@@ -742,6 +834,15 @@ bool D3D11Renderer::CreatePipeline()
     if (FAILED(m_device->CreatePixelShader(postProcessBytecode->GetBufferPointer(),
             postProcessBytecode->GetBufferSize(), nullptr, m_postProcessPixelShader.GetAddressOf()))) {
         LogError("Could not create the HDR post-processing shader.");
+        return false;
+    }
+    D3D11_BUFFER_DESC temporalBufferDescription{};
+    temporalBufferDescription.ByteWidth = sizeof(TemporalConstants);
+    temporalBufferDescription.Usage = D3D11_USAGE_DYNAMIC;
+    temporalBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    temporalBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(m_device->CreateBuffer(&temporalBufferDescription, nullptr, m_postProcessTemporalBuffer.GetAddressOf()))) {
+        LogError("Could not create temporal anti-aliasing constants.");
         return false;
     }
     D3D11_DEPTH_STENCIL_DESC skyDepthDescription{};
@@ -1154,12 +1255,19 @@ bool D3D11Renderer::Resize(const int width, const int height)
     }
 
     m_context->OMSetRenderTargets(0, nullptr, nullptr);
+    ID3D11ShaderResourceView* nullViews[3]{};
+    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(nullViews)), nullViews);
     m_renderTarget.Reset();
     m_hdrRenderTarget.Reset();
     m_hdrShaderResource.Reset();
     m_hdrTexture.Reset();
     m_depthStencil.Reset();
     m_depthTexture.Reset();
+    m_depthShaderResource.Reset();
+    for (auto& texture : m_historyTextures) texture.Reset();
+    for (auto& target : m_historyRenderTargets) target.Reset();
+    for (auto& view : m_historyShaderResources) view.Reset();
+    m_historyValid = false;
 
     const HRESULT resizeResult = m_swapChain->ResizeBuffers(0, static_cast<UINT>(width),
         static_cast<UINT>(height), DXGI_FORMAT_UNKNOWN, 0);
@@ -1171,7 +1279,7 @@ bool D3D11Renderer::Resize(const int width, const int height)
 
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
-    return CreateRenderTarget() && CreateDepthTarget();
+    return CreateRenderTarget() && CreateDepthTarget() && CreateTemporalTargets();
 }
 
 void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY, const float cameraZ, const float cameraYaw, const float cameraPitch)
@@ -1205,7 +1313,24 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const Mat4 view = Mat4::LookAtLH(cameraPosition, cameraPosition + cameraForward, {0.0F, 1.0F, 0.0F})
         .value_or(Mat4::Identity());
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
+    Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
+    // Eight-sample Halton jitter provides sub-pixel coverage for temporal AA.
+    const auto halton = [](std::uint64_t index, std::uint32_t base) {
+        float value = 0.0F;
+        float fraction = 1.0F;
+        while (index > 0) {
+            fraction /= static_cast<float>(base);
+            value += fraction * static_cast<float>(index % base);
+            index /= base;
+        }
+        return value;
+    };
+    const std::uint64_t jitterIndex = (m_frameIndex % 8U) + 1U;
+    const float jitterX = halton(jitterIndex, 2U) - 0.5F;
+    const float jitterY = halton(jitterIndex, 3U) - 0.5F;
+    projection.At(0, 2) += 2.0F * jitterX / static_cast<float>(m_width);
+    projection.At(1, 2) -= 2.0F * jitterY / static_cast<float>(m_height);
+    const Mat4 currentViewProjection = projection * view;
 
     // Three camera-relative shadow cascades keep nearby contact shadows sharp while
     // retaining useful coverage for the valley. The split distances match the shader.
@@ -1427,7 +1552,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     // Composite the complete linear HDR scene into the swap chain. The HDR target must
     // be unbound before it is sampled, otherwise D3D11 reports a read/write hazard.
     ID3D11RenderTargetView* backBufferTarget = m_renderTarget.Get();
-    m_context->OMSetRenderTargets(1, &backBufferTarget, nullptr);
+    const UINT writeIndex = m_historyWriteIndex;
+    const UINT readIndex = 1U - writeIndex;
+    ID3D11RenderTargetView* postTargets[] = {backBufferTarget, m_historyRenderTargets[writeIndex].Get()};
+    m_context->OMSetRenderTargets(static_cast<UINT>(std::size(postTargets)), postTargets, nullptr);
     m_context->RSSetViewports(1, &mainViewport);
     m_context->OMSetDepthStencilState(m_skyDepthState.Get(), 0);
     m_context->IASetInputLayout(nullptr);
@@ -1436,13 +1564,56 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->PSSetShader(m_postProcessPixelShader.Get(), nullptr, 0);
     ID3D11ShaderResourceView* hdrView = m_hdrShaderResource.Get();
     ID3D11ShaderResourceView* depthView = m_depthShaderResource.Get();
-    ID3D11ShaderResourceView* postViews[] = {hdrView, depthView};
+    ID3D11ShaderResourceView* historyView = m_historyShaderResources[readIndex].Get();
+    ID3D11ShaderResourceView* postViews[] = {hdrView, depthView, historyView};
     m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(postViews)), postViews);
+    TemporalConstants temporalConstants{};
+    // Gauss-Jordan inverse of the jittered camera view-projection matrix.
+    double augmented[4][8]{};
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) augmented[row][column] = currentViewProjection.At(row, column);
+        augmented[row][row + 4] = 1.0;
+    }
+    bool inverseValid = true;
+    for (int column = 0; column < 4; ++column) {
+        int pivot = column;
+        for (int row = column + 1; row < 4; ++row)
+            if (std::abs(augmented[row][column]) > std::abs(augmented[pivot][column])) pivot = row;
+        if (std::abs(augmented[pivot][column]) < 1.0e-10) { inverseValid = false; break; }
+        if (pivot != column) for (int j = 0; j < 8; ++j) std::swap(augmented[pivot][j], augmented[column][j]);
+        const double divisor = augmented[column][column];
+        for (int j = 0; j < 8; ++j) augmented[column][j] /= divisor;
+        for (int row = 0; row < 4; ++row) if (row != column) {
+            const double factor = augmented[row][column];
+            for (int j = 0; j < 8; ++j) augmented[row][j] -= factor * augmented[column][j];
+        }
+    }
+    if (inverseValid) {
+        for (int row = 0; row < 4; ++row)
+            for (int column = 0; column < 4; ++column)
+                temporalConstants.inverseCurrentViewProjection.At(row, column) =
+                    static_cast<float>(augmented[row][column + 4]);
+    } else {
+        temporalConstants.inverseCurrentViewProjection = Mat4::Identity();
+    }
+    temporalConstants.previousViewProjection = m_previousViewProjection;
+    temporalConstants.historyValid = (m_historyValid && inverseValid) ? 1U : 0U;
+    D3D11_MAPPED_SUBRESOURCE temporalMapped{};
+    if (SUCCEEDED(m_context->Map(m_postProcessTemporalBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &temporalMapped))) {
+        *static_cast<TemporalConstants*>(temporalMapped.pData) = temporalConstants;
+        m_context->Unmap(m_postProcessTemporalBuffer.Get(), 0);
+        ID3D11Buffer* temporalBuffer = m_postProcessTemporalBuffer.Get();
+        m_context->PSSetConstantBuffers(0, 1, &temporalBuffer);
+    }
     ID3D11SamplerState* postSampler = m_textureSampler.Get();
     m_context->PSSetSamplers(0, 1, &postSampler);
     m_context->Draw(3, 0);
-    ID3D11ShaderResourceView* noHdrViews[2]{};
-    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noHdrViews)), noHdrViews);
+    ID3D11ShaderResourceView* noPostViews[3]{};
+    m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noPostViews)), noPostViews);
+    m_historyValid = inverseValid;
+    m_previousViewProjection = currentViewProjection;
+    m_historyWriteIndex = 1U - writeIndex;
+    ++m_frameIndex;
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
     (void)m_swapChain->Present(1, 0);
 }

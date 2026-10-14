@@ -30,6 +30,8 @@ private:
     [[nodiscard]] bool CreateRenderTargets();
     [[nodiscard]] bool CreateDepthTarget();
     [[nodiscard]] bool CreateHdrTarget();
+    [[nodiscard]] bool CreateShadowResources();
+    [[nodiscard]] bool CreateShadowPipeline();
     [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreatePipeline();
@@ -50,12 +52,14 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_hdrTexture;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_constantBuffer;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_postProcessPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_shadowPipelineState;
     std::array<UINT64, kFrameCount> m_fenceValues{};
     HANDLE m_fenceEvent = nullptr;
     void* m_mappedConstants = nullptr;

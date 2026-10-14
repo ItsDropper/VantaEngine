@@ -31,16 +31,45 @@ int Engine::Run(const bool useD3D12)
             LogError("Engine startup failed while initializing the Direct3D 12 backend.");
             return 1;
         }
+        using Clock = std::chrono::steady_clock;
+        auto previousFrame = Clock::now();
+        float elapsedSeconds = 0.0F;
+        float cameraX = 3.4F;
+        float cameraY = 2.6F;
+        float cameraZ = -5.5F;
+        float cameraYaw = -0.554F;
+        float cameraPitch = -0.360F;
         while (window.IsOpen())
         {
             window.PollEvents();
             if (!window.IsOpen()) break;
             const int width = window.Width();
             const int height = window.Height();
+            const auto now = Clock::now();
+            const float deltaSeconds = static_cast<float>(ClampDeltaSeconds(std::chrono::duration<double>(now - previousFrame).count()));
+            previousFrame = now;
+            elapsedSeconds += deltaSeconds;
+            constexpr float moveSpeed = 4.5F;
+            constexpr float lookSpeed = 1.65F;
+            if (window.IsKeyDown(VK_LEFT)) cameraYaw -= lookSpeed * deltaSeconds;
+            if (window.IsKeyDown(VK_RIGHT)) cameraYaw += lookSpeed * deltaSeconds;
+            if (window.IsKeyDown(VK_UP)) cameraPitch += lookSpeed * deltaSeconds;
+            if (window.IsKeyDown(VK_DOWN)) cameraPitch -= lookSpeed * deltaSeconds;
+            cameraPitch = std::clamp(cameraPitch, -1.50F, 1.50F);
+            const float forwardX = std::sin(cameraYaw);
+            const float forwardZ = std::cos(cameraYaw);
+            const float rightX = std::cos(cameraYaw);
+            const float rightZ = -std::sin(cameraYaw);
+            if (window.IsKeyDown('W')) { cameraX += forwardX * moveSpeed * deltaSeconds; cameraZ += forwardZ * moveSpeed * deltaSeconds; }
+            if (window.IsKeyDown('S')) { cameraX -= forwardX * moveSpeed * deltaSeconds; cameraZ -= forwardZ * moveSpeed * deltaSeconds; }
+            if (window.IsKeyDown('D')) { cameraX += rightX * moveSpeed * deltaSeconds; cameraZ += rightZ * moveSpeed * deltaSeconds; }
+            if (window.IsKeyDown('A')) { cameraX -= rightX * moveSpeed * deltaSeconds; cameraZ -= rightZ * moveSpeed * deltaSeconds; }
+            if (window.IsKeyDown('E')) cameraY += moveSpeed * deltaSeconds;
+            if (window.IsKeyDown('Q')) cameraY -= moveSpeed * deltaSeconds;
             if (width > 0 && height > 0)
             {
                 if (!renderer.Resize(width, height)) return 1;
-                renderer.Render();
+                renderer.Render(elapsedSeconds, cameraX, cameraY, cameraZ, cameraYaw, cameraPitch);
             }
         }
         LogInfo("Direct3D 12 backend shut down cleanly.");

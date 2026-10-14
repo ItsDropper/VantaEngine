@@ -7,6 +7,7 @@ add_executable(VantaEngine
     src/core/Engine.cpp
     src/platform/Window.cpp
     src/renderer/D3D11Renderer.cpp
+    src/renderer/D3D12Renderer.cpp
     src/renderer/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
     src/renderer/ObjLoader.cpp

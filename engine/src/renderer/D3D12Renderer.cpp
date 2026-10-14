@@ -87,11 +87,16 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     }
     m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-    if (FAILED(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-            IID_PPV_ARGS(m_commandAllocator.GetAddressOf()))) ||
-        FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(),
+    for (auto& allocator : m_commandAllocators) {
+        if (FAILED(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                IID_PPV_ARGS(allocator.GetAddressOf())))) {
+            LogError("Direct3D 12: command allocator creation failed.");
+            return false;
+        }
+    }
+    if (FAILED(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[0].Get(),
             nullptr, IID_PPV_ARGS(m_commandList.GetAddressOf())))) {
-        LogError("Direct3D 12: command allocator/list creation failed.");
+        LogError("Direct3D 12: command-list creation failed.");
         return false;
     }
     if (FAILED(m_commandList->Close())) {
@@ -173,7 +178,8 @@ void D3D12Renderer::Render()
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         return;
     }
-    if (FAILED(m_commandAllocator->Reset()) || FAILED(m_commandList->Reset(m_commandAllocator.Get(), nullptr))) {
+    if (FAILED(m_commandAllocators[m_frameIndex]->Reset()) ||
+        FAILED(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr))) {
         LogError("Direct3D 12: command recording reset failed.");
         return;
     }

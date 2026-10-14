@@ -18,6 +18,10 @@ bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
         LogError("Could not initialize COM for image decoding.");
         return false;
     }
+    struct ApartmentScope {
+        bool owns;
+        ~ApartmentScope() { if (owns) CoUninitialize(); }
+    } apartment{ownsComInitialization};
 
     Microsoft::WRL::ComPtr<IWICImagingFactory> factory;
     Microsoft::WRL::ComPtr<IWICBitmapDecoder> decoder;
@@ -53,7 +57,6 @@ bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
         success = true;
     } while (false);
 
-    if (ownsComInitialization) CoUninitialize();
     if (!success) LogError(("Could not decode texture: " + path.string()).c_str());
     return success;
 }

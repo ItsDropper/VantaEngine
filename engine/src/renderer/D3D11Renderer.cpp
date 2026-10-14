@@ -38,6 +38,8 @@ struct SceneConstants
     float fogDensity;
     float lightDirection[3];
     float fogStart;
+    float materialProperties[4];
+    float baseColorFactor[4];
 };
 
 constexpr Vertex kCubeVertices[] = {

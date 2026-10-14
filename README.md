@@ -17,7 +17,7 @@ The renderer now includes:
 - Window resize handling and a continuously updated frame loop.
 - Procedural 128×128 rolling terrain with gradient-derived normals, altitude/slope biome coloring, and tiled UVs.
 - A deterministic pine forest with varied tree heights, tiered low-poly foliage, trunks, and merged geometry to limit draw calls.
-- Per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
+- A full-screen sunset sky with a solar glow, per-pixel specular highlights, hemisphere-style sky fill, warm directional lighting, and distance-based atmospheric fog for depth separation.
 - A keyboard-controlled free-fly camera for inspecting the scene from different angles.
 - Wavefront OBJ import with polygon triangulation, positive/negative position indices, UV coordinates, supplied normals, and generated face normals when normals are absent.
 - MTL `map_Kd` diffuse texture discovery and Windows Imaging Component (WIC) decoding for common Windows-supported image formats.
@@ -102,6 +102,6 @@ GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks prov
 3. Perspective camera, depth buffer, and transform-aware indexed mesh rendering. Implemented.
 4. Keyboard input and controllable free-fly camera. Implemented.
 5. OBJ mesh import and textured diffuse materials. Implemented as an initial pipeline.
-6. Shadow mapping with PCF filtering, screen-space ambient occlusion, and better material/lighting controls.
+6. PCF shadow mapping, screen-space ambient occlusion, and better material/lighting controls (techniques used in high-quality real-time renderers).
 7. Direct3D 12 backend for DXR experiments and optional NVIDIA DLSS integration where supported.
 8. Multiple material groups, normal maps/PBR, scene representation, and game-facing APIs.

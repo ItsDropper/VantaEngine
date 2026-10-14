@@ -62,6 +62,30 @@ float3 FresnelSchlick(float cosine, float3 f0)
 {
     return f0 + (1.0 - f0) * pow(1.0 - saturate(cosine), 5.0);
 }
+float Hash21(float2 p)
+{
+    p = frac(p * float2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return frac(p.x * p.y);
+}
+float ValueNoise(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = Hash21(i);
+    float b = Hash21(i + float2(1.0, 0.0));
+    float c = Hash21(i + float2(0.0, 1.0));
+    float d = Hash21(i + float2(1.0, 1.0));
+    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+}
+float TerrainNoise(float2 p)
+{
+    float n = ValueNoise(p) * 0.57;
+    n += ValueNoise(p * 2.03 + 17.0) * 0.28;
+    n += ValueNoise(p * 5.11 - 9.0) * 0.15;
+    return n;
+}
 float4 PSMain(PSInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
@@ -69,12 +93,26 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 l = normalize(float3(-0.42, 0.82, -0.36));
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
-    // Stable world-space material breakup keeps the merged procedural environment from
-    // looking like flat vertex-painted primitives while retaining deterministic output.
-    float broad = sin(input.worldPosition.x * 0.17) * sin(input.worldPosition.z * 0.13);
-    float fine = sin(input.worldPosition.x * 1.7 + input.worldPosition.z * 2.1);
-    albedo *= 0.91 + 0.075 * broad + 0.025 * fine;
-    float roughness = saturate(0.74 + 0.12 * fine);
+    // World-space multi-frequency noise breaks up large flat color regions without
+    // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
+    // grass and exposed-rock response while leaving trees and buildings mostly intact.
+    float2 worldXZ = input.worldPosition.xz;
+    float macroNoise = TerrainNoise(worldXZ * 0.115);
+    float detailNoise = TerrainNoise(worldXZ * 1.65);
+    float fine = detailNoise * 2.0 - 1.0;
+    float terrainColorMask = smoothstep(0.055, 0.20, albedo.g - max(albedo.r, albedo.b) * 0.42)
+        * (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
+    float slope = 1.0 - saturate(n.y);
+    float rockMask = terrainColorMask * smoothstep(0.28, 0.78, slope + (macroNoise - 0.5) * 0.22);
+    float soilMask = terrainColorMask * (1.0 - rockMask) * smoothstep(0.30, 0.67, macroNoise);
+    float3 grassAlbedo = albedo * (0.80 + macroNoise * 0.34) * (0.90 + detailNoise * 0.20);
+    float3 soilAlbedo = albedo * float3(0.72, 0.59, 0.43) * (0.72 + detailNoise * 0.48);
+    float3 rockAlbedo = lerp(albedo * 0.52, float3(0.31, 0.32, 0.30), detailNoise * 0.55);
+    albedo = lerp(grassAlbedo, soilAlbedo, soilMask * 0.72);
+    albedo = lerp(albedo, rockAlbedo, rockMask * 0.88);
+    // Fine world-space breakup adds surface detail at multiple viewing distances.
+    albedo *= 0.94 + 0.10 * fine + 0.07 * (macroNoise - 0.5);
+    float roughness = saturate(0.72 + 0.16 * fine + terrainColorMask * 0.12);
     float metallic = 0.025;
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);

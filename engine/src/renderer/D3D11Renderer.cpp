@@ -289,15 +289,15 @@ bool D3D11Renderer::CreatePipeline()
     }
 
     const std::filesystem::path modelPath = std::filesystem::path{VANTA_ASSET_DIR} / "models" / "stone_house.obj";
-    CpuModel model;
+    renderer::CpuModel model;
     std::string importError;
-    if (!LoadWavefrontObj(modelPath, model, importError)) {
+    if (!renderer::LoadWavefrontObj(modelPath, model, importError)) {
         LogError(importError.c_str());
         return false;
     }
     std::vector<Vertex> modelVertices;
     modelVertices.reserve(model.vertices.size());
-    for (const ModelVertex& source : model.vertices) {
+    for (const renderer::ModelVertex& source : model.vertices) {
         modelVertices.push_back({{source.position.x, source.position.y, source.position.z},
             {source.normal.x, source.normal.y, source.normal.z}, {1.0F, 1.0F, 1.0F, 1.0F},
             {source.u, source.v}});
@@ -332,8 +332,8 @@ bool D3D11Renderer::CreatePipeline()
     }
     m_modelIndexCount = static_cast<UINT>(model.indices.size());
 
-    CpuTexture image;
-    if (model.diffuseTexture.empty() || !LoadWicTexture(model.diffuseTexture, image)) {
+    renderer::CpuTexture image;
+    if (model.diffuseTexture.empty() || !renderer::LoadWicTexture(model.diffuseTexture, image)) {
         LogError("Imported model has no readable diffuse texture (check its MTL map_Kd entry).");
         return false;
     }

@@ -33,7 +33,7 @@ struct D3D12WorldVertex
     float uv[2];
     float material[4];
 };
-static_assert(sizeof(D3D12WorldVertex) == 60);
+static_assert(sizeof(D3D12WorldVertex) == 64);
 
 struct SceneConstants
 {
@@ -656,7 +656,7 @@ bool D3D12Renderer::CreateTemporalTargets()
                 IID_PPV_ARGS(m_historyColorTextures[i].GetAddressOf()))) ||
             FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depthDesc,
                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &depthClear,
-                IID_PPV_ARGS(m_historyDepthTextures[i].GetAddressOf()))) {
+                IID_PPV_ARGS(m_historyDepthTextures[i].GetAddressOf())))) {
             LogError("Direct3D 12: temporal history texture creation failed.");
             return false;
         }

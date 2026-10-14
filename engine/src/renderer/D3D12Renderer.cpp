@@ -123,6 +123,7 @@ Texture2DArray modelRoughnessTexture : register(t9);
 Texture2DArray modelMetallicTexture : register(t10);
 Texture2DArray modelOcclusionTexture : register(t11);
 SamplerState linearClamp : register(s0);
+SamplerState linearWrap : register(s1);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
 PSInput VSMain(VSInput input)
@@ -212,7 +213,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float2 duv2 = ddy(input.uv);
     if ((materialFlags & 2U) != 0U)
     {
-        float3 tangentNormal = modelNormalTexture.Sample(linearClamp, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
+        float3 tangentNormal = modelNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
         float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
@@ -222,7 +223,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
     if ((materialFlags & 1U) != 0U)
-        albedo *= modelAlbedoTexture.Sample(linearClamp, float3(input.uv, input.color.a)).rgb;
+        albedo *= modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
     // World-space multi-frequency noise breaks up large flat color regions without
     // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
     // grass and exposed-rock response while leaving trees and buildings mostly intact.
@@ -250,17 +251,17 @@ float4 PSMain(PSInput input) : SV_TARGET
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
     if ((materialFlags & 4U) != 0U)
     {
-        float roughnessSample = modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r;
+        float roughnessSample = modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r;
         if ((materialFlags & 32U) != 0U)
-            roughnessSample = modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).g;
+            roughnessSample = modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).g;
         roughness = saturate(roughness * roughnessSample);
     }
     if ((materialFlags & 8U) != 0U)
-        metallic = saturate(metallic * modelMetallicTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r);
+        metallic = saturate(metallic * modelMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r);
     if ((materialFlags & 32U) != 0U)
-        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).b);
+        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b);
     float ambientOcclusion = (materialFlags & 16U) != 0U
-        ? modelOcclusionTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r : 1.0;
+        ? modelOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r : 1.0;
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
@@ -1229,25 +1230,30 @@ bool D3D12Renderer::CreatePipeline()
     rootParameters[2].Descriptor.ShaderRegister = 1;
     rootParameters[2].Descriptor.RegisterSpace = 0;
     rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    D3D12_STATIC_SAMPLER_DESC staticSampler{};
-    staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    staticSampler.MipLODBias = 0.0F;
-    staticSampler.MaxAnisotropy = 1;
-    staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-    staticSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
-    staticSampler.MinLOD = 0.0F;
-    staticSampler.MaxLOD = D3D12_FLOAT32_MAX;
-    staticSampler.ShaderRegister = 0;
-    staticSampler.RegisterSpace = 0;
-    staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    D3D12_STATIC_SAMPLER_DESC staticSamplers[2]{};
+    staticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    staticSamplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].MipLODBias = 0.0F;
+    staticSamplers[0].MaxAnisotropy = 1;
+    staticSamplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    staticSamplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+    staticSamplers[0].MinLOD = 0.0F;
+    staticSamplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+    staticSamplers[0].ShaderRegister = 0;
+    staticSamplers[0].RegisterSpace = 0;
+    staticSamplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    staticSamplers[1] = staticSamplers[0];
+    staticSamplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    staticSamplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    staticSamplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    staticSamplers[1].ShaderRegister = 1;
     D3D12_ROOT_SIGNATURE_DESC rootDescription{};
     rootDescription.NumParameters = 3;
     rootDescription.pParameters = rootParameters;
-    rootDescription.NumStaticSamplers = 1;
-    rootDescription.pStaticSamplers = &staticSampler;
+    rootDescription.NumStaticSamplers = 2;
+    rootDescription.pStaticSamplers = staticSamplers;
     rootDescription.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     Microsoft::WRL::ComPtr<ID3DBlob> serializedRoot;
     errors.Reset();

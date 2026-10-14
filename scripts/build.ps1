@@ -28,10 +28,15 @@ function Find-VisualStudio {
 $vsPath = Find-VisualStudio
 $devCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
 $cmakeBundled = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+$ctestBundled = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe"
 $ninjaBundled = Join-Path $vsPath "Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
 
 $cmake = if (Test-Path $cmakeBundled) { $cmakeBundled } else {
     $command = Get-Command cmake -ErrorAction SilentlyContinue
+    if ($command) { $command.Source } else { $null }
+}
+$ctest = if (Test-Path $ctestBundled) { $ctestBundled } else {
+    $command = Get-Command ctest -ErrorAction SilentlyContinue
     if ($command) { $command.Source } else { $null }
 }
 $ninja = if (Test-Path $ninjaBundled) { $ninjaBundled } else {
@@ -41,6 +46,7 @@ $ninja = if (Test-Path $ninjaBundled) { $ninjaBundled } else {
 
 if (-not (Test-Path $devCmd)) { throw "Visual Studio developer environment script not found: $devCmd" }
 if (-not $cmake) { throw "CMake was not found. Add the Visual Studio CMake component or install CMake." }
+if (-not $ctest) { throw "CTest was not found. Add the Visual Studio CMake component or install CMake." }
 if (-not $ninja) { throw "Ninja was not found. Add the Visual Studio CMake/Ninja components or install Ninja." }
 
 if ($Clean -and (Test-Path $buildDir)) {
@@ -62,7 +68,7 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE." }
 $exe = Join-Path $buildDir "bin\VantaEngine.exe"
 
 if ($Test) {
-    $testCommand = 'call "{0}" -arch=x64 -host_arch=x64 >nul && "{1}" --test-dir "{2}" --output-on-failure' -f $devCmd, $cmake, $buildDir
+    $testCommand = 'call "{0}" -arch=x64 -host_arch=x64 >nul && "{1}" --test-dir "{2}" --output-on-failure' -f $devCmd, $ctest, $buildDir
     Write-Host "Running tests..."
     & $env:ComSpec /d /s /c $testCommand
     if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }

@@ -41,7 +41,10 @@ NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities() noexcept
 
         result.d3d12Available = true;
         result.nvidiaAdapter = description.VendorId == 0x10DE;
-        result.adapterName.assign(description.Description);
+        char adapterName[128]{};
+        (void)WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
+            adapterName, static_cast<int>(sizeof(adapterName)), nullptr, nullptr);
+        result.adapterName = adapterName;
         D3D12_FEATURE_DATA_D3D12_OPTIONS5 options{};
         if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options, sizeof(options)))) {
             result.raytracingTier = static_cast<std::uint32_t>(options.RaytracingTier);

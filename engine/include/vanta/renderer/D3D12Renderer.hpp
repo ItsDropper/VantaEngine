@@ -29,6 +29,8 @@ private:
     static constexpr UINT kFrameCount = 2;
     [[nodiscard]] bool CreateRenderTargets();
     [[nodiscard]] bool CreateDepthTarget();
+    [[nodiscard]] bool CreateHdrTarget();
+    [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreatePipeline();
     [[nodiscard]] bool WaitForGpu();
@@ -40,16 +42,20 @@ private:
     Microsoft::WRL::ComPtr<IDXGISwapChain3> m_swapChain;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_srvHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_samplerHeap;
     std::array<Microsoft::WRL::ComPtr<ID3D12CommandAllocator>, kFrameCount> m_commandAllocators;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;
     Microsoft::WRL::ComPtr<ID3D12Fence> m_fence;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthTexture;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_hdrTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_constantBuffer;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_postProcessPipelineState;
     std::array<UINT64, kFrameCount> m_fenceValues{};
     HANDLE m_fenceEvent = nullptr;
     void* m_mappedConstants = nullptr;
@@ -57,6 +63,7 @@ private:
     UINT m_width = 0;
     UINT m_height = 0;
     UINT m_rtvDescriptorSize = 0;
+    UINT m_srvDescriptorSize = 0;
     UINT m_frameIndex = 0;
     UINT64 m_nextFenceValue = 1;
     UINT m_indexCount = 0;

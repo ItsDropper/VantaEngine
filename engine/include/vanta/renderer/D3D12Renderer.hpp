@@ -61,8 +61,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_constantBuffer;
-    Microsoft::WRL::ComPtr<ID3D12Resource> m_temporalConstantBuffer;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_temporalConstantBuffers;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_postProcessPipelineState;
@@ -70,8 +70,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_temporalPipelineState;
     std::array<UINT64, kFrameCount> m_fenceValues{};
     HANDLE m_fenceEvent = nullptr;
-    void* m_mappedConstants = nullptr;
-    void* m_mappedTemporalConstants = nullptr;
+    std::array<void*, kFrameCount> m_mappedConstants{};
+    std::array<void*, kFrameCount> m_mappedTemporalConstants{};
     HWND m_window = nullptr;
     UINT m_width = 0;
     UINT m_height = 0;

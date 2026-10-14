@@ -252,13 +252,13 @@ float4 PSMain(PSInput input) : SV_TARGET
     {
         float roughnessSample = modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r;
         if ((materialFlags & 32U) != 0U)
-            roughnessSample = modelRoughnessTexture.Sample(linearClamp, input.uv).g;
+            roughnessSample = modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).g;
         roughness = saturate(roughness * roughnessSample);
     }
     if ((materialFlags & 8U) != 0U)
         metallic = saturate(metallic * modelMetallicTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r);
     if ((materialFlags & 32U) != 0U)
-        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearClamp, input.uv).b);
+        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearClamp, float3(input.uv, input.color.a)).b);
     float ambientOcclusion = (materialFlags & 16U) != 0U
         ? modelOcclusionTexture.Sample(linearClamp, float3(input.uv, input.color.a)).r : 1.0;
     float ndl = saturate(dot(n, l));

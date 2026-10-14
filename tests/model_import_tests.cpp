@@ -20,9 +20,15 @@ void Check(bool condition, const char* name)
 int main()
 {
     const auto path = std::filesystem::temp_directory_path() / "vanta_obj_import_test.obj";
+    const auto materialPath = path.parent_path() / "vanta_obj_import_test.mtl";
+    {
+        std::ofstream material(materialPath);
+        material << "newmtl test_material\nmap_Kd sample_diffuse.bmp\n";
+    }
     {
         std::ofstream file(path);
-        file << "# quad with UVs and no normals\n"
+        file << "mtllib vanta_obj_import_test.mtl\n"
+                "# quad with UVs and no normals\n"
                 "v 0 0 0\n"
                 "v 1 0 0\n"
                 "v 1 1 0\n"
@@ -42,7 +48,10 @@ int main()
         "generates a face normal when OBJ normals are absent");
     Check(model.vertices.size() >= 3 && std::abs(model.vertices[1].u - 1.0F) < 0.001F,
         "preserves texture coordinates");
+    Check(model.diffuseTexture.filename() == "sample_diffuse.bmp",
+        "resolves the MTL diffuse texture relative to the material file");
     std::filesystem::remove(path);
+    std::filesystem::remove(materialPath);
 
     const auto invalidPath = std::filesystem::temp_directory_path() / "vanta_obj_import_invalid.obj";
     {

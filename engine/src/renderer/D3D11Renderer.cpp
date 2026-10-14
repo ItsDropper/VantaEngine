@@ -41,6 +41,7 @@ struct SceneConstants
     float fogStart;
     float materialProperties[4];
     float baseColorFactor[4];
+    UINT textureFlags[4];
     Mat4 lightViewProjection;
 };
 
@@ -96,10 +97,15 @@ cbuffer SceneConstants : register(b0)
     float fogStart;
     float4 materialProperties;
     float4 baseColorFactor;
+    uint4 textureFlags;
     float4x4 lightViewProjection;
 };
 Texture2D diffuseTexture : register(t0);
 Texture2D<float> shadowMap : register(t1);
+Texture2D normalTexture : register(t2);
+Texture2D roughnessTexture : register(t3);
+Texture2D metallicTexture : register(t4);
+Texture2D ambientOcclusionTexture : register(t5);
 SamplerState diffuseSampler : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
 
@@ -178,11 +184,27 @@ float CalculateShadow(float4 shadowPosition, float3 normal, float3 lightDirectio
 float4 PSMain(PixelInput input) : SV_TARGET
 {
     float3 n = normalize(input.normal);
+    if (textureFlags.x != 0)
+    {
+        // Derivative-built tangent frame avoids requiring imported tangents in the OBJ vertex format.
+        float3 dpdx = ddx(input.worldPosition);
+        float3 dpdy = ddy(input.worldPosition);
+        float2 duvdx = ddx(input.uv);
+        float2 duvdy = ddy(input.uv);
+        float3 tangent = normalize(dpdx * duvdy.y - dpdy * duvdx.y);
+        float3 bitangent = normalize(-dpdx * duvdy.x + dpdy * duvdx.x);
+        float3 mappedNormal = normalTexture.Sample(diffuseSampler, input.uv).xyz * 2.0 - 1.0;
+        n = normalize(tangent * mappedNormal.x + bitangent * mappedNormal.y + n * mappedNormal.z);
+    }
     float3 v = normalize(cameraPosition - input.worldPosition);
     float3 l = normalize(-sunDirection);
     float3 h = normalize(v + l);
-    float roughness = clamp(materialProperties.x, 0.04, 1.0);
-    float metallic = saturate(materialProperties.y);
+    float roughness = textureFlags.y != 0
+        ? clamp(roughnessTexture.Sample(diffuseSampler, input.uv).r, 0.04, 1.0)
+        : clamp(materialProperties.x, 0.04, 1.0);
+    float metallic = textureFlags.z != 0
+        ? saturate(metallicTexture.Sample(diffuseSampler, input.uv).r)
+        : saturate(materialProperties.y);
     float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
     if (useTexture == 0)
@@ -204,7 +226,9 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float shadow = CalculateShadow(input.shadowPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
     float3 sky = lerp(float3(0.025, 0.035, 0.055), float3(0.22, 0.30, 0.38), saturate(n.y));
-    float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25);
+    float ambientOcclusion = textureFlags.w != 0
+        ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
+    float3 ambient = sky * albedo * (1.0 - metallic) * (1.0 - roughness * 0.25) * ambientOcclusion;
     float3 color = ACESFilm(direct + ambient);
     color = pow(max(color, 0.0), 1.0 / 2.2);
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
@@ -227,6 +251,7 @@ cbuffer SceneConstants : register(b0)
     float fogStart;
     float4 materialProperties;
     float4 baseColorFactor;
+    uint4 textureFlags;
     float4x4 lightViewProjection;
 };
 struct VertexInput { float3 position : POSITION; };
@@ -713,6 +738,42 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
 
+    const auto uploadLinearMaterialMap = [&](const std::filesystem::path& path,
+                                                Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
+                                                const char* label) -> bool {
+        if (path.empty()) return true;
+        renderer::CpuTexture map;
+        if (!renderer::LoadWicTexture(path, map)) {
+            LogError((std::string("Could not load material ") + label + " map: " + path.string()).c_str());
+            return false;
+        }
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = map.width;
+        desc.Height = map.height;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // Numeric data maps must stay linear.
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_IMMUTABLE;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA data{};
+        data.pSysMem = map.rgba.data();
+        data.SysMemPitch = map.width * 4U;
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> textureResource;
+        if (FAILED(m_device->CreateTexture2D(&desc, &data, textureResource.GetAddressOf())) ||
+            FAILED(m_device->CreateShaderResourceView(textureResource.Get(), nullptr, destination.GetAddressOf()))) {
+            LogError((std::string("Could not upload material ") + label + " map.").c_str());
+            return false;
+        }
+        return true;
+    };
+    if (!uploadLinearMaterialMap(model.normalTexture, m_normalTexture, "normal") ||
+        !uploadLinearMaterialMap(model.roughnessTexture, m_roughnessTexture, "roughness") ||
+        !uploadLinearMaterialMap(model.metallicTexture, m_metallicTexture, "metallic") ||
+        !uploadLinearMaterialMap(model.ambientOcclusionTexture, m_ambientOcclusionTexture, "ambient-occlusion")) {
+        return false;
+    }
+
     D3D11_SAMPLER_DESC samplerDescription{};
     samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -968,6 +1029,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         {m_modelRoughness, m_modelMetallic, 0.0F, 0.0F},
         {m_modelBaseColor[0], m_modelBaseColor[1], m_modelBaseColor[2], 1.0F}};
     houseConstants.lightViewProjection = lightViewProjection;
+    houseConstants.textureFlags[0] = m_normalTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[1] = m_roughnessTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[2] = m_metallicTexture.Get() != nullptr ? 1U : 0U;
+    houseConstants.textureFlags[3] = m_ambientOcclusionTexture.Get() != nullptr ? 1U : 0U;
     D3D11_MAPPED_SUBRESOURCE houseMapped{};
     if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &houseMapped))) {
         *static_cast<SceneConstants*>(houseMapped.pData) = houseConstants;
@@ -979,11 +1044,14 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->IASetIndexBuffer(m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
         ID3D11ShaderResourceView* textureView = m_diffuseTexture.Get();
         ID3D11SamplerState* sampler = m_textureSampler.Get();
-        m_context->PSSetShaderResources(0, 1, &textureView);
+        ID3D11ShaderResourceView* materialViews[] = {
+            textureView, m_shadowShaderResource.Get(), m_normalTexture.Get(), m_roughnessTexture.Get(),
+            m_metallicTexture.Get(), m_ambientOcclusionTexture.Get()};
+        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(materialViews)), materialViews);
         m_context->PSSetSamplers(0, 1, &sampler);
         m_context->DrawIndexed(m_modelIndexCount, 0, 0);
-        ID3D11ShaderResourceView* noTexture = nullptr;
-        m_context->PSSetShaderResources(0, 1, &noTexture);
+        ID3D11ShaderResourceView* noTextures[6]{};
+        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noTextures)), noTextures);
         ID3D11Buffer* cubeVertexBuffer = m_vertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &cubeVertexBuffer, &stride, &offset);
         m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);

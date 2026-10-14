@@ -57,6 +57,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestVertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestIndexBuffer;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_diffuseTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_normalTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_roughnessTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_metallicTexture;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_ambientOcclusionTexture;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
     UINT m_modelIndexCount = 0;

@@ -30,7 +30,8 @@ int main()
                     << "map_Kd sample_diffuse.bmp\n"
                     << "map_Bump sample_normal.png\n"
                     << "map_Pr sample_roughness.png\n"
-                    << "map_Pm sample_metallic.png\n";
+                    << "map_Pm sample_metallic.png\n"
+                    << "map_AO sample_ao.png\n";
     }
     {
         std::ofstream file(path);
@@ -65,6 +66,8 @@ int main()
           model.roughnessTexture.filename() == "sample_roughness.png" &&
           model.metallicTexture.filename() == "sample_metallic.png",
         "resolves normal, roughness, and metallic map paths");
+    Check(model.ambientOcclusionTexture.filename() == "sample_ao.png",
+        "resolves the ambient-occlusion map path");
     std::filesystem::remove(path);
     std::filesystem::remove(materialPath);
 
@@ -78,6 +81,6 @@ int main()
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
 
-    std::cout << (10 - failures) << "/10 model import tests passed.\n";
+    std::cout << (11 - failures) << "/11 model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

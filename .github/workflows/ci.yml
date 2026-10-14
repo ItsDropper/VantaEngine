@@ -29,8 +29,9 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Build Release
-        run: cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-        cmake --build build-release --parallel
+        run: |
+          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-release --parallel
 
       - name: Test Release
         run: ctest --test-dir build-release --output-on-failure

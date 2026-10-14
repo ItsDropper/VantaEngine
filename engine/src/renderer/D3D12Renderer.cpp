@@ -460,9 +460,9 @@ bool D3D12Renderer::CreatePipeline()
     rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     D3D12_STATIC_SAMPLER_DESC staticSampler{};
     staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_CLAMP;
-    staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_CLAMP;
-    staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_CLAMP;
+    staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     staticSampler.MipLODBias = 0.0F;
     staticSampler.MaxAnisotropy = 1;
     staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;

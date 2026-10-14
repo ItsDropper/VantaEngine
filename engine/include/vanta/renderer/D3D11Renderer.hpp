@@ -24,6 +24,7 @@ public:
 private:
     [[nodiscard]] bool CreateRenderTarget();
     [[nodiscard]] bool CreateDepthTarget();
+    [[nodiscard]] bool CreateShadowResources();
     [[nodiscard]] bool CreatePipeline();
 
     Microsoft::WRL::ComPtr<IDXGISwapChain> m_swapChain;
@@ -32,9 +33,16 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_renderTarget;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_depthStencil;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> m_shadowTexture;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_shadowDepthStencil;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_shadowShaderResource;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_shadowSampler;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_shadowRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_depthState;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_rasterizerState;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
+    Microsoft::WRL::ComPtr<ID3D11VertexShader> m_shadowVertexShader;
+    Microsoft::WRL::ComPtr<ID3D11InputLayout> m_shadowInputLayout;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_skyVertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_skyPixelShader;

@@ -36,15 +36,24 @@ private:
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_rasterizerState;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
+    Microsoft::WRL::ComPtr<ID3D11VertexShader> m_skyVertexShader;
+    Microsoft::WRL::ComPtr<ID3D11PixelShader> m_skyPixelShader;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_skyDepthState;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_indexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_modelVertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_modelIndexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_terrainVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_terrainIndexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_forestIndexBuffer;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_diffuseTexture;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
     UINT m_modelIndexCount = 0;
+    UINT m_terrainIndexCount = 0;
+    UINT m_forestIndexCount = 0;
 
     UINT m_width = 0;
     UINT m_height = 0;

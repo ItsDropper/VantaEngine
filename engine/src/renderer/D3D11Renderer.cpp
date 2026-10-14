@@ -834,6 +834,58 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
 
+    // Build small, seamless procedural albedo tiles at startup. These are actual GPU
+    // textures with mipmaps, not just color multipliers: grass/moss, mineral stone/gravel,
+    // and weathered timber are sampled in world space for the merged environment mesh.
+    const auto makeProceduralAlbedo = [](const int kind) {
+        constexpr UINT size = 256;
+        renderer::CpuTexture texture;
+        texture.width = size;
+        texture.height = size;
+        texture.rgba.resize(static_cast<std::size_t>(size) * size * 4U);
+        for (UINT y = 0; y < size; ++y) {
+            for (UINT x = 0; x < size; ++x) {
+                const float u = static_cast<float>(x) / static_cast<float>(size);
+                const float v = static_cast<float>(y) / static_cast<float>(size);
+                const float waveA = std::sin((u * 9.0F + std::sin(v * 17.0F) * 0.12F) * 6.2831853F);
+                const float waveB = std::cos((v * 13.0F + std::sin(u * 11.0F) * 0.08F) * 6.2831853F);
+                const float grain = 0.5F + 0.5F * std::sin((u * 3.0F + std::sin(v * 5.0F) * 0.04F) * 6.2831853F);
+                const unsigned int hash = (x * 374761393U + y * 668265263U + 1442695041U) ^
+                    ((x + 31U) * (y + 17U) * 2246822519U);
+                const float noise = static_cast<float>((hash ^ (hash >> 13U)) & 255U) / 255.0F;
+                float r = 0.0F, g = 0.0F, b = 0.0F;
+                if (kind == 0) { // moss and short grass
+                    const float value = 0.70F + 0.22F * noise + 0.08F * waveA + 0.04F * waveB;
+                    r = value * 0.62F; g = value * (0.88F + 0.08F * waveB); b = value * 0.48F;
+                } else if (kind == 1) { // weathered granite and gravel
+                    const float value = 0.63F + 0.27F * noise + 0.08F * waveA;
+                    const float crack = (noise > 0.93F && waveB < -0.45F) ? 0.62F : 1.0F;
+                    r = value * crack; g = value * crack * 0.99F; b = value * crack * 0.94F;
+                } else { // aged wood with long, imperfect grain
+                    const float value = 0.58F + 0.20F * noise + 0.18F * grain + 0.06F * waveA;
+                    const float knot = std::pow(std::max(0.0F, 1.0F - std::abs(waveA) * 5.0F), 4.0F);
+                    r = value * (0.92F + knot * 0.16F);
+                    g = value * (0.63F + knot * 0.08F);
+                    b = value * (0.39F + knot * 0.04F);
+                }
+                const std::size_t offset = (static_cast<std::size_t>(y) * size + x) * 4U;
+                texture.rgba[offset] = static_cast<std::uint8_t>(std::clamp(r, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 1] = static_cast<std::uint8_t>(std::clamp(g, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 2] = static_cast<std::uint8_t>(std::clamp(b, 0.0F, 1.0F) * 255.0F);
+                texture.rgba[offset + 3] = 255;
+            }
+        }
+        return texture;
+    };
+    const renderer::CpuTexture grassTile = makeProceduralAlbedo(0);
+    const renderer::CpuTexture rockTile = makeProceduralAlbedo(1);
+    const renderer::CpuTexture woodTile = makeProceduralAlbedo(2);
+    if (!uploadMipmappedTexture(grassTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_grassAlbedoTexture, "procedural grass") ||
+        !uploadMipmappedTexture(rockTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_rockAlbedoTexture, "procedural rock") ||
+        !uploadMipmappedTexture(woodTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_woodAlbedoTexture, "procedural wood")) {
+        return false;
+    }
+
     D3D11_SAMPLER_DESC samplerDescription{};
     samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;

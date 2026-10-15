@@ -123,6 +123,31 @@ public:
             }
         }
     }
+    void blob(P c,float rx,float ry,float rz,float r,float g,float bl) {
+        constexpr int rings = 5, sides = 9;
+        for (int ring = 0; ring < rings; ++ring) {
+            const float latitude0 = -0.5F * kPi + kPi * static_cast<float>(ring) / rings;
+            const float latitude1 = -0.5F * kPi + kPi * static_cast<float>(ring + 1) / rings;
+            for (int side = 0; side < sides; ++side) {
+                const float a0 = 2.0F * kPi * side / sides;
+                const float a1 = 2.0F * kPi * (side + 1) / sides;
+                auto point = [&](float latitude, float angle) {
+                    const float wobble = 0.88F + 0.22F * Hash(side + ring * 17,
+                        static_cast<int>(c.x * 5.0F), static_cast<int>(c.z * 7.0F));
+                    const float horizontal = std::cos(latitude) * wobble;
+                    return P{c.x + std::cos(angle) * rx * horizontal,
+                             c.y + std::sin(latitude) * ry * wobble,
+                             c.z + std::sin(angle) * rz * horizontal};
+                };
+                const P p0 = point(latitude0, a0);
+                const P p1 = point(latitude0, a1);
+                const P p2 = point(latitude1, a1);
+                const P p3 = point(latitude1, a0);
+                const float shade = 0.78F + 0.28F * Hash(side, ring, static_cast<int>(c.x * 11.0F));
+                quad(p0, p1, p2, p3, r * shade, g * shade, bl * shade);
+            }
+        }
+    }
     void beam(P a,P b,float radius,float r,float g,float bl) {
         P d=b-a; const float len=std::sqrt(Dot(d,d)); if(len<0.001F)return;
         const P along=d*(1.0F/len);
@@ -308,15 +333,16 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
                 const float red = 0.035F + seasonal * 0.045F;
                 const float green = 0.16F + seasonal * 0.11F;
                 const float blue = 0.045F + seasonal * 0.035F;
-                b.rock({x + std::cos(angle) * spread, crownY,
+                b.blob({x + std::cos(angle) * spread, crownY,
                         z + std::sin(angle) * spread},
                        crownRadius, crownRadius * (0.7F + Hash(gx, gz, cluster + 83) * 0.45F),
-                       crownRadius * (0.72F + Hash(gx, gz, cluster + 89) * 0.42F), green);
+                       crownRadius * (0.72F + Hash(gx, gz, cluster + 89) * 0.42F),
+                       red, green, blue);
                 if (seasonal > 0.83F) {
-                    b.rock({x + std::cos(angle) * spread, crownY + crownRadius * 0.12F,
+                    b.blob({x + std::cos(angle) * spread, crownY + crownRadius * 0.12F,
                             z + std::sin(angle) * spread},
                            crownRadius * 0.72F, crownRadius * 0.52F, crownRadius * 0.65F,
-                           red * 1.8F);
+                           red * 1.8F, green * 0.72F, blue * 0.58F);
                 }
             }
         } else {

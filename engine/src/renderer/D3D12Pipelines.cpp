@@ -32,8 +32,19 @@ struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0
 PSInput VSMain(VSInput input)
 {
     PSInput o;
-    o.position = mul(viewProjection, float4(input.position, 1.0));
-    o.worldPosition = input.position;
+    float3 worldPosition = input.position;
+    // Wind only affects green-dominant foliage. Trunks, buildings, rocks, and terrain
+    // remain rigid. The height weight keeps grass motion subtle and tree crowns flexible.
+    float foliageMask = step(input.color.r * 1.28, input.color.g) *
+                        step(input.color.b * 1.20, input.color.g) *
+                        step(0.105, input.color.g);
+    float heightWeight = saturate((worldPosition.y + 0.35) * 0.13);
+    float swayA = sin(cameraPosition.w * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47);
+    float swayB = cos(cameraPosition.w * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23);
+    worldPosition.x += swayA * 0.085 * foliageMask * heightWeight;
+    worldPosition.z += swayB * 0.045 * foliageMask * heightWeight;
+    o.position = mul(viewProjection, float4(worldPosition, 1.0));
+    o.worldPosition = worldPosition;
     o.normal = normalize(input.normal);
     o.color = input.color;
     o.uv = input.uv;
@@ -382,11 +393,20 @@ bool D3D12Renderer::CreatePipeline()
 bool D3D12Renderer::CreateShadowPipeline()
 {
     constexpr char shader[] = R"(
-cbuffer ShadowConstants : register(b0) { float4x4 lightViewProjection; };
-struct VSInput { float3 position : POSITION; };
+cbuffer ShadowConstants : register(b0) { float4x4 lightViewProjection; float windTime; };
+struct VSInput { float3 position : POSITION; float4 color : COLOR; };
 float4 VSMain(VSInput input) : SV_POSITION
 {
-    return mul(lightViewProjection, float4(input.position, 1.0));
+    float3 worldPosition = input.position;
+    float foliageMask = step(input.color.r * 1.28, input.color.g) *
+                        step(input.color.b * 1.20, input.color.g) *
+                        step(0.105, input.color.g);
+    float heightWeight = saturate((worldPosition.y + 0.35) * 0.13);
+    worldPosition.x += sin(windTime * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47)
+                       * 0.085 * foliageMask * heightWeight;
+    worldPosition.z += cos(windTime * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23)
+                       * 0.045 * foliageMask * heightWeight;
+    return mul(lightViewProjection, float4(worldPosition, 1.0));
 }
 )";
     Microsoft::WRL::ComPtr<ID3DBlob> vs, errors;
@@ -402,7 +422,8 @@ float4 VSMain(VSInput input) : SV_POSITION
         return false;
     }
     const D3D12_INPUT_ELEMENT_DESC input[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();

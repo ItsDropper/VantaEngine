@@ -744,7 +744,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     constants.cameraPosition[0] = cameraX;
     constants.cameraPosition[1] = cameraY;
     constants.cameraPosition[2] = cameraZ;
-    constants.cameraPosition[3] = 1.0F;
+    // Reuse the otherwise-unused W component as deterministic shader wind time.
+    constants.cameraPosition[3] = elapsedSeconds;
     constants.lighting[0] = lightDirection.x;
     constants.lighting[1] = lightDirection.y;
     constants.lighting[2] = lightDirection.z;
@@ -778,8 +779,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     std::memcpy(m_mappedTemporalConstants[m_frameIndex], &temporalConstants, sizeof(temporalConstants));
     std::memcpy(m_mappedConstants[m_frameIndex], &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {
-        std::memcpy(static_cast<unsigned char*>(m_mappedConstants[m_frameIndex]) + kShadowConstantOffset + cascade * kShadowConstantStride,
-            &constants.lightViewProjection[cascade], sizeof(Mat4));
+        auto* shadowConstants = static_cast<unsigned char*>(m_mappedConstants[m_frameIndex]) +
+            kShadowConstantOffset + cascade * kShadowConstantStride;
+        std::memcpy(shadowConstants, &constants.lightViewProjection[cascade], sizeof(Mat4));
+        std::memcpy(shadowConstants + sizeof(Mat4), &elapsedSeconds, sizeof(elapsedSeconds));
     }
 
     if (FAILED(m_commandAllocators[m_frameIndex]->Reset()) ||

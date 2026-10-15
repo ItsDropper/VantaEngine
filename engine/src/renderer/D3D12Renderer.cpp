@@ -568,11 +568,17 @@ bool D3D12Renderer::CreateSceneGeometry()
         const float red = (a.color[0] + b.color[0] + c.color[0]) / 3.0F;
         const float green = (a.color[1] + b.color[1] + c.color[1]) / 3.0F;
         const float blue = (a.color[2] + b.color[2] + c.color[2]) / 3.0F;
-        const bool foliageTriangle = green > red * 1.12F && green > blue * 1.10F;
+        // Terrain is also predominantly green, so color alone must never classify it
+        // as foliage: doing so keeps the terrain in every LOD only by accident, and makes
+        // stronger far-vegetation culling capable of punching holes in the ground.
+        const bool terrainTriangle = ia < terrainVertexCount && ib < terrainVertexCount && ic < terrainVertexCount;
+        const bool foliageTriangle = !terrainTriangle && green > red * 1.12F && green > blue * 1.10F;
         chunk.lodIndices[0].insert(chunk.lodIndices[0].end(), {ia, ib, ic});
-        if (!foliageTriangle || triangleArea >= 0.035F)
+        // Keep more small foliage nearby; progressively discard sub-pixel leaves and grass
+        // at distance. Terrain, structures, rocks and other non-foliage geometry stay intact.
+        if (!foliageTriangle || triangleArea >= 0.10F)
             chunk.lodIndices[1].insert(chunk.lodIndices[1].end(), {ia, ib, ic});
-        if (!foliageTriangle || triangleArea >= 0.14F)
+        if (!foliageTriangle || triangleArea >= 0.50F)
             chunk.lodIndices[2].insert(chunk.lodIndices[2].end(), {ia, ib, ic});
     }
 

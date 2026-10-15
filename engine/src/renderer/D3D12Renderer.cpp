@@ -227,6 +227,10 @@ D3D12Renderer::~D3D12Renderer()
             m_mappedTemporalConstants[i] = nullptr;
         }
     }
+    if (m_mappedTimestamps != nullptr && m_timestampReadback) {
+        m_timestampReadback->Unmap(0, nullptr);
+        m_mappedTimestamps = nullptr;
+    }
     if (m_fenceEvent != nullptr) {
         CloseHandle(m_fenceEvent);
         m_fenceEvent = nullptr;
@@ -330,6 +334,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         LogError("Direct3D 12: fence creation failed.");
         return false;
     }
+    (void)InitializeGpuProfiler();
     m_fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (m_fenceEvent == nullptr) {
         LogError("Direct3D 12: fence event creation failed.");
@@ -685,6 +690,84 @@ bool D3D12Renderer::Resize(int width, int height)
     return true;
 }
 
+
+bool D3D12Renderer::InitializeGpuProfiler() noexcept
+{
+    if (FAILED(m_commandQueue->GetTimestampFrequency(&m_timestampFrequency)) || m_timestampFrequency == 0) {
+        LogError("D3D12 GPU profiler unavailable: timestamp frequency query failed.");
+        return false;
+    }
+    D3D12_QUERY_HEAP_DESC queryDescription{};
+    queryDescription.Count = kFrameCount * 5U;
+    queryDescription.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    if (FAILED(m_device->CreateQueryHeap(&queryDescription, IID_PPV_ARGS(m_timestampQueryHeap.GetAddressOf())))) {
+        LogError("D3D12 GPU profiler unavailable: timestamp query heap creation failed.");
+        m_timestampFrequency = 0;
+        return false;
+    }
+    D3D12_HEAP_PROPERTIES heapProperties{};
+    heapProperties.Type = D3D12_HEAP_TYPE_READBACK;
+    heapProperties.CreationNodeMask = 1;
+    heapProperties.VisibleNodeMask = 1;
+    D3D12_RESOURCE_DESC bufferDescription{};
+    bufferDescription.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    bufferDescription.Width = static_cast<UINT64>(kFrameCount * 5U) * sizeof(UINT64);
+    bufferDescription.Height = 1;
+    bufferDescription.DepthOrArraySize = 1;
+    bufferDescription.MipLevels = 1;
+    bufferDescription.SampleDesc.Count = 1;
+    bufferDescription.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    if (FAILED(m_device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE,
+            &bufferDescription, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(m_timestampReadback.GetAddressOf())))) {
+        LogError("D3D12 GPU profiler unavailable: readback buffer creation failed.");
+        m_timestampQueryHeap.Reset();
+        m_timestampFrequency = 0;
+        return false;
+    }
+    D3D12_RANGE readRange{0, 0};
+    void* mapped = nullptr;
+    if (FAILED(m_timestampReadback->Map(0, &readRange, &mapped)) || mapped == nullptr) {
+        LogError("D3D12 GPU profiler unavailable: readback buffer mapping failed.");
+        m_timestampReadback.Reset();
+        m_timestampQueryHeap.Reset();
+        m_timestampFrequency = 0;
+        return false;
+    }
+    m_mappedTimestamps = static_cast<UINT64*>(mapped);
+    LogInfo("D3D12 GPU profiler enabled: shadows, scene, temporal resolve, post-process and total GPU timings (averaged every 120 completed frames).");
+    return true;
+}
+
+void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
+{
+    if (m_timestampFrequency == 0 || m_mappedTimestamps == nullptr || !m_profilePending[frameIndex])
+        return;
+    const std::size_t base = static_cast<std::size_t>(frameIndex) * 5U;
+    const auto milliseconds = [this](UINT64 ticks) {
+        return static_cast<double>(ticks) * 1000.0 / static_cast<double>(m_timestampFrequency);
+    };
+    m_profileAccumulatedMs[0] += milliseconds(m_mappedTimestamps[base + 1U] - m_mappedTimestamps[base]);
+    m_profileAccumulatedMs[1] += milliseconds(m_mappedTimestamps[base + 2U] - m_mappedTimestamps[base + 1U]);
+    m_profileAccumulatedMs[2] += milliseconds(m_mappedTimestamps[base + 3U] - m_mappedTimestamps[base + 2U]);
+    m_profileAccumulatedMs[3] += milliseconds(m_mappedTimestamps[base + 4U] - m_mappedTimestamps[base + 3U]);
+    m_profileAccumulatedMs[4] += milliseconds(m_mappedTimestamps[base + 4U] - m_mappedTimestamps[base]);
+    ++m_profileSampleCount;
+    m_profilePending[frameIndex] = false;
+    if (m_profileSampleCount >= 120U) {
+        char message[320]{};
+        const double divisor = static_cast<double>(m_profileSampleCount);
+        std::snprintf(message, sizeof(message),
+            "D3D12 GPU ms (avg %u frames): shadows %.2f | scene %.2f | temporal %.2f | post %.2f | total %.2f (60 FPS budget 16.67 ms)",
+            m_profileSampleCount, m_profileAccumulatedMs[0] / divisor, m_profileAccumulatedMs[1] / divisor,
+            m_profileAccumulatedMs[2] / divisor, m_profileAccumulatedMs[3] / divisor,
+            m_profileAccumulatedMs[4] / divisor);
+        LogInfo(message);
+        m_profileAccumulatedMs.fill(0.0);
+        m_profileSampleCount = 0;
+    }
+}
+
 void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                            float cameraYaw, float cameraPitch)
 {
@@ -696,6 +779,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         return;
     }
 
+    ConsumeGpuProfile(m_frameIndex);
     const Vec3 eye{cameraX, cameraY, cameraZ};
     const Vec3 forward{std::sin(cameraYaw) * std::cos(cameraPitch), std::sin(cameraPitch),
                        std::cos(cameraYaw) * std::cos(cameraPitch)};
@@ -793,6 +877,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         return;
     }
 
+    const UINT timestampBase = m_frameIndex * 5U;
+    if (m_timestampFrequency != 0)
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase);
     D3D12_RESOURCE_BARRIER shadowToDepth{};
     shadowToDepth.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     shadowToDepth.Transition.pResource = m_shadowTexture.Get();
@@ -823,6 +910,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             m_commandList->DrawIndexedInstanced(chunk.indexCount[shadowLod], 1, chunk.startIndex[shadowLod], 0, 0);
         }
     }
+    if (m_timestampFrequency != 0)
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 1U);
     D3D12_RESOURCE_BARRIER shadowToSample = shadowToDepth;
     shadowToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
     shadowToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -884,6 +973,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             m_commandList->DrawIndexedInstanced(chunk.indexCount[lod], 1, chunk.startIndex[lod], 0, 0);
     }
 
+    if (m_timestampFrequency != 0)
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 2U);
     D3D12_RESOURCE_BARRIER depthToSample{};
     depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     depthToSample.Transition.pResource = m_depthTexture.Get();
@@ -925,6 +1016,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
+    if (m_timestampFrequency != 0)
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 3U);
     D3D12_RESOURCE_BARRIER historyColorToSample = historyColorToTarget;
     historyColorToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     historyColorToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -951,6 +1044,11 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
+    if (m_timestampFrequency != 0) {
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
+        m_commandList->ResolveQueryData(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+            timestampBase, 5U, m_timestampReadback.Get(), static_cast<UINT64>(timestampBase) * sizeof(UINT64));
+    }
     D3D12_RESOURCE_BARRIER depthToWrite = depthToSample;
     depthToWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     depthToWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
@@ -966,6 +1064,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
+    if (m_timestampFrequency != 0) m_profilePending[m_frameIndex] = true;
     // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
     const HRESULT presentResult = m_swapChain->Present(0, 0);
     const UINT64 signalValue = m_nextFenceValue++;

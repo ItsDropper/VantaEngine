@@ -52,6 +52,8 @@ private:
     [[nodiscard]] bool CreatePipeline();
     [[nodiscard]] bool WaitForGpu();
     [[nodiscard]] bool WaitForFrame(UINT frameIndex);
+    void ConsumeGpuProfile(UINT frameIndex) noexcept;
+    [[nodiscard]] bool InitializeGpuProfiler() noexcept;
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
@@ -64,6 +66,13 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12CommandAllocator>, kFrameCount> m_commandAllocators;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;
     Microsoft::WRL::ComPtr<ID3D12Fence> m_fence;
+    Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_timestampQueryHeap;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_timestampReadback;
+    UINT64* m_mappedTimestamps = nullptr;
+    UINT64 m_timestampFrequency = 0;
+    std::array<bool, kFrameCount> m_profilePending{};
+    std::array<double, 5> m_profileAccumulatedMs{};
+    UINT m_profileSampleCount = 0;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyDepthTextures;

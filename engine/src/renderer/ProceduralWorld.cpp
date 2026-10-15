@@ -309,7 +309,7 @@ void GrowBroadleaf(Builder& b, P start, P direction, float length, float radius,
     b.branchTube(start, end, radius, radius * 0.62F, 6,
                  0.22F * bark, 0.12F * bark, 0.062F * bark);
     if (depth <= 0) {
-        for (int leafIndex = 0; leafIndex < 8; ++leafIndex) {
+        for (int leafIndex = 0; leafIndex < 5; ++leafIndex) {
             const float angle = Hash(seed, leafIndex, 17) * 2.0F * kPi;
             const P leafDirection = Normalize({
                 direction.x * 0.34F + std::cos(angle) * 0.74F,
@@ -384,7 +384,7 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
     b.cabin(-12.0F,9.0F,0.82F);
     b.cabin(18.0F,25.0F,0.65F);
     // Hundreds of individually varied trees, trunks, branches and tiered crowns.
-    for(int gz=-9;gz<=9;++gz) for(int gx=-9;gx<=9;++gx) {
+    for(int gz=-7;gz<=7;++gz) for(int gx=-7;gx<=7;++gx) {
         const float jx=(Hash(gx,gz,4)-0.5F)*4.8F, jz=(Hash(gz,gx,8)-0.5F)*4.8F;
         const float x=gx*6.8F+jx, z=gz*6.8F+jz;
         if(x*x+z*z<115.0F || std::abs(x)>59.0F || std::abs(z)>59.0F) continue;
@@ -421,10 +421,10 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
                     0.48F + Hash(gx, gz, branch + 57) * 0.38F,
                     std::sin(angle) * (0.55F + Hash(gx, gz, branch + 61) * 0.20F)});
                 GrowBroadleaf(b, start, direction, radius * (0.82F + Hash(gx, gz, branch + 67) * 0.48F),
-                              trunkRadius * 0.46F, 3, gx * 997 + gz * 313 + branch * 71, seasonal);
+                              trunkRadius * 0.46F, 2, gx * 997 + gz * 313 + branch * 71, seasonal);
             }
             // Fine upper shoots make the crown less like a hollow ring of branches.
-            for (int shoot = 0; shoot < 10; ++shoot) {
+            for (int shoot = 0; shoot < 4; ++shoot) {
                 const float angle = Hash(gx, gz, shoot + 101) * 2.0F * kPi;
                 const P start{x + std::cos(angle) * radius * 0.18F, y + h * 0.63F,
                               z + std::sin(angle) * radius * 0.18F};
@@ -436,11 +436,11 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
         } else {
             // Conifers use a visible central leader, six irregular bough tiers, secondary
             // twigs and many narrow needle blades instead of stacked primitive cones.
-            for (int tier = 0; tier < 6; ++tier) {
-                const float t = static_cast<float>(tier) / 5.0F;
+            for (int tier = 0; tier < 4; ++tier) {
+                const float t = static_cast<float>(tier) / 3.0F;
                 const float ty = y + h * (0.20F + t * 0.66F);
                 const float rr = radius * (1.0F - t * 0.79F);
-                const int arms = 7 + (tier % 3);
+                const int arms = 5 + (tier % 3);
                 for (int arm = 0; arm < arms; ++arm) {
                     const float angle = 2.0F * kPi * static_cast<float>(arm) / static_cast<float>(arms)
                         + Hash(gx, gz, tier * 31 + arm) * 0.58F;
@@ -453,7 +453,7 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
                     const float green = 0.17F + Hash(gx, gz, tier + arm * 7) * 0.10F;
                     b.branchTube(start, end, branchRadius, branchRadius * 0.10F, 5,
                                  0.22F, green, 0.105F);
-                    for (int twig = 0; twig < 3; ++twig) {
+                    for (int twig = 0; twig < 2; ++twig) {
                         const float along = 0.38F + twig * 0.21F;
                         const P twigBase = start + (end - start) * along;
                         const float twigAngle = angle + (twig % 2 == 0 ? 1.0F : -1.0F) * (0.58F + Hash(gx, gz, twig + arm * 13) * 0.36F);
@@ -462,8 +462,8 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
                                                        std::sin(twigAngle) * rr * 0.24F};
                         b.branchTube(twigBase, twigTip, branchRadius * 0.44F, branchRadius * 0.05F, 4,
                                      0.20F, green * 0.92F, 0.095F);
-                        for (int needle = 0; needle < 5; ++needle) {
-                            const float nt = 0.16F + needle * 0.17F;
+                        for (int needle = 0; needle < 3; ++needle) {
+                            const float nt = 0.22F + needle * 0.25F;
                             const P needleBase = twigBase + (twigTip - twigBase) * nt;
                             const float sideSign = needle % 2 == 0 ? 1.0F : -1.0F;
                             const P needleTip = needleBase + P{

@@ -12,7 +12,8 @@ The renderer now includes:
 - Indexed triangle geometry with per-face normals and color.
 - Procedural broadleaf trees assembled from recursively forked tapered limbs, fine twigs, and pointed individual leaf geometry; conifers use irregular boughs, secondary twigs, and needle blades instead of stacked cone crowns.
 - Seeded procedural generation keeps tree structure deterministic while varying branch angles, taper, foliage placement, and seasonal color.
-- Subtle GPU-driven foliage wind in the Direct3D 12 scene and shadow passes: green-dominant leaves, needles, and grass sway while rigid props remain still, keeping animated foliage shadows aligned with the visible geometry.
+- Performance-conscious foliage wind in the Direct3D 12 scene and shadow passes uses triangle-wave arithmetic rather than per-vertex trigonometric functions.
+- Procedural forest density and branch/needle budgets are capped to keep the generated static mesh from ballooning; broadleaf trees retain recursive branching and individual leaf geometry, while conifers keep tiered boughs and needle detail.
 - Native glTF 2.0/GLB and OBJ model import paths, with PBR material and external texture handling where supported; imported high-quality assets and generated vegetation can coexist in the same renderer.
 - Left-handed perspective and view matrices from the engine's math layer.
 - A depth/stencil buffer and depth testing.

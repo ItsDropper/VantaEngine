@@ -39,10 +39,13 @@ PSInput VSMain(VSInput input)
                         step(input.color.b * 1.20, input.color.g) *
                         step(0.105, input.color.g);
     float heightWeight = saturate((worldPosition.y + 0.35) * 0.13);
-    float swayA = sin(cameraPosition.w * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47);
-    float swayB = cos(cameraPosition.w * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23);
-    worldPosition.x += swayA * 0.085 * foliageMask * heightWeight;
-    worldPosition.z += swayB * 0.045 * foliageMask * heightWeight;
+    // Triangle-wave wind avoids per-vertex sin/cos, which is costly on dense foliage.
+    float phaseA = cameraPosition.w * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47;
+    float phaseB = cameraPosition.w * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23;
+    float waveA = 1.0 - 4.0 * abs(frac(phaseA * 0.15915494) - 0.5);
+    float waveB = 1.0 - 4.0 * abs(frac(phaseB * 0.15915494) - 0.5);
+    worldPosition.x += waveA * 0.085 * foliageMask * heightWeight;
+    worldPosition.z += waveB * 0.045 * foliageMask * heightWeight;
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
     o.normal = normalize(input.normal);
@@ -402,10 +405,12 @@ float4 VSMain(VSInput input) : SV_POSITION
                         step(input.color.b * 1.20, input.color.g) *
                         step(0.105, input.color.g);
     float heightWeight = saturate((worldPosition.y + 0.35) * 0.13);
-    worldPosition.x += sin(windTime * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47)
-                       * 0.085 * foliageMask * heightWeight;
-    worldPosition.z += cos(windTime * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23)
-                       * 0.045 * foliageMask * heightWeight;
+    float phaseA = windTime * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47;
+    float phaseB = windTime * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23;
+    float waveA = 1.0 - 4.0 * abs(frac(phaseA * 0.15915494) - 0.5);
+    float waveB = 1.0 - 4.0 * abs(frac(phaseB * 0.15915494) - 0.5);
+    worldPosition.x += waveA * 0.085 * foliageMask * heightWeight;
+    worldPosition.z += waveB * 0.045 * foliageMask * heightWeight;
     return mul(lightViewProjection, float4(worldPosition, 1.0));
 }
 )";

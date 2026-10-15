@@ -271,12 +271,23 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
     for(int i=0;i<130;++i) {
         const float z0=-65.0F+i, z1=z0+1.0F;
         const float x0=8.0F+std::sin(z0*0.035F)*4.2F, x1=8.0F+std::sin(z1*0.035F)*4.2F;
-        const float y0=Height(x0,z0)+0.035F, y1=Height(x1,z1)+0.035F;
-        b.quad({x0-2.8F,y0,z0},{x1-2.8F,y1,z1},{x1+2.8F,y1,z1},{x0+2.8F,y0,z0},
-            0.24F+0.035F*Hash(i,1),0.235F+0.03F*Hash(i,3),0.22F+0.025F*Hash(i,5));
-        b.quad({x0-3.5F,y0-0.025F,z0},{x1-3.5F,y1-0.025F,z1},{x1-2.8F,y1,z1},{x0-2.8F,y0,z0},0.29F,0.27F,0.23F);
-        b.quad({x0+2.8F,y0,z0},{x1+2.8F,y1,z1},{x1+3.5F,y1-0.025F,z1},{x0+3.5F,y0-0.025F,z0},0.29F,0.27F,0.23F);
-        if(i%9<5) b.quad({x0-0.055F,y0+0.012F,z0},{x1-0.055F,y1+0.012F,z1},{x1+0.055F,y1+0.012F,z1},{x0+0.055F,y0+0.012F,z0},0.62F,0.53F,0.34F);
+        const float leftX0=x0-2.8F, leftX1=x1-2.8F, rightX0=x0+2.8F, rightX1=x1+2.8F;
+        const float leftY0=Height(leftX0,z0)+0.035F, leftY1=Height(leftX1,z1)+0.035F;
+        const float rightY0=Height(rightX0,z0)+0.035F, rightY1=Height(rightX1,z1)+0.035F;
+        const float shoulderLeftY0=Height(x0-3.5F,z0), shoulderLeftY1=Height(x1-3.5F,z1);
+        const float shoulderRightY0=Height(x0+3.5F,z0), shoulderRightY1=Height(x1+3.5F,z1);
+        const float roadR=0.24F+0.035F*Hash(i,1), roadG=0.235F+0.03F*Hash(i,3), roadB=0.22F+0.025F*Hash(i,5);
+        b.quad({leftX0,leftY0,z0},{leftX1,leftY1,z1},{rightX1,rightY1,z1},{rightX0,rightY0,z0},
+            roadR,roadG,roadB);
+        b.quad({x0-3.5F,shoulderLeftY0-0.025F,z0},{x1-3.5F,shoulderLeftY1-0.025F,z1},
+            {leftX1,leftY1,z1},{leftX0,leftY0,z0},0.29F,0.27F,0.23F);
+        b.quad({rightX0,rightY0,z0},{rightX1,rightY1,z1},
+            {x1+3.5F,shoulderRightY1-0.025F,z1},{x0+3.5F,shoulderRightY0-0.025F,z0},0.29F,0.27F,0.23F);
+        if(i%9<5) {
+            const float centerY0=Height(x0,z0)+0.047F, centerY1=Height(x1,z1)+0.047F;
+            b.quad({x0-0.055F,centerY0,z0},{x1-0.055F,centerY1,z1},
+                {x1+0.055F,centerY1,z1},{x0+0.055F,centerY0,z0},0.62F,0.53F,0.34F);
+        }
     }
     // A rocky stream and irregular banks cut through the left side of the valley.
     for(int i=0;i<95;++i) {

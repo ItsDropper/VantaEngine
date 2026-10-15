@@ -129,13 +129,16 @@ void AppendTerrain(std::vector<renderer::WorldVertex>& vertices, std::vector<uns
             const float wx = -extent + (2.0F * extent * x) / (side - 1);
             const float wz = -extent + (2.0F * extent * z) / (side - 1);
             const float y = TerrainHeight(wx, wz);
-            const float dx = TerrainHeight(wx + 0.15F, wz) - TerrainHeight(wx - 0.15F, wz);
-            const float dz = TerrainHeight(wx, wz + 0.15F) - TerrainHeight(wx, wz - 0.15F);
-            const float invLength = 1.0F / std::sqrt(dx * dx + 0.09F + dz * dz);
+            const float dx = (TerrainHeight(wx - 0.15F, wz) - TerrainHeight(wx + 0.15F, wz)) / 0.3F;
+            const float dz = (TerrainHeight(wx, wz - 0.15F) - TerrainHeight(wx, wz + 0.15F)) / 0.3F;
+            const float invLength = 1.0F / std::sqrt(dx * dx + 1.0F + dz * dz);
             const float slope = std::sqrt(dx * dx + dz * dz);
-            const float grass = std::clamp(0.72F - slope * 1.7F + (y + 1.4F) * 0.09F, 0.24F, 0.78F);
-            const float variation = 0.92F + 0.08F * std::sin(wx * 0.8F) * std::sin(wz * 0.61F);
-            vertices.push_back({{wx, y, wz}, {-dx * invLength, 0.3F * invLength, -dz * invLength},
+            const float grass = std::clamp(0.76F - slope * 0.42F + (y + 1.4F) * 0.035F, 0.18F, 0.82F);
+            const float macroVariation = std::sin(wx * 0.11F + std::sin(wz * 0.07F)) *
+                std::sin(wz * 0.13F - wx * 0.035F);
+            const float detailVariation = std::sin(wx * 0.47F + wz * 0.31F) * 0.035F;
+            const float variation = std::clamp(0.94F + macroVariation * 0.07F + detailVariation, 0.78F, 1.08F);
+            vertices.push_back({{wx, y, wz}, {dx * invLength, invLength, dz * invLength},
                 {0.19F * variation, grass * variation, 0.13F * variation, 1.0F},
                 {wx * 0.15F, wz * 0.15F}});
         }

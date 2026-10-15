@@ -373,12 +373,11 @@ PostProcessOutput PSMain(PixelInput input)
     // Depth-aware screen-space contact occlusion. Ignore sky/far-plane pixels.
     if (centerDepth < 0.9999)
     {
-        const float2 offsets[12] = {
+        const float2 offsets[6] = {
             float2(1,0), float2(-1,0), float2(0,1), float2(0,-1),
-            float2(2,1), float2(-2,1), float2(2,-1), float2(-2,-1),
-            float2(1,2), float2(-1,2), float2(1,-2), float2(-1,-2)
+            float2(2,1), float2(-2,-1)
         };
-        [unroll] for (int i = 0; i < 12; ++i)
+        [unroll] for (int i = 0; i < 6; ++i)
         {
             float sampleDepth = depthTexture.SampleLevel(sceneSampler,
                 saturate(input.uv + offsets[i] * depthTexel * 2.0), 0).r;
@@ -393,25 +392,23 @@ PostProcessOutput PSMain(PixelInput input)
     }
     float ao = 1.0 - saturate(occlusion / max(validSamples, 1.0)) * 0.42;
     float2 texel;
-    // A wide, thresholded 5x5 gather creates a restrained highlight bloom without
-    // blurring the whole frame. UV offsets are scaled by the actual scene texture size
-    // through Sample's implicit derivatives on the normalized coordinates below.
+    // A thresholded 3x3 gather keeps highlight bloom while limiting full-screen texture reads.
     uint width, height;
     sceneTexture.GetDimensions(width, height);
     texel = 1.0 / float2(max(width, 1u), max(height, 1u));
     float3 bloom = 0.0;
-    [unroll] for (int y = -2; y <= 2; ++y)
+    [unroll] for (int y = -1; y <= 1; ++y)
     {
-        [unroll] for (int x = -2; x <= 2; ++x)
+        [unroll] for (int x = -1; x <= 1; ++x)
         {
-            float2 uv = saturate(input.uv + float2(x, y) * texel * 4.0);
+            float2 uv = saturate(input.uv + float2(x, y) * texel * 5.0);
             float3 sampleColor = sceneTexture.Sample(sceneSampler, uv).rgb;
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
             float contribution = smoothstep(0.8, 2.4, luminance);
             bloom += sampleColor * contribution;
         }
     }
-    bloom *= (1.0 / 25.0);
+    bloom *= (1.0 / 9.0);
     float3 currentHdr = max(scene * ao, 0.0);
     float3 temporalHdr = currentHdr;
     if (historyValid != 0)
@@ -1626,6 +1623,6 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_historyWriteIndex = 1U - writeIndex;
     ++m_frameIndex;
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
-    (void)m_swapChain->Present(1, 0);
+    (void)m_swapChain->Present(0, 0);
 }
 } // namespace vanta

@@ -966,7 +966,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
-    const HRESULT presentResult = m_swapChain->Present(1, 0);
+    // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
+    const HRESULT presentResult = m_swapChain->Present(0, 0);
     const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {

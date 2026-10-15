@@ -107,18 +107,14 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
     if (any(uv <= 0.001) || any(uv >= 0.999) || projected.z <= 0.0 || projected.z >= 1.0)
         return 1.0;
     float bias = max(0.00018 * (1.0 - saturate(dot(normal, lightDirection))), 0.000045);
+    // Four bilinear-filtered taps approximate a wider PCF kernel with fewer depth reads.
     float visibility = 0.0;
     const float2 texel = 1.0 / 2048.0;
-    [unroll] for (int y = -1; y <= 1; ++y)
-    {
-        [unroll] for (int x = -1; x <= 1; ++x)
-        {
-            float storedDepth = shadowMap.SampleLevel(linearClamp,
-                float3(uv + float2(x, y) * texel, cascade), 0);
-            visibility += projected.z - bias <= storedDepth ? 1.0 : 0.0;
-        }
-    }
-    return lerp(0.58, 1.0, visibility / 9.0);
+    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
+    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2( 0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
+    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5,  0.5), cascade), 0) ? 1.0 : 0.0;
+    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2( 0.5,  0.5), cascade), 0) ? 1.0 : 0.0;
+    return lerp(0.58, 1.0, visibility * 0.25);
 }
 float4 PSMain(PSInput input) : SV_TARGET
 {
@@ -700,30 +696,29 @@ float4 PSMain(VSOut input) : SV_TARGET
     float3 color = max(ResolvedColor(input.uv), 0.0);
     // Small cross-kernel contact AO approximation from neighboring depth discontinuities.
     float ao = 1.0;
-    const float2 offsets[8] = {
-        float2(1,0), float2(-1,0), float2(0,1), float2(0,-1),
-        float2(2,1), float2(-2,1), float2(2,-1), float2(-2,-1)
+    const float2 offsets[4] = {
+        float2(1,0), float2(-1,0), float2(0,1), float2(0,-1)
     };
     float occlusion = 0.0;
-    [unroll] for (int i = 0; i < 8; ++i)
+    [unroll] for (int i = 0; i < 4; ++i)
     {
         float sampleDepth = sceneDepth.SampleLevel(linearClamp, saturate(input.uv + offsets[i] * texel * 2.0), 0).r;
         occlusion += step(0.00015, depth - sampleDepth) * saturate(1.0 - abs(depth - sampleDepth) * 85.0);
     }
-    ao = 1.0 - saturate(occlusion / 8.0) * 0.24;
+    ao = 1.0 - saturate(occlusion * 0.25) * 0.24;
     color *= ao;
     float3 bloom = 0.0;
-    [unroll] for (int y = -2; y <= 2; ++y)
+    [unroll] for (int y = -1; y <= 1; ++y)
     {
-        [unroll] for (int x = -2; x <= 2; ++x)
+        [unroll] for (int x = -1; x <= 1; ++x)
         {
             float3 sampleColor = ResolvedColor(
-                saturate(input.uv + float2(x, y) * texel * 3.0));
+                saturate(input.uv + float2(x, y) * texel * 4.0));
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
             bloom += sampleColor * smoothstep(1.0, 2.8, luminance);
         }
     }
-    color += bloom * (0.45 / 25.0);
+    color += bloom * (0.45 / 9.0);
     // Keep display transform channel-neutral; tint correction belongs in lighting,
     // not in a global per-channel multiplier applied to every material.
     color = ACES(color * 1.05);

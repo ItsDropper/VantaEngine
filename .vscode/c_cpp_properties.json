@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/engine/include",
+                "${workspaceFolder}/engine/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "WIN32_LEAN_AND_MEAN",
+                "NOMINMAX",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}

@@ -14,6 +14,8 @@ namespace vanta
 {
 namespace
 {
+using math::Mat4;
+constexpr UINT kShadowResolution = 2048;
 bool CreateUploadBuffer(ID3D12Device* device, UINT64 size, Microsoft::WRL::ComPtr<ID3D12Resource>& resource)
 {
     D3D12_HEAP_PROPERTIES heap{};

@@ -11,7 +11,8 @@
                 "WIN32_LEAN_AND_MEAN",
                 "NOMINMAX",
                 "UNICODE",
-                "_UNICODE"
+                "_UNICODE",
+                "VANTA_ASSET_DIR=\"${workspaceFolder}/assets\""
             ],
             "compilerPath": "cl.exe",
             "cStandard": "c17",

@@ -904,6 +904,91 @@ bool D3D11Renderer::CreatePipeline()
     std::vector<renderer::WorldVertex> generatedWorldVertices;
     std::vector<unsigned int> forestIndices;
     renderer::BuildDetailedWorld(generatedWorldVertices, forestIndices);
+
+    // Partition the merged environment by X/Z so D3D11 can reject whole regions and
+    // select progressively cheaper foliage index lists without duplicating vertices.
+    struct ForestCpuChunk
+    {
+        std::array<std::vector<unsigned int>, 3> lodIndices;
+        float minY = (std::numeric_limits<float>::max)();
+        float maxY = (std::numeric_limits<float>::lowest)();
+        bool occupied = false;
+    };
+    constexpr float forestChunkSize = 18.0F;
+    constexpr float forestMinX = -72.0F;
+    constexpr float forestMinZ = -72.0F;
+    constexpr int forestChunksX = 8;
+    constexpr int forestChunksZ = 8;
+    std::vector<ForestCpuChunk> forestCpuChunks(
+        static_cast<std::size_t>(forestChunksX * forestChunksZ));
+    for (std::size_t triangle = 0; triangle + 2U < forestIndices.size(); triangle += 3U) {
+        const unsigned int ia = forestIndices[triangle];
+        const unsigned int ib = forestIndices[triangle + 1U];
+        const unsigned int ic = forestIndices[triangle + 2U];
+        if (ia >= generatedWorldVertices.size() || ib >= generatedWorldVertices.size() ||
+            ic >= generatedWorldVertices.size()) {
+            LogError("Direct3D 11: generated forest mesh contained an out-of-range index.");
+            return false;
+        }
+        const auto& a = generatedWorldVertices[ia];
+        const auto& b = generatedWorldVertices[ib];
+        const auto& d = generatedWorldVertices[ic];
+        const float centerX = (a.position[0] + b.position[0] + d.position[0]) / 3.0F;
+        const float centerZ = (a.position[2] + b.position[2] + d.position[2]) / 3.0F;
+        const int chunkX = std::clamp(static_cast<int>((centerX - forestMinX) / forestChunkSize),
+                                      0, forestChunksX - 1);
+        const int chunkZ = std::clamp(static_cast<int>((centerZ - forestMinZ) / forestChunkSize),
+                                      0, forestChunksZ - 1);
+        ForestCpuChunk& chunk = forestCpuChunks[static_cast<std::size_t>(chunkZ * forestChunksX + chunkX)];
+        chunk.occupied = true;
+        chunk.minY = std::min({chunk.minY, a.position[1], b.position[1], d.position[1]});
+        chunk.maxY = std::max({chunk.maxY, a.position[1], b.position[1], d.position[1]});
+        const Vec3 edgeA{b.position[0] - a.position[0], b.position[1] - a.position[1],
+                         b.position[2] - a.position[2]};
+        const Vec3 edgeB{d.position[0] - a.position[0], d.position[1] - a.position[1],
+                         d.position[2] - a.position[2]};
+        const float area = edgeA.Cross(edgeB).Length() * 0.5F;
+        const float red = (a.color[0] + b.color[0] + d.color[0]) / 3.0F;
+        const float green = (a.color[1] + b.color[1] + d.color[1]) / 3.0F;
+        const float blue = (a.color[2] + b.color[2] + d.color[2]) / 3.0F;
+        const bool foliage = green > red * 1.12F && green > blue * 1.10F;
+        chunk.lodIndices[0].insert(chunk.lodIndices[0].end(), {ia, ib, ic});
+        if (!foliage || area >= 0.035F)
+            chunk.lodIndices[1].insert(chunk.lodIndices[1].end(), {ia, ib, ic});
+        if (!foliage || area >= 0.14F)
+            chunk.lodIndices[2].insert(chunk.lodIndices[2].end(), {ia, ib, ic});
+    }
+
+    std::vector<unsigned int> forestSortedIndices;
+    forestSortedIndices.reserve(forestIndices.size());
+    m_forestChunks.clear();
+    for (int z = 0; z < forestChunksZ; ++z) {
+        for (int x = 0; x < forestChunksX; ++x) {
+            ForestCpuChunk& source = forestCpuChunks[static_cast<std::size_t>(z * forestChunksX + x)];
+            if (!source.occupied || source.lodIndices[0].empty()) continue;
+            ForestDrawChunk chunk{};
+            chunk.centerX = forestMinX + (static_cast<float>(x) + 0.5F) * forestChunkSize;
+            chunk.centerY = (source.minY + source.maxY) * 0.5F;
+            chunk.centerZ = forestMinZ + (static_cast<float>(z) + 0.5F) * forestChunkSize;
+            const float halfHeight = (source.maxY - source.minY) * 0.5F;
+            chunk.radius = std::sqrt(forestChunkSize * forestChunkSize * 0.5F +
+                                     halfHeight * halfHeight) + 2.0F;
+            for (UINT lod = 0; lod < 3; ++lod) {
+                chunk.startIndex[lod] = static_cast<UINT>(forestSortedIndices.size());
+                chunk.indexCount[lod] = static_cast<UINT>(source.lodIndices[lod].size());
+                forestSortedIndices.insert(forestSortedIndices.end(),
+                    source.lodIndices[lod].begin(), source.lodIndices[lod].end());
+            }
+            m_forestChunks.push_back(chunk);
+        }
+    }
+    forestIndices = std::move(forestSortedIndices);
+    if (forestIndices.empty() || forestIndices.size() > UINT_MAX ||
+        generatedWorldVertices.size() > UINT_MAX / sizeof(Vertex)) {
+        LogError("Direct3D 11: spatial forest LOD generation produced an invalid mesh.");
+        return false;
+    }
+
     std::vector<Vertex> forestVertices;
     forestVertices.reserve(generatedWorldVertices.size());
     for (const renderer::WorldVertex& source : generatedWorldVertices) {
@@ -1265,8 +1350,32 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->ClearDepthStencilView(m_shadowDepthStencil[cascade].Get(), D3D11_CLEAR_DEPTH, 1.0F, 0);
         drawShadowMesh(m_terrainVertexBuffer.Get(), m_terrainIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
             m_terrainIndexCount, Mat4::Identity(), lightViewProjections[cascade]);
-        drawShadowMesh(m_forestVertexBuffer.Get(), m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
-            m_forestIndexCount, Mat4::Identity(), lightViewProjections[cascade]);
+        // Update shadow constants once per cascade, then draw only nearby chunks using
+        // a lower-detail foliage index list for the wider cascades.
+        SceneConstants forestShadowConstants{};
+        forestShadowConstants.world = Mat4::Identity();
+        forestShadowConstants.lightViewProjection[0] = lightViewProjections[cascade];
+        D3D11_MAPPED_SUBRESOURCE forestShadowMapped{};
+        if (SUCCEEDED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0,
+                                     &forestShadowMapped))) {
+            *static_cast<SceneConstants*>(forestShadowMapped.pData) = forestShadowConstants;
+            m_context->Unmap(m_sceneConstants.Get(), 0);
+            constexpr UINT forestStride = sizeof(Vertex);
+            constexpr UINT forestOffset = 0;
+            ID3D11Buffer* forestVertex = m_forestVertexBuffer.Get();
+            m_context->IASetVertexBuffers(0, 1, &forestVertex, &forestStride, &forestOffset);
+            m_context->IASetIndexBuffer(m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+            const float shadowRange = cascade == 0 ? 38.0F : (cascade == 1 ? 86.0F : 155.0F);
+            const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
+            for (const ForestDrawChunk& chunk : m_forestChunks) {
+                const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY,
+                                   chunk.centerZ - cameraZ};
+                if (toChunk.Length() > shadowRange + chunk.radius * 1.5F ||
+                    chunk.indexCount[shadowLod] == 0U) continue;
+                m_context->DrawIndexed(chunk.indexCount[shadowLod],
+                                       chunk.startIndex[shadowLod], 0);
+            }
+        }
         drawShadowMesh(m_modelVertexBuffer.Get(), m_modelIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
             m_modelIndexCount, shadowHouseWorld, lightViewProjections[cascade]);
         drawShadowMesh(m_vertexBuffer.Get(), m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT,
@@ -1363,7 +1472,26 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         ID3D11Buffer* forestVertex = m_forestVertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &forestVertex, &worldStride, &worldOffset);
         m_context->IASetIndexBuffer(m_forestIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        m_context->DrawIndexed(m_forestIndexCount, 0, 0);
+        const Vec3 cameraRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
+        const Vec3 cameraUp = cameraForward.Cross(cameraRight).Normalized()
+            .value_or(Vec3{0.0F, 1.0F, 0.0F});
+        const float tanHalfFov = std::tan(math::DegreesToRadians(27.5F));
+        for (const ForestDrawChunk& chunk : m_forestChunks) {
+            const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY,
+                               chunk.centerZ - cameraZ};
+            const float distance = toChunk.Length();
+            if (distance > 150.0F + chunk.radius) continue;
+            const float forwardDistance = toChunk.Dot(cameraForward);
+            if (forwardDistance < -chunk.radius) continue;
+            const float horizontalLimit = std::max(forwardDistance, 0.0F) * tanHalfFov * aspect +
+                                          chunk.radius;
+            if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
+            const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfFov + chunk.radius;
+            if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
+            const UINT lod = distance < 45.0F ? 0U : (distance < 95.0F ? 1U : 2U);
+            if (chunk.indexCount[lod] != 0U)
+                m_context->DrawIndexed(chunk.indexCount[lod], chunk.startIndex[lod], 0);
+        }
         ID3D11Buffer* cubeVertex = m_vertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &cubeVertex, &stride, &offset);
         m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);

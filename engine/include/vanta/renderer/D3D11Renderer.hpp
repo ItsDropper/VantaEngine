@@ -45,6 +45,16 @@ private:
         UINT materialIndex = 0;
     };
 
+    struct ForestDrawChunk
+    {
+        std::array<UINT, 3> startIndex{};
+        std::array<UINT, 3> indexCount{};
+        float centerX = 0.0F;
+        float centerY = 0.0F;
+        float centerZ = 0.0F;
+        float radius = 20.0F;
+    };
+
     [[nodiscard]] bool CreateRenderTarget();
     [[nodiscard]] bool CreateTemporalTargets();
     [[nodiscard]] bool CreateDepthTarget();
@@ -106,6 +116,7 @@ private:
     std::vector<GpuSubmesh> m_modelSubmeshes;
     UINT m_terrainIndexCount = 0;
     UINT m_forestIndexCount = 0;
+    std::vector<ForestDrawChunk> m_forestChunks;
 
     UINT m_width = 0;
     UINT m_height = 0;

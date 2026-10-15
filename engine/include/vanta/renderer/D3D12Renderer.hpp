@@ -71,7 +71,9 @@ private:
     UINT64* m_mappedTimestamps = nullptr;
     UINT64 m_timestampFrequency = 0;
     std::array<bool, kFrameCount> m_profilePending{};
-    std::array<double, 5> m_profileAccumulatedMs{};
+    std::array<double, 7> m_profileAccumulatedMs{};
+    std::array<std::uint64_t, 3> m_shadowDrawCallsAccumulated{};
+    std::array<std::uint64_t, 3> m_shadowTrianglesAccumulated{};
     UINT m_profileSampleCount = 0;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;

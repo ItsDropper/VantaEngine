@@ -698,7 +698,7 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
         return false;
     }
     D3D12_QUERY_HEAP_DESC queryDescription{};
-    queryDescription.Count = kFrameCount * 5U;
+    queryDescription.Count = kFrameCount * 7U;
     queryDescription.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
     if (FAILED(m_device->CreateQueryHeap(&queryDescription, IID_PPV_ARGS(m_timestampQueryHeap.GetAddressOf())))) {
         LogError("D3D12 GPU profiler unavailable: timestamp query heap creation failed.");
@@ -711,7 +711,7 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
     heapProperties.VisibleNodeMask = 1;
     D3D12_RESOURCE_DESC bufferDescription{};
     bufferDescription.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    bufferDescription.Width = static_cast<UINT64>(kFrameCount * 5U) * sizeof(UINT64);
+    bufferDescription.Width = static_cast<UINT64>(kFrameCount * 7U) * sizeof(UINT64);
     bufferDescription.Height = 1;
     bufferDescription.DepthOrArraySize = 1;
     bufferDescription.MipLevels = 1;
@@ -725,7 +725,7 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
         m_timestampFrequency = 0;
         return false;
     }
-    D3D12_RANGE readRange{0, static_cast<SIZE_T>(kFrameCount * 5U * sizeof(UINT64))};
+    D3D12_RANGE readRange{0, static_cast<SIZE_T>(kFrameCount * 7U * sizeof(UINT64))};
     void* mapped = nullptr;
     if (FAILED(m_timestampReadback->Map(0, &readRange, &mapped)) || mapped == nullptr) {
         LogError("D3D12 GPU profiler unavailable: readback buffer mapping failed.");
@@ -735,7 +735,7 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
         return false;
     }
     m_mappedTimestamps = static_cast<UINT64*>(mapped);
-    LogInfo("D3D12 GPU profiler enabled: shadows, scene, temporal resolve, post-process and total GPU timings (averaged every 120 completed frames).");
+    LogInfo("D3D12 GPU profiler enabled: per-cascade shadows, scene, temporal resolve, post-process and total GPU timings (averaged every 120 completed frames).");
     return true;
 }
 
@@ -743,27 +743,38 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
 {
     if (m_timestampFrequency == 0 || m_mappedTimestamps == nullptr || !m_profilePending[frameIndex])
         return;
-    const std::size_t base = static_cast<std::size_t>(frameIndex) * 5U;
+    const std::size_t base = static_cast<std::size_t>(frameIndex) * 7U;
     const auto milliseconds = [this](UINT64 ticks) {
         return static_cast<double>(ticks) * 1000.0 / static_cast<double>(m_timestampFrequency);
     };
-    m_profileAccumulatedMs[0] += milliseconds(m_mappedTimestamps[base + 1U] - m_mappedTimestamps[base]);
-    m_profileAccumulatedMs[1] += milliseconds(m_mappedTimestamps[base + 2U] - m_mappedTimestamps[base + 1U]);
-    m_profileAccumulatedMs[2] += milliseconds(m_mappedTimestamps[base + 3U] - m_mappedTimestamps[base + 2U]);
-    m_profileAccumulatedMs[3] += milliseconds(m_mappedTimestamps[base + 4U] - m_mappedTimestamps[base + 3U]);
-    m_profileAccumulatedMs[4] += milliseconds(m_mappedTimestamps[base + 4U] - m_mappedTimestamps[base]);
+    for (std::size_t pass = 0; pass < 6U; ++pass)
+        m_profileAccumulatedMs[pass] += milliseconds(m_mappedTimestamps[base + pass + 1U] - m_mappedTimestamps[base + pass]);
+    m_profileAccumulatedMs[6] += milliseconds(m_mappedTimestamps[base + 6U] - m_mappedTimestamps[base]);
     ++m_profileSampleCount;
     m_profilePending[frameIndex] = false;
     if (m_profileSampleCount >= 120U) {
-        char message[320]{};
+        char message[420]{};
         const double divisor = static_cast<double>(m_profileSampleCount);
         std::snprintf(message, sizeof(message),
-            "D3D12 GPU ms (avg %u frames): shadows %.2f | scene %.2f | temporal %.2f | post %.2f | total %.2f (60 FPS budget 16.67 ms)",
+            "D3D12 GPU ms (avg %u frames): shadow[near %.2f, mid %.2f, far %.2f] | scene %.2f | temporal %.2f | post %.2f | total %.2f (60 FPS budget 16.67 ms)",
             m_profileSampleCount, m_profileAccumulatedMs[0] / divisor, m_profileAccumulatedMs[1] / divisor,
             m_profileAccumulatedMs[2] / divisor, m_profileAccumulatedMs[3] / divisor,
-            m_profileAccumulatedMs[4] / divisor);
+            m_profileAccumulatedMs[4] / divisor, m_profileAccumulatedMs[5] / divisor,
+            m_profileAccumulatedMs[6] / divisor);
         LogInfo(message);
+        char shadowStats[256]{};
+        std::snprintf(shadowStats, sizeof(shadowStats),
+            "D3D12 shadow averages per frame: near %llu draws / %llu triangles | mid %llu / %llu | far %llu / %llu",
+            static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[0] / m_profileSampleCount),
+            static_cast<unsigned long long>(m_shadowTrianglesAccumulated[0] / m_profileSampleCount),
+            static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[1] / m_profileSampleCount),
+            static_cast<unsigned long long>(m_shadowTrianglesAccumulated[1] / m_profileSampleCount),
+            static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[2] / m_profileSampleCount),
+            static_cast<unsigned long long>(m_shadowTrianglesAccumulated[2] / m_profileSampleCount));
+        LogInfo(shadowStats);
         m_profileAccumulatedMs.fill(0.0);
+        m_shadowDrawCallsAccumulated.fill(0);
+        m_shadowTrianglesAccumulated.fill(0);
         m_profileSampleCount = 0;
     }
 }
@@ -877,7 +888,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         return;
     }
 
-    const UINT timestampBase = m_frameIndex * 5U;
+    const UINT timestampBase = m_frameIndex * 7U;
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase);
     D3D12_RESOURCE_BARRIER shadowToDepth{};
@@ -903,15 +914,29 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
         const float cascadeRange = cascadeSplits[cascade];
         const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
+        const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
+        std::uint64_t cascadeDrawCalls = 0;
+        std::uint64_t cascadeTriangles = 0;
         for (const DrawChunk& chunk : m_drawChunks) {
             const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
             if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
             if (chunk.indexCount[shadowLod] == 0) continue;
+            const Vec4 clip = lightViewProjection.Transform({chunk.centerX, chunk.centerY, chunk.centerZ, 1.0F});
+            const float rx = chunk.radius * std::sqrt(lightViewProjection.At(0,0) * lightViewProjection.At(0,0) + lightViewProjection.At(0,1) * lightViewProjection.At(0,1) + lightViewProjection.At(0,2) * lightViewProjection.At(0,2));
+            const float ry = chunk.radius * std::sqrt(lightViewProjection.At(1,0) * lightViewProjection.At(1,0) + lightViewProjection.At(1,1) * lightViewProjection.At(1,1) + lightViewProjection.At(1,2) * lightViewProjection.At(1,2));
+            const float rz = chunk.radius * std::sqrt(lightViewProjection.At(2,0) * lightViewProjection.At(2,0) + lightViewProjection.At(2,1) * lightViewProjection.At(2,1) + lightViewProjection.At(2,2) * lightViewProjection.At(2,2));
+            if (clip.x + rx < -1.0F || clip.x - rx > 1.0F ||
+                clip.y + ry < -1.0F || clip.y - ry > 1.0F ||
+                clip.z + rz < 0.0F || clip.z - rz > 1.0F) continue;
             m_commandList->DrawIndexedInstanced(chunk.indexCount[shadowLod], 1, chunk.startIndex[shadowLod], 0, 0);
+            ++cascadeDrawCalls;
+            cascadeTriangles += chunk.indexCount[shadowLod] / 3U;
         }
+        m_shadowDrawCallsAccumulated[cascade] += cascadeDrawCalls;
+        m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
+        if (m_timestampFrequency != 0)
+            m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + cascade + 1U);
     }
-    if (m_timestampFrequency != 0)
-        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 1U);
     D3D12_RESOURCE_BARRIER shadowToSample = shadowToDepth;
     shadowToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
     shadowToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -974,7 +999,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     }
 
     if (m_timestampFrequency != 0)
-        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 2U);
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
     D3D12_RESOURCE_BARRIER depthToSample{};
     depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     depthToSample.Transition.pResource = m_depthTexture.Get();
@@ -1017,7 +1042,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
     if (m_timestampFrequency != 0)
-        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 3U);
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 5U);
     D3D12_RESOURCE_BARRIER historyColorToSample = historyColorToTarget;
     historyColorToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     historyColorToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -1045,9 +1070,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
     if (m_timestampFrequency != 0) {
-        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
+        m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 6U);
         m_commandList->ResolveQueryData(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
-            timestampBase, 5U, m_timestampReadback.Get(), static_cast<UINT64>(timestampBase) * sizeof(UINT64));
+            timestampBase, 7U, m_timestampReadback.Get(), static_cast<UINT64>(timestampBase) * sizeof(UINT64));
     }
     D3D12_RESOURCE_BARRIER depthToWrite = depthToSample;
     depthToWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;

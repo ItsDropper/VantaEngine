@@ -528,9 +528,8 @@ bool D3D12Renderer::CreateSceneGeometry()
         return false;
     }
 
-    // Spatially sort triangles into 24 m cells. Each cell stores three index lists:
-    // full detail, medium detail, and a far LOD that drops sub-pixel vegetation triangles.
-    // Vertex data stays shared, so LOD changes do not duplicate GPU vertex storage.
+    // Spatially sort triangles into 24 m cells. Each cell stores three camera LODs and two
+    // independent shadow LODs. Vertex data stays shared, so LODs only duplicate indices.
     constexpr float chunkSize = 24.0F;
     float minX = vertices.front().position[0], maxX = minX;
     float minZ = vertices.front().position[2], maxZ = minZ;
@@ -541,7 +540,7 @@ bool D3D12Renderer::CreateSceneGeometry()
     const int chunksX = std::max(1, static_cast<int>(std::ceil((maxX - minX) / chunkSize)));
     const int chunksZ = std::max(1, static_cast<int>(std::ceil((maxZ - minZ) / chunkSize)));
     struct CpuChunk {
-        std::array<std::vector<unsigned int>, 3> lodIndices;
+        std::array<std::vector<unsigned int>, 5> lodIndices;
         float minY = std::numeric_limits<float>::max();
         float maxY = std::numeric_limits<float>::lowest();
         bool occupied = false;
@@ -574,12 +573,20 @@ bool D3D12Renderer::CreateSceneGeometry()
         const bool terrainTriangle = ia < terrainVertexCount && ib < terrainVertexCount && ic < terrainVertexCount;
         const bool foliageTriangle = !terrainTriangle && green > red * 1.12F && green > blue * 1.10F;
         chunk.lodIndices[0].insert(chunk.lodIndices[0].end(), {ia, ib, ic});
-        // Keep more small foliage nearby; progressively discard sub-pixel leaves and grass
-        // at distance. Terrain, structures, rocks and other non-foliage geometry stay intact.
+        // Camera LODs preserve the existing scene detail policy.
         if (!foliageTriangle || triangleArea >= 0.10F)
             chunk.lodIndices[1].insert(chunk.lodIndices[1].end(), {ia, ib, ic});
         if (!foliageTriangle || triangleArea >= 0.50F)
             chunk.lodIndices[2].insert(chunk.lodIndices[2].end(), {ia, ib, ic});
+
+        // Shadow-only LODs are intentionally independent of camera LODs. Fine leaf,
+        // twig and trim triangles often cover less than a shadow texel in the mid/far
+        // cascades; submitting them costs GPU time without adding stable shadow detail.
+        // Keep the terrain intact so the ground never develops holes.
+        if (terrainTriangle || triangleArea >= (foliageTriangle ? 0.22F : 0.08F))
+            chunk.lodIndices[3].insert(chunk.lodIndices[3].end(), {ia, ib, ic});
+        if (terrainTriangle || triangleArea >= (foliageTriangle ? 0.75F : 0.32F))
+            chunk.lodIndices[4].insert(chunk.lodIndices[4].end(), {ia, ib, ic});
     }
 
     std::vector<unsigned int> sortedIndices;
@@ -595,7 +602,7 @@ bool D3D12Renderer::CreateSceneGeometry()
             chunk.centerZ = minZ + (static_cast<float>(z) + 0.5F) * chunkSize;
             const float halfHeight = (sourceChunk.maxY - sourceChunk.minY) * 0.5F;
             chunk.radius = std::sqrt(chunkSize * chunkSize * 0.5F + halfHeight * halfHeight) + 2.0F;
-            for (UINT lod = 0; lod < 3; ++lod) {
+            for (UINT lod = 0; lod < 5; ++lod) {
                 chunk.startIndex[lod] = static_cast<UINT>(sortedIndices.size());
                 chunk.indexCount[lod] = static_cast<UINT>(sourceChunk.lodIndices[lod].size());
                 sortedIndices.insert(sortedIndices.end(), sourceChunk.lodIndices[lod].begin(), sourceChunk.lodIndices[lod].end());
@@ -930,7 +937,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         const float cascadeRange = cascadeSplits[cascade];
         // Preserve fine leaf shadows nearby, then progressively remove sub-pixel foliage
         // detail as the cascade covers more distant geometry.
-        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
+        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 3U : 4U);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
         std::uint64_t cascadeDrawCalls = 0;
         std::uint64_t cascadeTriangles = 0;

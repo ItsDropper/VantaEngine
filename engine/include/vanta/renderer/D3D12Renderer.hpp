@@ -32,8 +32,8 @@ private:
     static constexpr UINT kFrameCount = 2;
     struct DrawChunk
     {
-        std::array<UINT, 3> startIndex{};
-        std::array<UINT, 3> indexCount{};
+        std::array<UINT, 5> startIndex{};
+        std::array<UINT, 5> indexCount{};
         float centerX = 0.0F;
         float centerY = 0.0F;
         float centerZ = 0.0F;

@@ -725,7 +725,7 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
         m_timestampFrequency = 0;
         return false;
     }
-    D3D12_RANGE readRange{0, 0};
+    D3D12_RANGE readRange{0, static_cast<SIZE_T>(kFrameCount * 5U * sizeof(UINT64))};
     void* mapped = nullptr;
     if (FAILED(m_timestampReadback->Map(0, &readRange, &mapped)) || mapped == nullptr) {
         LogError("D3D12 GPU profiler unavailable: readback buffer mapping failed.");

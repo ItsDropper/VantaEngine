@@ -142,9 +142,8 @@ float4 PSMain(PSInput input) : SV_TARGET
     // rocks and props; those pixels should not pay the terrain-material cost.
     float2 worldXZ = input.worldPosition.xz;
     float importedMaterial = saturate(input.material.z);
-    float terrainColorMask = (1.0 - importedMaterial) *
-        smoothstep(0.055, 0.20, albedo.g - max(albedo.r, albedo.b) * 0.42) *
-        (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
+    float isTerrain = (materialFlags & 64U) != 0U ? 1.0 : 0.0;
+    float terrainColorMask = isTerrain * (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
     float macroNoise = 0.5;
     float breakup = 0.5;
     float clumpNoise = 0.5;

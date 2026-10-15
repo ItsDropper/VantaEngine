@@ -360,8 +360,12 @@ bool D3D12Renderer::CreateSceneGeometry()
     std::vector<renderer::WorldVertex> vertices;
     std::vector<unsigned int> indices;
     AppendTerrain(vertices, indices);
+    const std::size_t terrainVertexCount = vertices.size();
     renderer::BuildDetailedWorld(vertices, indices);
     std::vector<std::array<float, 4>> materialParameters(vertices.size(), std::array<float, 4>{0.78F, 0.0F, 0.0F, 0.0F});
+    // Reserve material flag bit 6 for terrain-only procedural shading. This lets the
+    // pixel shader skip terrain noise on foliage, cabins, rocks and other scene meshes.
+    for (std::size_t i = 0; i < terrainVertexCount; ++i) materialParameters[i][3] = 64.0F;
 
     const std::filesystem::path modelDirectory = std::filesystem::path{VANTA_ASSET_DIR} / "models";
     const std::array<std::filesystem::path, 3> modelCandidates = {
@@ -913,9 +917,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->SetGraphicsRootConstantBufferView(0,
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
         const float cascadeRange = cascadeSplits[cascade];
-        // Shadow maps do not need every sub-pixel leaf triangle: use the far foliage-filtered index list
-        // in all cascades while leaving the visible scene's distance-based LOD unchanged.
-        const UINT shadowLod = 2U;
+        // Preserve fine leaf shadows nearby, then progressively remove sub-pixel foliage
+        // detail as the cascade covers more distant geometry.
+        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
         std::uint64_t cascadeDrawCalls = 0;
         std::uint64_t cascadeTriangles = 0;

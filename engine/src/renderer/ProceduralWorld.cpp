@@ -50,16 +50,22 @@ float FractalNoise(float x, float z, int salt) {
     return value / total;
 }
 float Height(float x, float z) {
-    // Layered, seeded noise produces broad landforms plus smaller terrain breakup.
-    const float broad = FractalNoise(x * 0.018F, z * 0.018F, 11) - 0.5F;
-    const float medium = FractalNoise(x * 0.062F, z * 0.062F, 29) - 0.5F;
-    const float fine = SmoothNoise(x * 0.22F, z * 0.22F, 71) - 0.5F;
-    const float rolling = 0.32F * std::sin(x * 0.075F) * std::cos(z * 0.061F)
-        + 0.16F * std::sin((x + z) * 0.17F);
+    // Domain-warp the large landforms so the valley does not read as a stack of
+    // evenly scaled noise layers. The warp is broad and smooth; finer detail is
+    // added afterward so slopes remain traversable and props still sit naturally.
+    const float warpX = x + (FractalNoise(x * 0.010F, z * 0.010F, 101) - 0.5F) * 11.0F;
+    const float warpZ = z + (FractalNoise(x * 0.010F, z * 0.010F, 131) - 0.5F) * 11.0F;
+    const float broad = FractalNoise(warpX * 0.015F, warpZ * 0.015F, 11) - 0.5F;
+    const float medium = FractalNoise(x * 0.052F, z * 0.052F, 29) - 0.5F;
+    const float fine = SmoothNoise(x * 0.19F, z * 0.19F, 71) - 0.5F;
+    // Low-amplitude directional variation breaks up the smooth noise without
+    // introducing the obvious repeating wave pattern of large sine terms.
+    const float rolling = 0.17F * std::sin(x * 0.047F + std::sin(z * 0.031F) * 1.7F)
+        + 0.11F * std::sin(z * 0.083F + x * 0.021F);
     const float creekX = -23.0F + std::sin(z * 0.09F) * 2.8F;
     const float creekDistance = (x - creekX) / 3.8F;
     const float creekCut = 1.05F * std::exp(-creekDistance * creekDistance);
-    return -1.0F + broad * 5.4F + medium * 1.7F + fine * 0.28F + rolling - creekCut;
+    return -1.0F + broad * 6.2F + medium * 2.0F + fine * 0.34F + rolling - creekCut;
 }
 class Builder
 {
@@ -366,10 +372,20 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
             {leftX1,leftY1,z1},{leftX0,leftY0,z0},0.29F,0.27F,0.23F);
         b.quad({rightX0,rightY0,z0},{rightX1,rightY1,z1},
             {x1+3.5F,shoulderRightY1-0.025F,z1},{x0+3.5F,shoulderRightY0-0.025F,z0},0.29F,0.27F,0.23F);
-        if(i%9<5) {
-            const float centerY0=Height(x0,z0)+0.047F, centerY1=Height(x1,z1)+0.047F;
-            b.quad({x0-0.055F,centerY0,z0},{x1-0.055F,centerY1,z1},
-                {x1+0.055F,centerY1,z1},{x0+0.055F,centerY0,z0},0.62F,0.53F,0.34F);
+        // Subtle paired wheel ruts read as compacted gravel; a yellow dashed
+        // centre line would make this remote forest track look like a paved road.
+        for (float trackOffset : {-0.82F, 0.82F}) {
+            const float trackX0 = x0 + trackOffset;
+            const float trackX1 = x1 + trackOffset;
+            const float t0 = (trackX0 - leftX0) / (rightX0 - leftX0);
+            const float t1 = (trackX1 - leftX1) / (rightX1 - leftX1);
+            const float trackY0 = leftY0 + (rightY0 - leftY0) * t0 + 0.006F;
+            const float trackY1 = leftY1 + (rightY1 - leftY1) * t1 + 0.006F;
+            const float rutWidth = 0.24F + 0.07F * Hash(i, trackOffset < 0.0F ? 401 : 409);
+            const float rutShade = 0.88F + 0.10F * Hash(i, trackOffset < 0.0F ? 419 : 421);
+            b.quad({trackX0-rutWidth,trackY0,z0},{trackX1-rutWidth,trackY1,z1},
+                {trackX1+rutWidth,trackY1,z1},{trackX0+rutWidth,trackY0,z0},
+                0.205F*rutShade,0.196F*rutShade,0.177F*rutShade);
         }
     }
     // A rocky stream and irregular banks cut through the left side of the valley.
@@ -385,8 +401,11 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
     b.cabin(18.0F,25.0F,0.65F);
     // Hundreds of individually varied trees, trunks, branches and tiered crowns.
     for(int gz=-7;gz<=7;++gz) for(int gx=-7;gx<=7;++gx) {
-        const float jx=(Hash(gx,gz,4)-0.5F)*4.8F, jz=(Hash(gz,gx,8)-0.5F)*4.8F;
+        const float jx=(Hash(gx,gz,4)-0.5F)*6.0F, jz=(Hash(gz,gx,8)-0.5F)*6.0F;
         const float x=gx*6.8F+jx, z=gz*6.8F+jz;
+        // Small stochastic openings and wider placement jitter break the visible
+        // orchard grid while keeping the generated forest deterministic.
+        if (Hash(gx, gz, 211) < 0.085F) continue;
         if(x*x+z*z<115.0F || std::abs(x)>59.0F || std::abs(z)>59.0F) continue;
         if(std::abs(x-(8.0F+std::sin(z*0.035F)*4.2F))<5.0F || (x>-27&&x<-19)) continue;
         const float y=Height(x,z), h=4.0F+Hash(gx,gz,2)*4.5F, radius=0.9F+Hash(gz,gx,6)*0.85F;

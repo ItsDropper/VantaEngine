@@ -34,12 +34,12 @@ int main()
         for (float value : vertex.color) valid = valid && std::isfinite(value);
     }
 
-    if (!valid || vertices.size() < 20000U || indices.size() < 60000U) {
-        std::cerr << "Procedural world is empty, unexpectedly small, or contains invalid mesh data. vertices="
+    if (!valid || vertices.size() < 100000U || indices.size() < 300000U) {
+        std::cerr << "Procedural world is empty, missing high-detail vegetation, or contains invalid mesh data. vertices="
                   << vertices.size() << " indices=" << indices.size() << '\n';
         return 1;
     }
-    std::cout << "PASS: detailed world mesh has " << vertices.size() << " vertices and "
+    std::cout << "PASS: high-detail procedural world mesh has " << vertices.size() << " vertices and "
               << indices.size() / 3U << " triangles; indices and attributes are valid.\n";
     return 0;
 }

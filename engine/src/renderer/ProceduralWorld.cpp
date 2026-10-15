@@ -161,6 +161,46 @@ public:
         quad(a0,b0,b1,a1,r,g,bl); quad(a1,b1,b2,a2,r*0.9F,g*0.9F,bl*0.9F);
         quad(a2,b2,b3,a3,r*0.8F,g*0.8F,bl*0.8F); quad(a3,b3,b0,a0,r*0.95F,g*0.95F,bl*0.95F);
     }
+    // Tapered radial branch geometry: unlike the old box beams, this produces rounded limbs
+    // with changing radii and enough sides to avoid the obvious square-stick silhouette.
+    void branchTube(P a, P b, float radiusA, float radiusB, int sides,
+                    float r, float g, float bl) {
+        const P delta = b - a;
+        const float length = std::sqrt(std::max(Dot(delta, delta), 0.000001F));
+        const P axis = delta * (1.0F / length);
+        P reference = std::abs(axis.y) > 0.92F ? P{1.0F, 0.0F, 0.0F} : P{0.0F, 1.0F, 0.0F};
+        const P side = Normalize(Cross(axis, reference));
+        const P up = Normalize(Cross(side, axis));
+        for (int i = 0; i < sides; ++i) {
+            const float a0 = 2.0F * kPi * static_cast<float>(i) / static_cast<float>(sides);
+            const float a1 = 2.0F * kPi * static_cast<float>(i + 1) / static_cast<float>(sides);
+            const P radial0 = side * std::cos(a0) + up * std::sin(a0);
+            const P radial1 = side * std::cos(a1) + up * std::sin(a1);
+            const P p0 = a + radial0 * radiusA;
+            const P p1 = a + radial1 * radiusA;
+            const P p2 = b + radial1 * radiusB;
+            const P p3 = b + radial0 * radiusB;
+            const float variation = 0.88F + 0.16F * Hash(i, sides, static_cast<int>((a.x + a.z) * 13.0F));
+            quad(p0, p1, p2, p3, r * variation, g * variation, bl * variation);
+        }
+    }
+    // A tapered, folded leaf blade with a pointed tip and visible central ridge.
+    // The leaf is actual geometry rather than a spherical crown blob.
+    void leaf(P base, P tip, float width, float r, float g, float bl, int seed) {
+        const P direction = Normalize(tip - base);
+        P side = Normalize(Cross(direction, {0.0F, 1.0F, 0.0F}));
+        if (Dot(side, side) < 0.1F) side = Normalize(Cross(direction, {1.0F, 0.0F, 0.0F}));
+        const P ridge = Normalize(Cross(side, direction));
+        const P middle = base + (tip - base) * 0.48F;
+        const P left = middle + side * width;
+        const P right = middle - side * width;
+        const P center = middle + ridge * (width * (0.10F + Hash(seed, 3) * 0.18F));
+        const float shade = 0.82F + Hash(seed, 7) * 0.32F;
+        tri(base, left, center, r * shade, g * shade, bl * shade);
+        tri(left, tip, center, r * shade, g * shade, bl * shade);
+        tri(tip, right, center, r * 0.92F * shade, g * 0.92F * shade, bl * 0.92F * shade);
+        tri(right, base, center, r * 0.92F * shade, g * 0.92F * shade, bl * 0.92F * shade);
+    }
     void cabin(float x,float z,float scale) {
         const float y=Height(x,z);
         const float w=2.3F*scale, d=2.0F*scale, h=1.8F*scale;
@@ -257,6 +297,49 @@ public:
         }
     }
 };
+
+// Recursive broadleaf growth: primary limbs fork into smaller limbs, then twigs,
+// with clusters of individual pointed leaves at the terminal growth. Seeded inputs
+// keep every run reproducible while making each tree structurally different.
+void GrowBroadleaf(Builder& b, P start, P direction, float length, float radius,
+                   int depth, int seed, float seasonal) {
+    direction = Normalize(direction);
+    const P end = start + direction * length;
+    const float bark = 0.88F + Hash(seed, depth, 5) * 0.22F;
+    b.branchTube(start, end, radius, radius * 0.62F, 6,
+                 0.22F * bark, 0.12F * bark, 0.062F * bark);
+    if (depth <= 0) {
+        for (int leafIndex = 0; leafIndex < 8; ++leafIndex) {
+            const float angle = Hash(seed, leafIndex, 17) * 2.0F * kPi;
+            const P leafDirection = Normalize({
+                direction.x * 0.34F + std::cos(angle) * 0.74F,
+                direction.y * 0.28F + 0.22F + Hash(seed, leafIndex, 19) * 0.28F,
+                direction.z * 0.34F + std::sin(angle) * 0.74F});
+            const float leafLength = 0.22F + Hash(seed, leafIndex, 23) * 0.24F;
+            const P leafBase = end + leafDirection * (Hash(seed, leafIndex, 29) * 0.11F);
+            const P leafTip = leafBase + leafDirection * leafLength;
+            const float tint = 0.78F + Hash(seed, leafIndex, 31) * 0.42F;
+            const float red = (0.035F + seasonal * 0.035F) * tint;
+            const float green = (0.17F + seasonal * 0.10F) * tint;
+            const float blue = (0.045F + seasonal * 0.025F) * tint;
+            b.leaf(leafBase, leafTip, 0.045F + Hash(seed, leafIndex, 37) * 0.035F,
+                   red, green, blue, seed * 11 + leafIndex);
+        }
+        return;
+    }
+    for (int child = 0; child < 2; ++child) {
+        const float angle = Hash(seed, depth, child + 41) * 2.0F * kPi;
+        const P childDirection = Normalize({
+            direction.x * 0.48F + std::cos(angle) * 0.68F,
+            std::max(0.18F, direction.y * 0.58F + 0.20F + Hash(seed, child, 43) * 0.18F),
+            direction.z * 0.48F + std::sin(angle) * 0.68F});
+        const float startAlong = 0.42F + Hash(seed, child, 47) * 0.28F;
+        const P childStart = start + (end - start) * startAlong;
+        GrowBroadleaf(b, childStart, childDirection,
+                      length * (0.55F + Hash(seed, child, 53) * 0.13F),
+                      radius * 0.61F, depth - 1, seed * 3 + child + 59, seasonal);
+    }
+}
 }
 
 float TerrainHeightAt(float x, float z)
@@ -308,7 +391,7 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
         if(std::abs(x-(8.0F+std::sin(z*0.035F)*4.2F))<5.0F || (x>-27&&x<-19)) continue;
         const float y=Height(x,z), h=4.0F+Hash(gx,gz,2)*4.5F, radius=0.9F+Hash(gz,gx,6)*0.85F;
         const float trunkRadius = 0.18F + Hash(gx,gz,7)*0.1F;
-        b.cylinder({x,y,z},trunkRadius,h*0.42F,9,0.22F,0.12F,0.065F,0.72F);
+        b.cylinder({x,y,z},trunkRadius,h*0.72F,11,0.22F,0.12F,0.065F,0.28F);
         // Exposed buttress roots flare into the forest floor; darker seams break up the smooth trunk.
         for (int root = 0; root < 4; ++root) {
             const float angle = root * (kPi * 0.5F) + Hash(gx,gz,root) * 0.55F;
@@ -325,47 +408,72 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
                    0.012F,0.13F,0.075F,0.04F);
         }
         if (Hash(gx, gz, 19) < 0.34F) {
-            // Broadleaf trees break up the conifer wall with irregular crowns and visible limbs.
-            for (int branch = 0; branch < 5; ++branch) {
+            // Broadleaf crowns are built from branching wood and individual leaf blades,
+            // not low-poly ellipsoids. Six primary limbs each fork through three twig levels.
+            const float seasonal = Hash(gx, gz, 79);
+            for (int branch = 0; branch < 6; ++branch) {
                 const float angle = Hash(gx, gz, branch + 41) * 2.0F * kPi;
-                const float branchY = y + h * (0.38F + Hash(gx, gz, branch + 47) * 0.18F);
-                const float branchLength = radius * (0.55F + Hash(gx, gz, branch + 53) * 0.55F);
-                const P end{x + std::cos(angle) * branchLength, branchY + h * 0.08F,
-                            z + std::sin(angle) * branchLength};
-                b.beam({x, branchY - h * 0.10F, z}, end, trunkRadius * 0.42F,
-                       0.25F, 0.13F, 0.065F);
+                const float branchY = y + h * (0.40F + Hash(gx, gz, branch + 47) * 0.16F);
+                const P start{x + std::cos(angle) * trunkRadius * 0.28F, branchY,
+                              z + std::sin(angle) * trunkRadius * 0.28F};
+                const P direction = Normalize({
+                    std::cos(angle) * (0.55F + Hash(gx, gz, branch + 53) * 0.20F),
+                    0.48F + Hash(gx, gz, branch + 57) * 0.38F,
+                    std::sin(angle) * (0.55F + Hash(gx, gz, branch + 61) * 0.20F)});
+                GrowBroadleaf(b, start, direction, radius * (0.82F + Hash(gx, gz, branch + 67) * 0.48F),
+                              trunkRadius * 0.46F, 3, gx * 997 + gz * 313 + branch * 71, seasonal);
             }
-            for (int cluster = 0; cluster < 9; ++cluster) {
-                const float angle = Hash(gx, gz, cluster + 61) * 2.0F * kPi;
-                const float spread = radius * (0.18F + Hash(gx, gz, cluster + 67) * 0.78F);
-                const float crownY = y + h * (0.67F + Hash(gx, gz, cluster + 71) * 0.19F);
-                const float crownRadius = radius * (0.36F + Hash(gx, gz, cluster + 73) * 0.34F);
-                const float seasonal = Hash(gx, gz, cluster + 79);
-                const float red = 0.035F + seasonal * 0.045F;
-                const float green = 0.16F + seasonal * 0.11F;
-                const float blue = 0.045F + seasonal * 0.035F;
-                b.blob({x + std::cos(angle) * spread, crownY,
-                        z + std::sin(angle) * spread},
-                       crownRadius, crownRadius * (0.7F + Hash(gx, gz, cluster + 83) * 0.45F),
-                       crownRadius * (0.72F + Hash(gx, gz, cluster + 89) * 0.42F),
-                       red, green, blue);
-                if (seasonal > 0.83F) {
-                    b.blob({x + std::cos(angle) * spread, crownY + crownRadius * 0.12F,
-                            z + std::sin(angle) * spread},
-                           crownRadius * 0.72F, crownRadius * 0.52F, crownRadius * 0.65F,
-                           red * 1.8F, green * 0.72F, blue * 0.58F);
-                }
+            // Fine upper shoots make the crown less like a hollow ring of branches.
+            for (int shoot = 0; shoot < 10; ++shoot) {
+                const float angle = Hash(gx, gz, shoot + 101) * 2.0F * kPi;
+                const P start{x + std::cos(angle) * radius * 0.18F, y + h * 0.63F,
+                              z + std::sin(angle) * radius * 0.18F};
+                const P direction = Normalize({std::cos(angle) * 0.30F, 0.92F,
+                                                std::sin(angle) * 0.30F});
+                GrowBroadleaf(b, start, direction, radius * 0.43F, trunkRadius * 0.18F,
+                              1, gx * 127 + gz * 37 + shoot * 13, seasonal);
             }
         } else {
-            // Layered conifers retain their overlapping boughs and varied crown profiles.
-            for(int tier=0;tier<4;++tier) {
-                const float ty=y+h*(0.19F+tier*0.17F), th=h*(0.43F-tier*0.045F);
-                const float rr=radius*(1.0F-tier*0.19F);
-                b.cone({x,ty,z},rr,th,7,0.035F+Hash(gx,tier)*0.025F,0.18F+Hash(gz,tier)*0.08F,0.09F+Hash(gx,gz)*0.035F);
-                if(tier<3) for(int arm=0;arm<5;++arm) {
-                    float a=arm*2*kPi/5.0F+Hash(gx,gz,arm);
-                    P end{x+std::cos(a)*rr*0.9F,ty+th*0.23F,z+std::sin(a)*rr*0.9F};
-                    b.cone({end.x, end.y-0.1F,end.z},rr*0.26F,th*0.28F,5,0.045F,0.22F,0.105F);
+            // Conifers use a visible central leader, six irregular bough tiers, secondary
+            // twigs and many narrow needle blades instead of stacked primitive cones.
+            for (int tier = 0; tier < 6; ++tier) {
+                const float t = static_cast<float>(tier) / 5.0F;
+                const float ty = y + h * (0.20F + t * 0.66F);
+                const float rr = radius * (1.0F - t * 0.79F);
+                const int arms = 7 + (tier % 3);
+                for (int arm = 0; arm < arms; ++arm) {
+                    const float angle = 2.0F * kPi * static_cast<float>(arm) / static_cast<float>(arms)
+                        + Hash(gx, gz, tier * 31 + arm) * 0.58F;
+                    const P start{x + std::cos(angle) * trunkRadius * 0.45F, ty,
+                                  z + std::sin(angle) * trunkRadius * 0.45F};
+                    const P end{x + std::cos(angle) * rr * (0.88F + Hash(gx, gz, arm + tier * 17) * 0.18F),
+                                ty - rr * (0.24F + Hash(gx, gz, arm + 71) * 0.20F),
+                                z + std::sin(angle) * rr * (0.88F + Hash(gx, gz, arm + tier * 23) * 0.18F)};
+                    const float branchRadius = std::max(0.012F, rr * 0.065F);
+                    const float green = 0.17F + Hash(gx, gz, tier + arm * 7) * 0.10F;
+                    b.branchTube(start, end, branchRadius, branchRadius * 0.10F, 5,
+                                 0.22F, green, 0.105F);
+                    for (int twig = 0; twig < 3; ++twig) {
+                        const float along = 0.38F + twig * 0.21F;
+                        const P twigBase = start + (end - start) * along;
+                        const float twigAngle = angle + (twig % 2 == 0 ? 1.0F : -1.0F) * (0.58F + Hash(gx, gz, twig + arm * 13) * 0.36F);
+                        const P twigTip = twigBase + P{std::cos(twigAngle) * rr * 0.24F,
+                                                       -rr * (0.07F + Hash(gx, gz, twig + 97) * 0.08F),
+                                                       std::sin(twigAngle) * rr * 0.24F};
+                        b.branchTube(twigBase, twigTip, branchRadius * 0.44F, branchRadius * 0.05F, 4,
+                                     0.20F, green * 0.92F, 0.095F);
+                        for (int needle = 0; needle < 5; ++needle) {
+                            const float nt = 0.16F + needle * 0.17F;
+                            const P needleBase = twigBase + (twigTip - twigBase) * nt;
+                            const float sideSign = needle % 2 == 0 ? 1.0F : -1.0F;
+                            const P needleTip = needleBase + P{
+                                std::cos(twigAngle + sideSign * 0.8F) * (0.20F + Hash(gx, gz, needle + twig * 19) * 0.15F),
+                                0.045F + Hash(gx, gz, needle + arm * 11) * 0.10F,
+                                std::sin(twigAngle + sideSign * 0.8F) * (0.20F + Hash(gx, gz, needle + tier * 13) * 0.15F)};
+                            b.leaf(needleBase, needleTip, 0.018F + Hash(gx, gz, needle + 53) * 0.012F,
+                                   0.055F, green * 1.12F, 0.075F, gx * 17 + gz * 31 + tier * 7 + arm * 3 + needle);
+                        }
+                    }
                 }
             }
         }

@@ -288,15 +288,48 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
             b.beam({gx0,y+0.2F,gz0},{gx0+0.01F,y+h*0.38F,gz0+0.01F},
                    0.012F,0.13F,0.075F,0.04F);
         }
-        for(int tier=0;tier<4;++tier) {
-            const float ty=y+h*(0.19F+tier*0.17F), th=h*(0.43F-tier*0.045F);
-            const float rr=radius*(1.0F-tier*0.19F);
-            b.cone({x,ty,z},rr,th,7,0.035F+Hash(gx,tier)*0.025F,0.18F+Hash(gz,tier)*0.08F,0.09F+Hash(gx,gz)*0.035F);
-            // Downward boughs add a layered silhouette instead of a single primitive cone.
-            if(tier<3) for(int arm=0;arm<5;++arm) {
-                float a=arm*2*kPi/5.0F+Hash(gx,gz,arm);
-                P end{x+std::cos(a)*rr*0.9F,ty+th*0.23F,z+std::sin(a)*rr*0.9F};
-                b.cone({end.x, end.y-0.1F,end.z},rr*0.26F,th*0.28F,5,0.045F,0.22F,0.105F);
+        if (Hash(gx, gz, 19) < 0.34F) {
+            // Broadleaf trees break up the conifer wall with irregular crowns and visible limbs.
+            for (int branch = 0; branch < 5; ++branch) {
+                const float angle = Hash(gx, gz, branch + 41) * 2.0F * kPi;
+                const float branchY = y + h * (0.38F + Hash(gx, gz, branch + 47) * 0.18F);
+                const float branchLength = radius * (0.55F + Hash(gx, gz, branch + 53) * 0.55F);
+                const P end{x + std::cos(angle) * branchLength, branchY + h * 0.08F,
+                            z + std::sin(angle) * branchLength};
+                b.beam({x, branchY - h * 0.10F, z}, end, trunkRadius * 0.42F,
+                       0.25F, 0.13F, 0.065F);
+            }
+            for (int cluster = 0; cluster < 9; ++cluster) {
+                const float angle = Hash(gx, gz, cluster + 61) * 2.0F * kPi;
+                const float spread = radius * (0.18F + Hash(gx, gz, cluster + 67) * 0.78F);
+                const float crownY = y + h * (0.67F + Hash(gx, gz, cluster + 71) * 0.19F);
+                const float crownRadius = radius * (0.36F + Hash(gx, gz, cluster + 73) * 0.34F);
+                const float seasonal = Hash(gx, gz, cluster + 79);
+                const float red = 0.035F + seasonal * 0.045F;
+                const float green = 0.16F + seasonal * 0.11F;
+                const float blue = 0.045F + seasonal * 0.035F;
+                b.rock({x + std::cos(angle) * spread, crownY,
+                        z + std::sin(angle) * spread},
+                       crownRadius, crownRadius * (0.7F + Hash(gx, gz, cluster + 83) * 0.45F),
+                       crownRadius * (0.72F + Hash(gx, gz, cluster + 89) * 0.42F), green);
+                if (seasonal > 0.83F) {
+                    b.rock({x + std::cos(angle) * spread, crownY + crownRadius * 0.12F,
+                            z + std::sin(angle) * spread},
+                           crownRadius * 0.72F, crownRadius * 0.52F, crownRadius * 0.65F,
+                           red * 1.8F);
+                }
+            }
+        } else {
+            // Layered conifers retain their overlapping boughs and varied crown profiles.
+            for(int tier=0;tier<4;++tier) {
+                const float ty=y+h*(0.19F+tier*0.17F), th=h*(0.43F-tier*0.045F);
+                const float rr=radius*(1.0F-tier*0.19F);
+                b.cone({x,ty,z},rr,th,7,0.035F+Hash(gx,tier)*0.025F,0.18F+Hash(gz,tier)*0.08F,0.09F+Hash(gx,gz)*0.035F);
+                if(tier<3) for(int arm=0;arm<5;++arm) {
+                    float a=arm*2*kPi/5.0F+Hash(gx,gz,arm);
+                    P end{x+std::cos(a)*rr*0.9F,ty+th*0.23F,z+std::sin(a)*rr*0.9F};
+                    b.cone({end.x, end.y-0.1F,end.z},rr*0.26F,th*0.28F,5,0.045F,0.22F,0.105F);
+                }
             }
         }
     }

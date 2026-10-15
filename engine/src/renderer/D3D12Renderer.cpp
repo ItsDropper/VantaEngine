@@ -50,8 +50,9 @@ struct TemporalConstants
     Mat4 inverseViewProjection;
     Mat4 previousViewProjection;
     float parameters[4];
+    float sunParameters[4];
 };
-static_assert(sizeof(TemporalConstants) == 144);
+static_assert(sizeof(TemporalConstants) == 160);
 
 constexpr UINT kShadowResolution = 2048;
 constexpr UINT64 kShadowConstantOffset = 512;
@@ -704,7 +705,13 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     projection.At(1, 2) += (Halton(jitterIndex, 3U) - 0.5F) * 2.0F / static_cast<float>(m_height);
     SceneConstants constants{};
     constants.viewProjection = projection * *view;
-    const Vec3 lightDirection = *Vec3{-0.42F, 0.82F, -0.36F}.Normalized();
+    // A slow, deterministic day cycle. The same sun vector drives direct lighting and
+    // every cascade's light camera, so the visible sun and cast shadows stay in sync.
+    constexpr float kDayCycleRadiansPerSecond = 0.012F;
+    const float sunAngle = 0.95F + elapsedSeconds * kDayCycleRadiansPerSecond;
+    const Vec3 lightDirection = Vec3{0.72F * std::cos(sunAngle), std::sin(sunAngle), -0.35F}
+        .Normalized().value_or(Vec3{0.0F, 1.0F, 0.0F});
+    const float sunIntensity = std::clamp((lightDirection.y + 0.10F) / 0.38F, 0.0F, 1.0F);
     constexpr float cascadeSplits[] = {28.0F, 80.0F, 220.0F};
     float previousSplit = 0.08F;
     for (UINT cascade = 0; cascade < 3; ++cascade) {
@@ -736,10 +743,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     constants.cameraPosition[1] = cameraY;
     constants.cameraPosition[2] = cameraZ;
     constants.cameraPosition[3] = 1.0F;
-    constants.lighting[0] = -0.42F;
-    constants.lighting[1] = 0.82F;
-    constants.lighting[2] = -0.36F;
-    constants.lighting[3] = elapsedSeconds;
+    constants.lighting[0] = lightDirection.x;
+    constants.lighting[1] = lightDirection.y;
+    constants.lighting[2] = lightDirection.z;
+    constants.lighting[3] = sunIntensity;
     const float cameraDeltaX = cameraX - m_previousCameraX;
     const float cameraDeltaY = cameraY - m_previousCameraY;
     const float cameraDeltaZ = cameraZ - m_previousCameraZ;
@@ -753,6 +760,19 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     temporalConstants.parameters[1] = static_cast<float>(1U - m_historyWriteIndex);
     temporalConstants.parameters[2] = static_cast<float>(m_historyWriteIndex);
     temporalConstants.parameters[3] = 0.88F;
+    // Project the world-space sun direction into this camera's screen space for the sky pass.
+    const Vec3 cameraRightForSky{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
+    const Vec3 cameraUpForSky = forward.Cross(cameraRightForSky).Normalized().value_or(Vec3{0.0F, 1.0F, 0.0F});
+    const float sunForward = lightDirection.Dot(forward);
+    const float sunDenominator = std::max(sunForward, 0.05F);
+    const float tanHalfFov = std::tan(math::DegreesToRadians(34.0F));
+    const float sunNdcX = lightDirection.Dot(cameraRightForSky) / (sunDenominator * tanHalfFov *
+        (static_cast<float>(m_width) / static_cast<float>(m_height)));
+    const float sunNdcY = lightDirection.Dot(cameraUpForSky) / (sunDenominator * tanHalfFov);
+    temporalConstants.sunParameters[0] = sunForward > 0.0F ? 0.5F + 0.5F * sunNdcX : 2.0F;
+    temporalConstants.sunParameters[1] = 0.5F - 0.5F * sunNdcY;
+    temporalConstants.sunParameters[2] = sunIntensity;
+    temporalConstants.sunParameters[3] = std::clamp(lightDirection.y * 2.5F + 0.35F, 0.0F, 1.0F);
     std::memcpy(m_mappedTemporalConstants[m_frameIndex], &temporalConstants, sizeof(temporalConstants));
     std::memcpy(m_mappedConstants[m_frameIndex], &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {

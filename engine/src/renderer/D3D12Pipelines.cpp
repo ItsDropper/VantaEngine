@@ -174,14 +174,15 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 specular = d * g * f / max(4.0 * ndv * max(ndl, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
-    float3 direct = (kD * albedo / 3.14159265 + specular) * float3(4.2, 3.65, 2.9) * ndl * shadow;
-    float3 sky = lerp(float3(0.12, 0.105, 0.085), float3(0.20, 0.19, 0.17), saturate(n.y * 0.5 + 0.5));
+    float3 daylightColor = lerp(float3(1.9, 0.62, 0.28), float3(4.2, 3.85, 3.45), smoothstep(0.02, 0.48, lighting.y));
+    float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
+    float3 sky = lerp(float3(0.025, 0.032, 0.055), float3(0.20, 0.30, 0.43), saturate(n.y * 0.5 + 0.5));
     float3 ambient = sky * albedo * (1.0 - metallic) * 1.05 * ambientOcclusion;
     float3 reflectedSky = lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25), saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
-    float3 fogColor = float3(0.30, 0.29, 0.26);
+    float3 fogColor = lerp(float3(0.025, 0.032, 0.055), float3(0.56, 0.66, 0.76), saturate(lighting.w * 0.85));
     // Preserve material colors. Channel-biased grading tints every surface.
     float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
     return float4(litColor, 1.0);
@@ -422,6 +423,7 @@ cbuffer TemporalConstants : register(b1)
     float4x4 inverseViewProjection;
     float4x4 previousViewProjection;
     float4 temporalParams;
+    float4 sunParameters;
 };
 struct VSOut { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 VSOut VSMain(uint id : SV_VertexID)
@@ -590,6 +592,7 @@ cbuffer TemporalConstants : register(b1)
     float4x4 inverseViewProjection;
     float4x4 previousViewProjection;
     float4 temporalParams;
+    float4 sunParameters;
 };
 float3 ResolvedColor(float2 uv)
 {
@@ -615,13 +618,21 @@ float4 PSMain(VSOut input) : SV_TARGET
     if (depth >= 0.99999)
     {
         float horizon = saturate(1.0 - abs(input.uv.y - 0.52) * 1.7);
-        float3 skyTop = float3(0.075, 0.070, 0.060);
-        float3 horizonColor = float3(0.35, 0.33, 0.28);
-        float3 sky = lerp(skyTop, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
-        float2 sunUv = input.uv - float2(0.73, 0.27);
+        float daylight = saturate(sunParameters.z);
+        float3 nightZenith = float3(0.006, 0.012, 0.032);
+        float3 dayZenith = float3(0.075, 0.20, 0.42);
+        float3 zenith = lerp(nightZenith, dayZenith, daylight);
+        float3 nightHorizon = float3(0.025, 0.035, 0.075);
+        float3 sunsetHorizon = float3(0.95, 0.24, 0.075);
+        float3 dayHorizon = float3(0.56, 0.72, 0.86);
+        float3 horizonColor = lerp(lerp(nightHorizon, sunsetHorizon, saturate(sunParameters.w * (1.0 - daylight))), dayHorizon, daylight);
+        float3 sky = lerp(zenith, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
+        float2 sunUv = input.uv - sunParameters.xy;
         float sun = exp(-dot(sunUv, sunUv) * 1900.0);
         float halo = exp(-dot(sunUv, sunUv) * 85.0);
-        sky += float3(7.0, 4.6, 2.4) * sun + float3(0.8, 0.38, 0.13) * halo;
+        float3 solarDisc = lerp(float3(1.0, 0.32, 0.10), float3(1.0, 0.91, 0.73), daylight);
+        sky += solarDisc * (sun * 7.0 * daylight + halo * 0.8 * saturate(daylight + 0.18));
+        sky += float3(0.12, 0.16, 0.24) * horizon * daylight;
         return float4(pow(ACES(max(sky, 0.0)), 1.0 / 2.2), 1.0);
     }
     uint width, height;

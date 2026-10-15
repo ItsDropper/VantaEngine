@@ -127,30 +127,63 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 albedo = max(input.color.rgb, 0.0);
     if ((materialFlags & 1U) != 0U)
         albedo *= modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
-    // World-space multi-frequency noise breaks up large flat color regions without
-    // relying on tiling textures. A slope/height mask gives the terrain distinct soil,
-    // grass and exposed-rock response while leaving trees and buildings mostly intact.
+    // World-space, multi-scale terrain material synthesis. The large terrain mesh has
+    // no authored UV texture, so create distinct grass, damp soil, and mineral surfaces
+    // without relying on vertex-color noise alone.
     float2 worldXZ = input.worldPosition.xz;
-    float macroNoise = TerrainNoise(worldXZ * 0.115);
-    float detailNoise = TerrainNoise(worldXZ * 1.65);
-    float fine = detailNoise * 2.0 - 1.0;
+    float macroNoise = TerrainNoise(worldXZ * 0.055);
+    float breakup = TerrainNoise(worldXZ * 0.19 + float2(13.7, -8.2));
+    float clumpNoise = TerrainNoise(worldXZ * 0.73 + float2(-21.4, 5.8));
+    float fineNoise = TerrainNoise(worldXZ * 2.7);
+    float grainNoise = TerrainNoise(worldXZ * 8.4 + float2(3.1, 19.7));
+    float flecks = ValueNoise(worldXZ * 31.0 + float2(47.2, -11.3));
     float importedMaterial = saturate(input.material.z);
     float terrainColorMask = (1.0 - importedMaterial) *
         smoothstep(0.055, 0.20, albedo.g - max(albedo.r, albedo.b) * 0.42) *
         (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
     float slope = 1.0 - saturate(n.y);
-    float rockMask = terrainColorMask * smoothstep(0.28, 0.78, slope + (macroNoise - 0.5) * 0.22);
-    float soilMask = terrainColorMask * (1.0 - rockMask) * smoothstep(0.30, 0.67, macroNoise);
-    float3 grassAlbedo = albedo * (0.80 + macroNoise * 0.34) * (0.90 + detailNoise * 0.20);
-    float3 soilAlbedo = albedo * float3(0.72, 0.59, 0.43) * (0.72 + detailNoise * 0.48);
-    float3 rockAlbedo = lerp(albedo * 0.52, float3(0.31, 0.32, 0.30), detailNoise * 0.55);
-    float3 terrainAlbedo = lerp(grassAlbedo, soilAlbedo, soilMask * 0.72);
-    terrainAlbedo = lerp(terrainAlbedo, rockAlbedo, rockMask * 0.88);
-    // Terrain breakup is isolated from authored model textures and their material factors.
-    terrainAlbedo *= 0.94 + 0.10 * fine + 0.07 * (macroNoise - 0.5);
+    float altitudeRock = smoothstep(0.9, 2.6, input.worldPosition.y);
+    float rockMask = terrainColorMask * saturate(
+        smoothstep(0.24, 0.70, slope + (macroNoise - 0.5) * 0.28) * 0.88 +
+        altitudeRock * 0.20);
+    float exposedSoil = smoothstep(0.52, 0.76, breakup + (clumpNoise - 0.5) * 0.24);
+    float soilMask = terrainColorMask * (1.0 - rockMask) * exposedSoil;
+    float grassVariation = 0.78 + macroNoise * 0.30 + (breakup - 0.5) * 0.22;
+    // Fine crossed streaks read as short grass/moss fibres at close range; larger
+    // irregular clumps stop the surface from looking like a uniformly green plane.
+    float fibreA = 0.5 + 0.5 * sin(worldXZ.x * 38.0 + sin(worldXZ.y * 17.0) * 1.8);
+    float fibreB = 0.5 + 0.5 * sin((worldXZ.x + worldXZ.y * 0.63) * 27.0 + clumpNoise * 5.0);
+    float grassFibres = lerp(0.78, 1.12, fibreA * 0.62 + fibreB * 0.38);
+    float3 grassAlbedo = albedo * grassVariation * lerp(0.87, 1.10, fineNoise) * grassFibres;
+    float soilCrumb = lerp(0.66, 1.22, grainNoise) * lerp(0.86, 1.12, flecks);
+    float3 soilTint = float3(0.54, 0.40, 0.27);
+    float3 soilAlbedo = albedo * soilTint * soilCrumb * lerp(0.78, 1.12, clumpNoise);
+    // Layered, discontinuous mineral bands and fine speckling approximate fractured rock.
+    float strata = 0.5 + 0.5 * sin((worldXZ.x * 0.83 + worldXZ.y * 0.47) +
+        (breakup - 0.5) * 4.0);
+    float mineral = lerp(0.72, 1.16, grainNoise) * lerp(0.82, 1.12, flecks);
+    float crack = smoothstep(0.68, 0.84, fineNoise) * smoothstep(0.42, 0.68, strata);
+    float3 rockAlbedo = float3(0.31, 0.315, 0.30) * mineral * lerp(1.0, 0.48, crack);
+    rockAlbedo *= lerp(0.88, 1.10, strata);
+    float3 terrainAlbedo = lerp(grassAlbedo, soilAlbedo, soilMask * 0.86);
+    terrainAlbedo = lerp(terrainAlbedo, rockAlbedo, rockMask * 0.94);
+    // Avoid a sterile single-frequency look, while preserving authored object colors.
+    terrainAlbedo *= 0.94 + 0.11 * (fineNoise - 0.5) + 0.09 * (macroNoise - 0.5);
     albedo = lerp(albedo, terrainAlbedo, terrainColorMask);
-    float roughness = saturate(lerp(0.72 + 0.16 * fine + terrainColorMask * 0.12,
-        input.material.x + 0.05 * fine, importedMaterial));
+
+    float roughness = saturate(lerp(0.76 + 0.16 * (grainNoise - 0.5) +
+        terrainColorMask * 0.10, input.material.x + 0.05 * (grainNoise - 0.5), importedMaterial));
+    // Screen-space derivatives of a multi-octave height field add close-up micro-relief.
+    // Blend it only onto terrain so imported normal maps and stylized props stay intact.
+    float microHeight = TerrainNoise(worldXZ * 5.5) * 0.62 +
+        TerrainNoise(worldXZ * 17.0 + float2(8.3, 2.1)) * 0.28 +
+        TerrainNoise(worldXZ * 43.0 - float2(4.7, 12.6)) * 0.10;
+    float3 dpdx = ddx(input.worldPosition);
+    float3 tangent = normalize(dpdx - n * dot(dpdx, n));
+    float3 bitangent = normalize(cross(n, tangent));
+    float3 microNormal = normalize(n - tangent * ddx(microHeight) * 2.4 -
+        bitangent * ddy(microHeight) * 2.4);
+    n = normalize(lerp(n, microNormal, terrainColorMask * 0.92));
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
     if ((materialFlags & 4U) != 0U)
     {

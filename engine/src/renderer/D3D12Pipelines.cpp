@@ -122,7 +122,7 @@ float4 PSMain(PSInput input) : SV_TARGET
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
     }
     float3 v = normalize(cameraPosition.xyz - input.worldPosition);
-    float3 l = normalize(float3(-0.42, 0.82, -0.36));
+    float3 l = normalize(lighting.xyz);
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
     if ((materialFlags & 1U) != 0U)

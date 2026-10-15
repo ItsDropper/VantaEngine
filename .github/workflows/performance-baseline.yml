@@ -1,0 +1,54 @@
+name: Performance Baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-baseline:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure Release
+        shell: pwsh
+        run: cmake -S . -B build-perf -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build Release and record duration
+        shell: pwsh
+        run: |
+          $timer = [System.Diagnostics.Stopwatch]::StartNew()
+          cmake --build build-perf --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Release build failed." }
+          $timer.Stop()
+          $exe = Resolve-Path "build-perf/bin/VantaEngine.exe"
+          $metadata = [ordered]@{
+            commit = "${{ github.sha }}"
+            configuration = "Release"
+            build_seconds = [math]::Round($timer.Elapsed.TotalSeconds, 2)
+            executable_bytes = (Get-Item $exe).Length
+            runner = "windows-latest"
+            note = "Build metadata only; not an FPS or GPU benchmark."
+          }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $metadata | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/performance-baseline.json
+          Get-Content artifacts/performance-baseline.json
+
+      - name: Run Release tests
+        shell: pwsh
+        run: ctest --test-dir build-perf --output-on-failure
+
+      - name: Upload baseline metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: vantaengine-performance-baseline
+          path: artifacts/performance-baseline.json
+          if-no-files-found: error

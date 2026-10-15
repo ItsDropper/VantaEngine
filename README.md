@@ -105,11 +105,21 @@ Other commands:
 
 The clean option removes only generated output in build/.
 
-## Tests and CI
+## Tests, performance diagnostics, and CI
 
-CTest runs without creating a window or requiring a GPU. It covers the frame-time policy and the GPU-independent math foundation. The rendering path is exercised by launching the app locally.
+CTest runs without creating a window or requiring a GPU. It covers frame-time clamping, math, model import, deterministic procedural-world invariants, and the adaptive world-detail controller. The adaptive controller has deterministic timing-input tests for overload response, recovery, invalid samples, and its quality bounds.
 
-GitHub Actions builds and tests Debug and Release on Windows. VS Code tasks provide build/test shortcuts; F5 launches under the MSVC debugger when the C/C++ extension is installed.
+GitHub Actions builds and tests Debug and Release on Windows. The manual **Performance Baseline** workflow repeats the Release build/tests and uploads a small build-metadata artifact (compiler configuration, executable size, commit, and test result). This catches build/test regressions; it is deliberately **not** presented as an FPS benchmark because hosted CI does not run the same GPU, driver, resolution, or scene as a player's PC.
+
+### How to compare renderer performance without fooling yourself
+
+1. Use the same Release build, backend, resolution, window mode, camera position/direction, and scene. Let shader/driver caches warm up first.
+2. Capture several 30–60 second runs, then compare median FPS and 1% low (or frame-time percentiles), not a single peak number. Keep VSync state identical.
+3. Record GPU utilization, CPU utilization, VRAM/RAM use, and whether the GPU is near full load. Compare D3D12 and D3D11 separately.
+4. Change one rendering variable per commit. Keep screenshots from the same camera and compare for visual regressions before accepting a speedup.
+5. If FPS does not improve, revert the optimization rather than stacking more blind changes. CPU frame cadence is not GPU timing; GPU timestamp queries and per-pass timing are still needed to identify the actual bottleneck.
+
+The current CI does not measure real GPU frame time, and no FPS improvement should be inferred from a successful compile or unit test. VS Code tasks provide build/test shortcuts; F5 launches under the MSVC debugger when the C/C++ extension is installed.
 
 ## Current limitations
 

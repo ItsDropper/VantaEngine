@@ -45,3 +45,9 @@ add_executable(VantaEngineGltfImportTests
 )
 vanta_configure_test(VantaEngineGltfImportTests)
 add_test(NAME VantaEngine.GltfImportTests COMMAND VantaEngineGltfImportTests)
+
+add_executable(VantaEngineAdaptiveBudgetTests
+    adaptive_world_budget_tests.cpp
+)
+vanta_configure_test(VantaEngineAdaptiveBudgetTests)
+add_test(NAME VantaEngine.AdaptiveWorldBudgetTests COMMAND VantaEngineAdaptiveBudgetTests)

@@ -24,8 +24,14 @@ public:
 
         const float seconds = std::chrono::duration<float>(now - m_lastFrame).count();
         m_lastFrame = now;
-        // Ignore debugger pauses, window drags and suspend/resume gaps.
-        if (seconds <= 0.0F || seconds > 0.25F)
+        return UpdateForFrameSeconds(seconds);
+    }
+
+    // Deterministic entry point for tests and offline replay of captured frame timings.
+    // Invalid samples and long stalls are ignored so pauses/debugger breaks do not alter LOD.
+    [[nodiscard]] float UpdateForFrameSeconds(float seconds) noexcept
+    {
+        if (!std::isfinite(seconds) || seconds <= 0.0F || seconds > 0.25F)
             return m_detailScale;
 
         const float sample = std::clamp(seconds, 0.001F, 0.1F);

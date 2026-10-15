@@ -921,7 +921,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
             if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
             if (chunk.indexCount[shadowLod] == 0) continue;
-            const Vec4 clip = lightViewProjection.Transform({chunk.centerX, chunk.centerY, chunk.centerZ, 1.0F});
+            const math::Vec4 clip = lightViewProjection.Transform({chunk.centerX, chunk.centerY, chunk.centerZ, 1.0F});
             const float rx = chunk.radius * std::sqrt(lightViewProjection.At(0,0) * lightViewProjection.At(0,0) + lightViewProjection.At(0,1) * lightViewProjection.At(0,1) + lightViewProjection.At(0,2) * lightViewProjection.At(0,2));
             const float ry = chunk.radius * std::sqrt(lightViewProjection.At(1,0) * lightViewProjection.At(1,0) + lightViewProjection.At(1,1) * lightViewProjection.At(1,1) + lightViewProjection.At(1,2) * lightViewProjection.At(1,2));
             const float rz = chunk.radius * std::sqrt(lightViewProjection.At(2,0) * lightViewProjection.At(2,0) + lightViewProjection.At(2,1) * lightViewProjection.At(2,1) + lightViewProjection.At(2,2) * lightViewProjection.At(2,2));

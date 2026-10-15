@@ -913,7 +913,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->SetGraphicsRootConstantBufferView(0,
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress() + kShadowConstantOffset + cascade * kShadowConstantStride);
         const float cascadeRange = cascadeSplits[cascade];
-        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 1U : 2U);
+        // Shadow maps do not need every sub-pixel leaf triangle: use the far foliage-filtered index list
+        // in all cascades while leaving the visible scene's distance-based LOD unchanged.
+        const UINT shadowLod = 2U;
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
         std::uint64_t cascadeDrawCalls = 0;
         std::uint64_t cascadeTriangles = 0;

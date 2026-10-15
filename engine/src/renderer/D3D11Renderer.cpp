@@ -842,12 +842,11 @@ bool D3D11Renderer::CreatePipeline()
     }
     m_modelIndexCount = static_cast<UINT>(model.indices.size());
 
-    // Procedural rolling terrain: deterministic layered waves, vertex normals, and altitude/slope-based biome colors.
-    constexpr int terrainCells = 128;
+    // Use the same deterministic terrain field as D3D12 and the procedural props.
+    constexpr int terrainCells = 256;
     constexpr float terrainExtent = 72.0F;
     const auto terrainHeight = [](const float x, const float z) {
-        return -1.0F + 0.68F * std::sin(x * 0.075F) * std::cos(z * 0.061F)
-            + 0.28F * std::sin((x + z) * 0.17F) + 0.15F * std::cos(z * 0.29F) * std::sin(x * 0.23F);
+        return renderer::TerrainHeightAt(x, z);
     };
     std::vector<Vertex> terrainVertices;
     std::vector<unsigned int> terrainIndices;

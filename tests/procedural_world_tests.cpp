@@ -1,5 +1,6 @@
 #include "vanta/renderer/ProceduralWorld.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -11,6 +12,21 @@ int main()
     vanta::renderer::BuildDetailedWorld(vertices, indices);
 
     bool valid = !vertices.empty() && !indices.empty() && indices.size() % 3U == 0U;
+    // Both render backends consume this exact terrain field, so ensure it stays finite,
+    // deterministic, non-flat, and suitable for placing geometry on the surface.
+    const float h0 = vanta::renderer::TerrainHeightAt(0.0F, 0.0F);
+    valid = valid && std::isfinite(h0) && h0 == vanta::renderer::TerrainHeightAt(0.0F, 0.0F);
+    float minHeight = h0;
+    float maxHeight = h0;
+    for (int z = -64; z <= 64; z += 8) {
+        for (int x = -64; x <= 64; x += 8) {
+            const float height = vanta::renderer::TerrainHeightAt(static_cast<float>(x), static_cast<float>(z));
+            valid = valid && std::isfinite(height);
+            minHeight = std::min(minHeight, height);
+            maxHeight = std::max(maxHeight, height);
+        }
+    }
+    valid = valid && (maxHeight - minHeight) > 2.0F;
     for (const auto index : indices) valid = valid && index < vertices.size();
     for (const auto& vertex : vertices) {
         for (float value : vertex.position) valid = valid && std::isfinite(value);

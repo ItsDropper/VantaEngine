@@ -111,15 +111,14 @@ bool InvertMatrix(const Mat4& input, Mat4& output)
 
 float TerrainHeight(float x, float z)
 {
-    return -1.0F + 0.68F * std::sin(x * 0.075F) * std::cos(z * 0.061F)
-        + 0.28F * std::sin((x + z) * 0.17F)
-        + 0.15F * std::cos(z * 0.29F) * std::sin(x * 0.23F);
+    return renderer::TerrainHeightAt(x, z);
 }
 
 void AppendTerrain(std::vector<renderer::WorldVertex>& vertices, std::vector<unsigned int>& indices)
 {
-    constexpr int side = 129;
-    constexpr float extent = 65.0F;
+    // A half-metre grid keeps the shared noise terrain silhouette smooth at close range.
+    constexpr int side = 257;
+    constexpr float extent = 72.0F;
     const unsigned int base = static_cast<unsigned int>(vertices.size());
     vertices.reserve(vertices.size() + side * side);
     indices.reserve(indices.size() + (side - 1) * (side - 1) * 6);

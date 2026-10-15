@@ -16,14 +16,50 @@ P operator*(P a, float s) { return {a.x*s,a.y*s,a.z*s}; }
 float Dot(P a, P b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
 P Cross(P a, P b) { return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x}; }
 P Normalize(P a) { const float l=std::sqrt(std::max(Dot(a,a),0.000001F)); return a*(1.0F/l); }
-float Height(float x, float z) {
-    return -1.0F + 0.68F*std::sin(x*0.075F)*std::cos(z*0.061F)
-        + 0.28F*std::sin((x+z)*0.17F) + 0.15F*std::cos(z*0.29F)*std::sin(x*0.23F);
-}
 float Hash(int x, int z, int salt=0) {
     std::uint32_t n=static_cast<std::uint32_t>(x)*374761393U + static_cast<std::uint32_t>(z)*668265263U + static_cast<std::uint32_t>(salt)*2246822519U;
     n=(n^(n>>13U))*1274126177U; n^=n>>16U;
     return static_cast<float>(n & 0x00ffffffU)/16777215.0F;
+}
+float SmoothNoise(float x, float z, int salt) {
+    const int ix = static_cast<int>(std::floor(x));
+    const int iz = static_cast<int>(std::floor(z));
+    const float fx0 = x - static_cast<float>(ix);
+    const float fz0 = z - static_cast<float>(iz);
+    const float fx = fx0 * fx0 * (3.0F - 2.0F * fx0);
+    const float fz = fz0 * fz0 * (3.0F - 2.0F * fz0);
+    const float a = Hash(ix, iz, salt);
+    const float b = Hash(ix + 1, iz, salt);
+    const float c = Hash(ix, iz + 1, salt);
+    const float d = Hash(ix + 1, iz + 1, salt);
+    const float lower = a + (b - a) * fx;
+    const float upper = c + (d - c) * fx;
+    return lower + (upper - lower) * fz;
+}
+float FractalNoise(float x, float z, int salt) {
+    float value = 0.0F;
+    float amplitude = 0.55F;
+    float total = 0.0F;
+    for (int octave = 0; octave < 4; ++octave) {
+        value += SmoothNoise(x, z, salt + octave * 37) * amplitude;
+        total += amplitude;
+        x *= 2.03F;
+        z *= 2.03F;
+        amplitude *= 0.5F;
+    }
+    return value / total;
+}
+float Height(float x, float z) {
+    // Layered, seeded noise produces broad landforms plus smaller terrain breakup.
+    const float broad = FractalNoise(x * 0.018F, z * 0.018F, 11) - 0.5F;
+    const float medium = FractalNoise(x * 0.062F, z * 0.062F, 29) - 0.5F;
+    const float fine = SmoothNoise(x * 0.22F, z * 0.22F, 71) - 0.5F;
+    const float rolling = 0.32F * std::sin(x * 0.075F) * std::cos(z * 0.061F)
+        + 0.16F * std::sin((x + z) * 0.17F);
+    const float creekX = -23.0F + std::sin(z * 0.09F) * 2.8F;
+    const float creekDistance = (x - creekX) / 3.8F;
+    const float creekCut = 1.05F * std::exp(-creekDistance * creekDistance);
+    return -1.0F + broad * 5.4F + medium * 1.7F + fine * 0.28F + rolling - creekCut;
 }
 class Builder
 {
@@ -196,6 +232,11 @@ public:
         }
     }
 };
+}
+
+float TerrainHeightAt(float x, float z)
+{
+    return Height(x, z);
 }
 
 void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned int>& indices)
@@ -379,6 +420,50 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
             const P twigEnd{x+std::cos(a)*length*1.8F,y+0.015F,z+std::sin(a)*length*1.8F};
             b.beam(center,twigEnd,0.009F,0.20F,0.12F,0.06F);
         }
+    }
+
+    // Dense, individually varied grass tufts create a more natural transition between
+    // the cleared road, understory, and forest floor. Three crossed blades per tuft
+    // keep the mesh static and draw-call friendly while breaking up distant repetition.
+    for (int i = 0; i < 3600; ++i) {
+        const float x = -63.0F + Hash(i, 241) * 126.0F;
+        const float z = -65.0F + Hash(i, 251) * 130.0F;
+        const float roadX = 8.0F + std::sin(z * 0.035F) * 4.2F;
+        const float creekX = -23.0F + std::sin(z * 0.09F) * 2.8F;
+        if (std::abs(x - roadX) < 3.9F || std::abs(x - creekX) < 2.0F ||
+            x*x + z*z < 22.0F || (x > -26.0F && x < -20.0F)) continue;
+        const float y = Height(x, z) + 0.028F;
+        const float scale = 0.72F + Hash(i, 257) * 0.8F;
+        const float hue = Hash(i, 263);
+        const float red = 0.035F + hue * 0.055F;
+        const float green = 0.15F + hue * 0.18F;
+        const float blue = 0.035F + hue * 0.045F;
+        const float rotation = Hash(i, 269) * 2.0F * kPi;
+        for (int blade = 0; blade < 3; ++blade) {
+            const float angle = rotation + blade * (kPi / 3.0F);
+            const float width = (0.018F + Hash(i, blade + 271) * 0.025F) * scale;
+            const float height = (0.16F + Hash(i, blade + 277) * 0.42F) * scale;
+            const P side{-std::sin(angle) * width, 0.0F, std::cos(angle) * width};
+            const P base{x + std::cos(angle) * width * 0.35F, y, z + std::sin(angle) * width * 0.35F};
+            const P tip{x + std::cos(angle) * height * 0.18F, y + height,
+                        z + std::sin(angle) * height * 0.18F};
+            const float shade = 0.78F + Hash(i, blade + 283) * 0.38F;
+            b.tri(base - side, base + side, tip, red * shade, green * shade, blue * shade);
+        }
+    }
+
+    // Pebble clusters and exposed mineral fragments follow the stream banks and uneven ground.
+    for (int i = 0; i < 720; ++i) {
+        const float z = -61.0F + Hash(i, 293) * 122.0F;
+        const float creekX = -23.0F + std::sin(z * 0.09F) * 2.8F;
+        const float side = Hash(i, 307) < 0.5F ? -1.0F : 1.0F;
+        const float x = creekX + side * (1.8F + Hash(i, 311) * 3.5F);
+        if (x*x + z*z < 28.0F) continue;
+        const float y = Height(x, z) + 0.035F;
+        const float size = 0.045F + Hash(i, 313) * 0.22F;
+        const float tint = 0.68F + Hash(i, 317) * 0.52F;
+        b.rock({x, y + size * 0.18F, z}, size, size * (0.28F + Hash(i, 331) * 0.28F),
+            size * (0.55F + Hash(i, 337) * 0.8F), 0.31F * tint);
     }
 
     // Tiny wildflowers add restrained color variation to grass verges and clearings.

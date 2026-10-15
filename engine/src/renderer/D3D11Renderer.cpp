@@ -1242,6 +1242,7 @@ bool D3D11Renderer::Resize(const int width, const int height)
 
 void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY, const float cameraZ, const float cameraYaw, const float cameraPitch)
 {
+    const float adaptiveDetailScale = m_worldBudget.Update();
     constexpr float clearColor[] = {0.018F, 0.025F, 0.055F, 1.0F};
     ID3D11RenderTargetView* target = m_hdrRenderTarget.Get();
     m_context->OMSetRenderTargets(1, &target, m_depthStencil.Get());
@@ -1488,7 +1489,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
             const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfFov + chunk.radius;
             if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
-            const UINT lod = distance < 45.0F ? 0U : (distance < 95.0F ? 1U : 2U);
+            const UINT lod = distance < 45.0F * adaptiveDetailScale ? 0U :
+                (distance < 95.0F * adaptiveDetailScale ? 1U : 2U);
             if (chunk.indexCount[lod] != 0U)
                 m_context->DrawIndexed(chunk.indexCount[lod], chunk.startIndex[lod], 0);
         }

@@ -2,6 +2,8 @@
 
 #include "vanta/math/Math.hpp"
 
+#include "vanta/renderer/AdaptiveWorldBudget.hpp"
+
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -87,6 +89,7 @@ private:
     std::array<void*, kFrameCount> m_mappedConstants{};
     std::array<void*, kFrameCount> m_mappedTemporalConstants{};
     HWND m_window = nullptr;
+    renderer::AdaptiveWorldBudget m_worldBudget;
     UINT m_width = 0;
     UINT m_height = 0;
     UINT m_rtvDescriptorSize = 0;

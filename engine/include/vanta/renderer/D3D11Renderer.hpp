@@ -2,6 +2,8 @@
 
 #include "vanta/math/Math.hpp"
 
+#include "vanta/renderer/AdaptiveWorldBudget.hpp"
+
 #include <Windows.h>
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -118,6 +120,7 @@ private:
     UINT m_forestIndexCount = 0;
     std::vector<ForestDrawChunk> m_forestChunks;
 
+    renderer::AdaptiveWorldBudget m_worldBudget;
     UINT m_width = 0;
     UINT m_height = 0;
 };

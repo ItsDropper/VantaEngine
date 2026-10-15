@@ -689,6 +689,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
                            float cameraYaw, float cameraPitch)
 {
     if (m_failed) return;
+    const float adaptiveDetailScale = m_worldBudget.Update();
     if (!WaitForFrame(m_frameIndex)) {
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         m_failed = true;
@@ -877,7 +878,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
         const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov + chunk.radius;
         if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
-        const UINT lod = distance < 65.0F ? 0U : (distance < 140.0F ? 1U : 2U);
+        const UINT lod = distance < 65.0F * adaptiveDetailScale ? 0U :
+            (distance < 140.0F * adaptiveDetailScale ? 1U : 2U);
         if (chunk.indexCount[lod] != 0)
             m_commandList->DrawIndexedInstanced(chunk.indexCount[lod], 1, chunk.startIndex[lod], 0, 0);
     }

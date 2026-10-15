@@ -831,7 +831,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         const Vec3 worldUp{0.0F, 1.0F, 0.0F};
         const Vec3 lightRight = worldUp.Cross(lightForward).Normalized().value_or(Vec3{1.0F, 0.0F, 0.0F});
         const Vec3 lightUp = lightForward.Cross(lightRight).Normalized().value_or(worldUp);
-        const float shadowTexelWorldSize = (radius * 2.0F) / static_cast<float>(kShadowResolution);
+        const UINT cascadeResolution = cascade == 0 ? kShadowResolution : kShadowResolution / 2U;
+        const float shadowTexelWorldSize = (radius * 2.0F) / static_cast<float>(cascadeResolution);
         const float centerRight = center.Dot(lightRight);
         const float centerUp = center.Dot(lightUp);
         const Vec3 snappedCenter = center +
@@ -908,16 +909,20 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     shadowToDepth.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
     shadowToDepth.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &shadowToDepth);
-    D3D12_VIEWPORT shadowViewport{0.0F, 0.0F, static_cast<float>(kShadowResolution), static_cast<float>(kShadowResolution), 0.0F, 1.0F};
-    D3D12_RECT shadowScissor{0, 0, static_cast<LONG>(kShadowResolution), static_cast<LONG>(kShadowResolution)};
-    m_commandList->RSSetViewports(1, &shadowViewport);
-    m_commandList->RSSetScissorRects(1, &shadowScissor);
+    // Near shadows retain 2048² detail. Mid/far cascades render at 1024² to
+    // cut their raster workload while retaining enough resolution at their larger ranges.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     m_commandList->SetPipelineState(m_shadowPipelineState.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     for (UINT cascade = 0; cascade < 3; ++cascade) {
+        const UINT cascadeResolution = cascade == 0 ? kShadowResolution : kShadowResolution / 2U;
+        const float cascadeResolutionF = static_cast<float>(cascadeResolution);
+        const D3D12_VIEWPORT shadowViewport{0.0F, 0.0F, cascadeResolutionF, cascadeResolutionF, 0.0F, 1.0F};
+        const D3D12_RECT shadowScissor{0, 0, static_cast<LONG>(cascadeResolution), static_cast<LONG>(cascadeResolution)};
+        m_commandList->RSSetViewports(1, &shadowViewport);
+        m_commandList->RSSetScissorRects(1, &shadowScissor);
         m_commandList->OMSetRenderTargets(0, nullptr, FALSE, &m_shadowDsvHandles[cascade]);
         m_commandList->ClearDepthStencilView(m_shadowDsvHandles[cascade], D3D12_CLEAR_FLAG_DEPTH, 1.0F, 0, 0, nullptr);
         m_commandList->SetGraphicsRootConstantBufferView(0,

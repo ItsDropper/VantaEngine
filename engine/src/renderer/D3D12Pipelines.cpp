@@ -106,10 +106,14 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
     float2 uv = float2(projected.x * 0.5 + 0.5, 0.5 - projected.y * 0.5);
     if (any(uv <= 0.001) || any(uv >= 0.999) || projected.z <= 0.0 || projected.z >= 1.0)
         return 1.0;
+    // Mid/far cascades occupy the upper-left 1024² region of their 2048² array slice.
+    // Remap their UVs and use their actual texel size to avoid sampling the cleared area.
+    const float shadowScale = cascade == 0 ? 1.0 : 0.5;
+    uv *= shadowScale;
     float bias = max(0.00018 * (1.0 - saturate(dot(normal, lightDirection))), 0.000045);
     // Four bilinear-filtered taps approximate a wider PCF kernel with fewer depth reads.
     float visibility = 0.0;
-    const float2 texel = 1.0 / 2048.0;
+    const float2 texel = (cascade == 0 ? 1.0 / 2048.0 : 1.0 / 1024.0);
     visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
     visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2( 0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
     visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5,  0.5), cascade), 0) ? 1.0 : 0.0;

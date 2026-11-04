@@ -852,7 +852,11 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
     };
     for (std::size_t pass = 0; pass < 6U; ++pass)
         m_profileAccumulatedMs[pass] += milliseconds(m_mappedTimestamps[base + pass + 1U] - m_mappedTimestamps[base + pass]);
-    m_profileAccumulatedMs[6] += milliseconds(m_mappedTimestamps[base + 6U] - m_mappedTimestamps[base]);
+    const double totalGpuMilliseconds =
+        milliseconds(m_mappedTimestamps[base + 6U] - m_mappedTimestamps[base]);
+    (void)m_worldBudget.UpdateForGpuFrameSeconds(
+        static_cast<float>(totalGpuMilliseconds / 1000.0));
+    m_profileAccumulatedMs[6] += totalGpuMilliseconds;
     ++m_profileSampleCount;
     m_profilePending[frameIndex] = false;
     if (m_profileSampleCount >= 120U) {
@@ -886,14 +890,17 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
                            float cameraYaw, float cameraPitch)
 {
     if (m_failed) return;
-    const float adaptiveDetailScale = m_worldBudget.Update();
     if (!WaitForFrame(m_frameIndex)) {
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         m_failed = true;
         return;
     }
 
+    // Timestamp readback is consumed only after this frame's fence completes.
+    // Prefer measured GPU work; use CPU cadence only when timestamp profiling is unavailable.
     ConsumeGpuProfile(m_frameIndex);
+    if (m_timestampFrequency == 0) (void)m_worldBudget.Update();
+    const float adaptiveDetailScale = m_worldBudget.DetailScale();
     const Vec3 eye{cameraX, cameraY, cameraZ};
     const Vec3 forward{std::sin(cameraYaw) * std::cos(cameraPitch), std::sin(cameraPitch),
                        std::cos(cameraYaw) * std::cos(cameraPitch)};

@@ -42,6 +42,20 @@ bool SustainedFastFramesRecoverDetail()
            budget.DetailScale() <= 1.0F;
 }
 
+bool GpuFrameTimingsDriveAdaptiveQuality()
+{
+    AdaptiveWorldBudget budget;
+    for (int i = 0; i < 240; ++i)
+        (void)budget.UpdateForGpuFrameSeconds(1.0F / 30.0F);
+    const float reduced = budget.DetailScale();
+    if (reduced >= 0.9F || reduced < 0.68F)
+        return false;
+
+    for (int i = 0; i < 600; ++i)
+        (void)budget.UpdateForGpuFrameSeconds(1.0F / 240.0F);
+    return budget.DetailScale() > reduced && budget.DetailScale() <= 1.0F;
+}
+
 bool IgnoresInvalidAndLongPauseSamples()
 {
     AdaptiveWorldBudget budget;
@@ -84,6 +98,7 @@ constexpr std::array kTests{
     TestCase{"starts at full detail", StartsAtFullDetail},
     TestCase{"sustained slow frames reduce detail", SustainedSlowFramesReduceDetail},
     TestCase{"sustained fast frames recover detail", SustainedFastFramesRecoverDetail},
+    TestCase{"GPU frame timings drive adaptive quality", GpuFrameTimingsDriveAdaptiveQuality},
     TestCase{"invalid and pause samples are ignored", IgnoresInvalidAndLongPauseSamples},
     TestCase{"detail scale remains bounded", ScaleRemainsBounded},
     TestCase{"normal 60 Hz cadence does not reduce detail", NormalCadenceDoesNotTriggerQualityDrop}

@@ -6,7 +6,7 @@
 
 namespace vanta::renderer
 {
-// CPU-side frame-pacing feedback for world-detail decisions. This deliberately changes
+// GPU/CPU frame-pacing feedback for world-detail decisions. This deliberately changes
 // LOD thresholds, not the world's maximum draw distance, so overload does not make the
 // environment abruptly disappear. A dead band and asymmetric response prevent flicker.
 class AdaptiveWorldBudget final
@@ -25,6 +25,13 @@ public:
 
         const float seconds = std::chrono::duration<float>(now - m_lastFrame).count();
         m_lastFrame = now;
+        return UpdateForFrameSeconds(seconds);
+    }
+
+    // D3D12 supplies completed GPU timestamp samples here. Keep the same smoothing,
+    // dead band and bounds as CPU-driven fallback so quality does not oscillate by source.
+    [[nodiscard]] float UpdateForGpuFrameSeconds(float seconds) noexcept
+    {
         return UpdateForFrameSeconds(seconds);
     }
 

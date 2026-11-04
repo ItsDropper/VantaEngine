@@ -16,6 +16,7 @@
 #include <string>
 #include <limits>
 #include <d3dcompiler.h>
+#include <d3d12sdklayers.h>
 #include <array>
 
 namespace vanta
@@ -508,7 +509,19 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     Microsoft::WRL::ComPtr<ID3D12Debug> debugController;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf())))) {
         debugController->EnableDebugLayer();
+        Microsoft::WRL::ComPtr<ID3D12Debug1> debugController1;
+        if (SUCCEEDED(debugController.As(&debugController1))) {
+            // GPU-based validation catches invalid descriptor use, resource states,
+            // and indirect-argument hazards that ordinary CPU validation cannot see.
+            debugController1->SetEnableGPUBasedValidation(TRUE);
+            debugController1->SetEnableSynchronizedCommandQueueValidation(TRUE);
+            LogInfo("Direct3D 12 Debug: GPU-based and synchronized command-queue validation enabled.");
+        } else {
+            LogInfo("Direct3D 12 Debug: GPU-based validation is unavailable in this SDK/runtime.");
+        }
         factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+    } else {
+        LogInfo("Direct3D 12 Debug: debug layer is unavailable; continuing without validation.");
     }
 #endif
     if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(m_factory.GetAddressOf())))) {
@@ -526,6 +539,16 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
             break;
         }
     }
+#if defined(_DEBUG)
+    if (m_device) {
+        Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+        if (SUCCEEDED(m_device.As(&infoQueue))) {
+            (void)infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+            (void)infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+            LogInfo("Direct3D 12 Debug: breaking on GPU validation errors and device corruption.");
+        }
+    }
+#endif
     if (!m_device) {
         Microsoft::WRL::ComPtr<IDXGIAdapter> warp;
         if (FAILED(m_factory->EnumWarpAdapter(IID_PPV_ARGS(warp.GetAddressOf()))) ||

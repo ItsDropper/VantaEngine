@@ -1659,7 +1659,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         counterToCopyDest.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
         counterToCopyDest.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         m_commandList->ResourceBarrier(1, &counterToCopyDest);
-        m_commandList->CopyBufferRegion(counter.Get(), 0, m_zeroCounterBuffer.Get(), 0, sizeof(UINT) * 2U);
+        m_commandList->CopyBufferRegion(counter.Get(), 0, m_zeroCounterBuffer.Get(), 0, sizeof(UINT) * 3U);
         D3D12_RESOURCE_BARRIER counterToUav = counterToCopyDest;
         counterToUav.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
         counterToUav.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -1710,7 +1710,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         afterDraw[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         m_commandList->ResourceBarrier(2, afterDraw);
         m_commandList->CopyBufferRegion(m_gpuCullStatsReadbackBuffers[m_frameIndex].Get(),
-            static_cast<UINT64>(stream) * sizeof(UINT) * 2U, counter.Get(), 0, sizeof(UINT) * 2U);
+            static_cast<UINT64>(stream) * sizeof(UINT) * 3U, counter.Get(), 0, sizeof(UINT) * 3U);
     };
     for (UINT cascade = 0; cascade < 3; ++cascade) {
         const UINT cascadeResolution = cascade == 0 ? kShadowResolution : kShadowResolution / 2U;

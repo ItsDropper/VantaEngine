@@ -1040,7 +1040,8 @@ bool D3D12Renderer::CreateGpuCullResources()
     const UINT64 statsBytes = static_cast<UINT64>(kIndirectStreamCount) * counterBytes;
     const D3D12_RANGE noCpuRead{0, 0};
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
-        if (!CreateUploadBuffer(m_device.Get(), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+        if (!CreateUploadBuffer(m_device.Get(),
+                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT * kIndirectStreamCount,
                 m_gpuCullConstantBuffers[frame])) {
             return disableGpuCulling("Direct3D 12: GPU culling constant-buffer allocation failed.");
         }
@@ -1445,7 +1446,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
     const auto submitGpuCull = [this](UINT stream, const GpuCullConstants& cull, bool shadowPass) {
-        std::memcpy(m_mappedGpuCullConstants[m_frameIndex], &cull, sizeof(cull));
+        auto* streamConstants = static_cast<unsigned char*>(m_mappedGpuCullConstants[m_frameIndex]) +
+            static_cast<std::size_t>(stream) * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        std::memcpy(streamConstants, &cull, sizeof(cull));
 
         auto& arguments = m_gpuCullArgumentBuffers[m_frameIndex][stream];
         auto& counter = m_gpuCullCounterBuffers[m_frameIndex][stream];
@@ -1465,7 +1468,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->SetComputeRootSignature(m_gpuCullRootSignature.Get());
         m_commandList->SetPipelineState(m_gpuCullPipelineState.Get());
         m_commandList->SetComputeRootConstantBufferView(0,
-            m_gpuCullConstantBuffers[m_frameIndex]->GetGPUVirtualAddress());
+            m_gpuCullConstantBuffers[m_frameIndex]->GetGPUVirtualAddress() +
+            static_cast<UINT64>(stream) * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
         m_commandList->SetComputeRootShaderResourceView(1, m_gpuCullChunkBuffer->GetGPUVirtualAddress());
         m_commandList->SetComputeRootUnorderedAccessView(2, arguments->GetGPUVirtualAddress());
         m_commandList->SetComputeRootUnorderedAccessView(3, counter->GetGPUVirtualAddress());

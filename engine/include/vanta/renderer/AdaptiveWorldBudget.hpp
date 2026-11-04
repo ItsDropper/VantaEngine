@@ -53,6 +53,16 @@ public:
         return m_detailScale;
     }
 
+    // Under sustained GPU pressure, reduce fine shadow geometry before touching the
+    // near-camera scene LOD. The far cascade is already at its coarsest shadow tier.
+    [[nodiscard]] unsigned int ShadowLodForCascade(unsigned int cascade) const noexcept
+    {
+        constexpr float reductionThreshold = 0.82F;
+        if (cascade >= 2U) return 4U;
+        if (cascade == 1U) return m_detailScale < reductionThreshold ? 4U : 3U;
+        return m_detailScale < reductionThreshold ? 3U : 0U;
+    }
+
     [[nodiscard]] float DetailScale() const noexcept { return m_detailScale; }
 
 private:

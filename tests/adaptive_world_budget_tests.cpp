@@ -56,6 +56,28 @@ bool GpuFrameTimingsDriveAdaptiveQuality()
     return budget.DetailScale() > reduced && budget.DetailScale() <= 1.0F;
 }
 
+bool ShadowGeometryLodRespondsToGpuPressure()
+{
+    AdaptiveWorldBudget budget;
+    if (budget.ShadowLodForCascade(0U) != 0U ||
+        budget.ShadowLodForCascade(1U) != 3U ||
+        budget.ShadowLodForCascade(2U) != 4U)
+        return false;
+
+    for (int i = 0; i < 240; ++i)
+        (void)budget.UpdateForGpuFrameSeconds(1.0F / 30.0F);
+    if (budget.ShadowLodForCascade(0U) != 3U ||
+        budget.ShadowLodForCascade(1U) != 4U ||
+        budget.ShadowLodForCascade(2U) != 4U)
+        return false;
+
+    for (int i = 0; i < 600; ++i)
+        (void)budget.UpdateForGpuFrameSeconds(1.0F / 240.0F);
+    return budget.ShadowLodForCascade(0U) == 0U &&
+           budget.ShadowLodForCascade(1U) == 3U &&
+           budget.ShadowLodForCascade(2U) == 4U;
+}
+
 bool IgnoresInvalidAndLongPauseSamples()
 {
     AdaptiveWorldBudget budget;
@@ -99,6 +121,7 @@ constexpr std::array kTests{
     TestCase{"sustained slow frames reduce detail", SustainedSlowFramesReduceDetail},
     TestCase{"sustained fast frames recover detail", SustainedFastFramesRecoverDetail},
     TestCase{"GPU frame timings drive adaptive quality", GpuFrameTimingsDriveAdaptiveQuality},
+    TestCase{"shadow geometry LOD responds to GPU pressure", ShadowGeometryLodRespondsToGpuPressure},
     TestCase{"invalid and pause samples are ignored", IgnoresInvalidAndLongPauseSamples},
     TestCase{"detail scale remains bounded", ScaleRemainsBounded},
     TestCase{"normal 60 Hz cadence does not reduce detail", NormalCadenceDoesNotTriggerQualityDrop}

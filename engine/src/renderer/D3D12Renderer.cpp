@@ -1030,7 +1030,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         const float cascadeRange = cascadeSplits[cascade];
         // Preserve fine leaf shadows nearby, then progressively remove sub-pixel foliage
         // detail as the cascade covers more distant geometry.
-        const UINT shadowLod = cascade == 0 ? 0U : (cascade == 1 ? 3U : 4U);
+        // GPU-driven quality pressure also reduces mid/near shadow geometry detail.
+        const UINT shadowLod = m_worldBudget.ShadowLodForCascade(cascade);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
         std::uint64_t cascadeDrawCalls = 0;
         std::uint64_t cascadeTriangles = 0;

@@ -827,8 +827,11 @@ void DownsampleHiZCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     // contributes to exactly one destination texel, with no dropped border row/column.
     const uint2 begin = destination * uint2(sourceWidth, sourceHeight) /
                         uint2(destinationWidth, destinationHeight);
-    const uint2 end = (destination + 1U) * uint2(sourceWidth, sourceHeight) /
-                      uint2(destinationWidth, destinationHeight);
+    const uint2 endNumerator = (destination + 1U) * uint2(sourceWidth, sourceHeight);
+    const uint2 destinationScale = uint2(destinationWidth, destinationHeight);
+    // Round the upper bounds up so source texels straddling a normalized tile edge
+    // contribute to both adjacent tiles. This avoids holes from odd mip dimensions.
+    const uint2 end = (endNumerator + destinationScale - 1U) / destinationScale;
     float maximumDepth = 0.0F;
     [loop] for (uint y = begin.y; y < end.y; ++y)
     {

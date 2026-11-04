@@ -240,6 +240,14 @@ std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UI
 D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
+            if (m_mappedIndirectArguments[frame][stream] != nullptr && m_indirectArgumentBuffers[frame][stream]) {
+                m_indirectArgumentBuffers[frame][stream]->Unmap(0, nullptr);
+                m_mappedIndirectArguments[frame][stream] = nullptr;
+            }
+        }
+    }
     for (UINT i = 0; i < kFrameCount; ++i) {
         if (m_mappedConstants[i] != nullptr && m_constantBuffers[i]) {
             m_constantBuffers[i]->Unmap(0, nullptr);
@@ -365,7 +373,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     }
 
     if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateShadowResources() || !CreateHdrTarget() ||
-        !CreateTemporalTargets() || !CreateSceneGeometry() || !CreatePipeline() ||
+        !CreateTemporalTargets() || !CreateSceneGeometry() || !CreateIndirectDrawResources() || !CreatePipeline() ||
         !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline()) return false;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     LogInfo("Direct3D 12 scene renderer initialized: HDR PBR shading, three 2048px cascaded shadow maps with 3x3 PCF, ACES tone mapping, highlight bloom, depth-aware contact occlusion, procedural sky and atmospheric fog.");
@@ -742,6 +750,56 @@ bool D3D12Renderer::CreateSceneGeometry()
 }
 
 
+bool D3D12Renderer::CreateIndirectDrawResources()
+{
+    if (m_drawChunks.empty() || m_drawChunks.size() > UINT_MAX) {
+        LogError("Direct3D 12: indirect draw setup requires a valid chunk count.");
+        return false;
+    }
+
+    D3D12_INDIRECT_ARGUMENT_DESC drawArgument{};
+    drawArgument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+    D3D12_COMMAND_SIGNATURE_DESC signatureDescription{};
+    signatureDescription.ByteStride = sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
+    signatureDescription.NumArgumentDescs = 1;
+    signatureDescription.pArgumentDescs = &drawArgument;
+    if (FAILED(m_device->CreateCommandSignature(&signatureDescription, nullptr,
+            IID_PPV_ARGS(m_drawCommandSignature.GetAddressOf())))) {
+        LogError("Direct3D 12: indexed-draw command signature creation failed.");
+        return false;
+    }
+
+    const UINT64 commandBufferBytes =
+        static_cast<UINT64>(m_drawChunks.size()) * sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
+    const D3D12_RANGE noCpuRead{0, 0};
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
+            auto& resource = m_indirectArgumentBuffers[frame][stream];
+            if (!CreateUploadBuffer(m_device.Get(), commandBufferBytes, resource)) {
+                LogError("Direct3D 12: indirect argument buffer allocation failed.");
+                return false;
+            }
+
+            void* mapped = nullptr;
+            if (FAILED(resource->Map(0, &noCpuRead, &mapped)) || mapped == nullptr) {
+                LogError("Direct3D 12: indirect argument buffer mapping failed.");
+                return false;
+            }
+            m_mappedIndirectArguments[frame][stream] =
+                static_cast<D3D12_DRAW_INDEXED_ARGUMENTS*>(mapped);
+        }
+    }
+
+    char message[192]{};
+    std::snprintf(message, sizeof(message),
+        "Direct3D 12: ExecuteIndirect batching enabled (%zu chunks, %llu bytes per stream, %u frame resources).",
+        m_drawChunks.size(), static_cast<unsigned long long>(commandBufferBytes),
+        kFrameCount * kIndirectStreamCount);
+    LogInfo(message);
+    return true;
+}
+
+
 bool D3D12Renderer::WaitForFrame(UINT frameIndex)
 {
     if (m_fence->GetCompletedValue() >= m_fenceValues[frameIndex]) return true;
@@ -869,9 +927,11 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
             m_profileAccumulatedMs[4] / divisor, m_profileAccumulatedMs[5] / divisor,
             m_profileAccumulatedMs[6] / divisor);
         LogInfo(message);
-        char shadowStats[256]{};
+        char shadowStats[384]{};
         std::snprintf(shadowStats, sizeof(shadowStats),
-            "D3D12 shadow averages per frame: near %llu draws / %llu triangles | mid %llu / %llu | far %llu / %llu",
+            "D3D12 ExecuteIndirect averages (%u frames, up to 4 batches/frame): scene %llu draws | shadow near %llu/%llu tris | mid %llu/%llu | far %llu/%llu",
+            m_profileSampleCount,
+            static_cast<unsigned long long>(m_sceneDrawCallsAccumulated / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[0] / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowTrianglesAccumulated[0] / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[1] / m_profileSampleCount),
@@ -880,6 +940,7 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
             static_cast<unsigned long long>(m_shadowTrianglesAccumulated[2] / m_profileSampleCount));
         LogInfo(shadowStats);
         m_profileAccumulatedMs.fill(0.0);
+        m_sceneDrawCallsAccumulated = 0;
         m_shadowDrawCallsAccumulated.fill(0);
         m_shadowTrianglesAccumulated.fill(0);
         m_profileSampleCount = 0;
@@ -1033,8 +1094,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         // GPU-driven quality pressure also reduces mid/near shadow geometry detail.
         const UINT shadowLod = m_worldBudget.ShadowLodForCascade(cascade);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
-        std::uint64_t cascadeDrawCalls = 0;
+        UINT shadowCommandCount = 0;
         std::uint64_t cascadeTriangles = 0;
+        D3D12_DRAW_INDEXED_ARGUMENTS* shadowArguments =
+            m_mappedIndirectArguments[m_frameIndex][cascade];
         for (const DrawChunk& chunk : m_drawChunks) {
             const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
             if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
@@ -1046,11 +1109,17 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             if (clip.x + rx < -1.0F || clip.x - rx > 1.0F ||
                 clip.y + ry < -1.0F || clip.y - ry > 1.0F ||
                 clip.z + rz < 0.0F || clip.z - rz > 1.0F) continue;
-            m_commandList->DrawIndexedInstanced(chunk.indexCount[shadowLod], 1, chunk.startIndex[shadowLod], 0, 0);
-            ++cascadeDrawCalls;
+
+            shadowArguments[shadowCommandCount++] = {
+                chunk.indexCount[shadowLod], 1U, chunk.startIndex[shadowLod], 0, 0U
+            };
             cascadeTriangles += chunk.indexCount[shadowLod] / 3U;
         }
-        m_shadowDrawCallsAccumulated[cascade] += cascadeDrawCalls;
+        if (shadowCommandCount != 0U) {
+            m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), shadowCommandCount,
+                m_indirectArgumentBuffers[m_frameIndex][cascade].Get(), 0, nullptr, 0);
+        }
+        m_shadowDrawCallsAccumulated[cascade] += shadowCommandCount;
         m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
         if (m_timestampFrequency != 0)
             m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + cascade + 1U);
@@ -1100,6 +1169,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     const Vec3 cameraUp = normalizedUp.value_or(Vec3{0.0F, 1.0F, 0.0F});
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
+    UINT sceneCommandCount = 0;
+    D3D12_DRAW_INDEXED_ARGUMENTS* sceneArguments =
+        m_mappedIndirectArguments[m_frameIndex][3];
     for (const DrawChunk& chunk : m_drawChunks) {
         const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
         const float distance = toChunk.Length();
@@ -1112,9 +1184,17 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
         const UINT lod = distance < 65.0F * adaptiveDetailScale ? 0U :
             (distance < 140.0F * adaptiveDetailScale ? 1U : 2U);
-        if (chunk.indexCount[lod] != 0)
-            m_commandList->DrawIndexedInstanced(chunk.indexCount[lod], 1, chunk.startIndex[lod], 0, 0);
+        if (chunk.indexCount[lod] != 0U) {
+            sceneArguments[sceneCommandCount++] = {
+                chunk.indexCount[lod], 1U, chunk.startIndex[lod], 0, 0U
+            };
+        }
     }
+    if (sceneCommandCount != 0U) {
+        m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), sceneCommandCount,
+            m_indirectArgumentBuffers[m_frameIndex][3].Get(), 0, nullptr, 0);
+    }
+    m_sceneDrawCallsAccumulated += sceneCommandCount;
 
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);

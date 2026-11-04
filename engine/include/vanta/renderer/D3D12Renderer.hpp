@@ -30,6 +30,7 @@ public:
                 float cameraYaw, float cameraPitch);
 private:
     static constexpr UINT kFrameCount = 2;
+    static constexpr UINT kIndirectStreamCount = 4;
     struct DrawChunk
     {
         std::array<UINT, 5> startIndex{};
@@ -49,6 +50,7 @@ private:
     [[nodiscard]] bool CreateModelTextureArray(UINT width, UINT height, UINT layers, const std::vector<std::uint8_t>& rgbaLayers, UINT descriptorIndex, bool srgb);
     [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
+    [[nodiscard]] bool CreateIndirectDrawResources();
     [[nodiscard]] bool CreatePipeline();
     [[nodiscard]] bool WaitForGpu();
     [[nodiscard]] bool WaitForFrame(UINT frameIndex);
@@ -72,6 +74,7 @@ private:
     UINT64 m_timestampFrequency = 0;
     std::array<bool, kFrameCount> m_profilePending{};
     std::array<double, 7> m_profileAccumulatedMs{};
+    std::uint64_t m_sceneDrawCallsAccumulated = 0;
     std::array<std::uint64_t, 3> m_shadowDrawCallsAccumulated{};
     std::array<std::uint64_t, 3> m_shadowTrianglesAccumulated{};
     UINT m_profileSampleCount = 0;
@@ -88,6 +91,9 @@ private:
     UINT m_modelMaterialLayerCount = 1;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_drawCommandSignature;
+    std::array<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kIndirectStreamCount>, kFrameCount> m_indirectArgumentBuffers;
+    std::array<std::array<D3D12_DRAW_INDEXED_ARGUMENTS*, kIndirectStreamCount>, kFrameCount> m_mappedIndirectArguments{};
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_temporalConstantBuffers;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;

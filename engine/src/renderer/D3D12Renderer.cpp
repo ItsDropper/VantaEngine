@@ -219,8 +219,11 @@ void CullCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float verticalLimit = max(forwardDistance, 0.0F) * parameters.z + radius;
         if (abs(dot(toChunk, cameraUp.xyz)) > verticalLimit)
             return;
-        if (IsOccludedByPreviousHiZ(center, radius + 0.25F))
+        if (IsOccludedByPreviousHiZ(center, radius + 0.25F)) {
+            uint ignoredOcclusionCount = 0U;
+            drawCounter.InterlockedAdd(8U, 1U, ignoredOcclusionCount);
             return;
+        }
 
         lod = distanceToChunk < 65.0F * parameters.y ? 0U :
             (distanceToChunk < 140.0F * parameters.y ? 1U : 2U);
@@ -1131,7 +1134,7 @@ bool D3D12Renderer::CreateGpuCullResources()
 
     const UINT64 argumentBytes =
         static_cast<UINT64>(m_drawChunks.size()) * sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
-    constexpr UINT64 counterBytes = sizeof(UINT) * 2U;
+    constexpr UINT64 counterBytes = sizeof(UINT) * 3U;
     const UINT64 statsBytes = static_cast<UINT64>(kIndirectStreamCount) * counterBytes;
     const D3D12_RANGE noCpuRead{0, 0};
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
@@ -1438,13 +1441,15 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
         m_mappedGpuCullStats[frameIndex] != nullptr) {
         const UINT* stats = m_mappedGpuCullStats[frameIndex];
         for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
-            const std::uint64_t draws = stats[stream * 2U];
-            const std::uint64_t triangles = stats[stream * 2U + 1U];
+            const std::uint64_t draws = stats[stream * 3U];
+            const std::uint64_t triangles = stats[stream * 3U + 1U];
+            const std::uint64_t hiZOccluded = stats[stream * 3U + 2U];
             if (stream < 3U) {
                 m_shadowDrawCallsAccumulated[stream] += draws;
                 m_shadowTrianglesAccumulated[stream] += triangles;
             } else {
                 m_sceneDrawCallsAccumulated += draws;
+                m_sceneHiZOcclusionRejectedAccumulated += hiZOccluded;
             }
         }
         m_gpuCullStatsPending[frameIndex] = false;
@@ -1475,11 +1480,13 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
             m_profileAccumulatedMs[4] / divisor, m_profileAccumulatedMs[5] / divisor,
             m_profileAccumulatedMs[6] / divisor);
         LogInfo(message);
-        char shadowStats[384]{};
+        char shadowStats[448]{};
         std::snprintf(shadowStats, sizeof(shadowStats),
-            "D3D12 GPU-cull averages (%u frames, up to 4 indirect streams): scene %llu draws | shadow near %llu/%llu tris | mid %llu/%llu | far %llu/%llu",
+            "D3D12 GPU-cull averages (%u frames): scene %llu draws | Hi-Z rejected %llu chunks, active %llu frames | shadow near %llu/%llu tris | mid %llu/%llu | far %llu/%llu",
             m_profileSampleCount,
             static_cast<unsigned long long>(m_sceneDrawCallsAccumulated / m_profileSampleCount),
+            static_cast<unsigned long long>(m_sceneHiZOcclusionRejectedAccumulated / m_profileSampleCount),
+            static_cast<unsigned long long>(m_hiZOcclusionActiveFrameAccumulated / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[0] / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowTrianglesAccumulated[0] / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[1] / m_profileSampleCount),
@@ -1489,6 +1496,8 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
         LogInfo(shadowStats);
         m_profileAccumulatedMs.fill(0.0);
         m_sceneDrawCallsAccumulated = 0;
+        m_sceneHiZOcclusionRejectedAccumulated = 0;
+        m_hiZOcclusionActiveFrameAccumulated = 0;
         m_shadowDrawCallsAccumulated.fill(0);
         m_shadowTrianglesAccumulated.fill(0);
         m_profileSampleCount = 0;
@@ -1575,6 +1584,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ <= 0.000001F &&
         std::abs(cameraYaw - m_previousCameraYaw) <= 0.0005F &&
         std::abs(cameraPitch - m_previousCameraPitch) <= 0.0005F;
+    if (m_gpuCullingEnabled && hiZStableCamera)
+        ++m_hiZOcclusionActiveFrameAccumulated;
     if (cameraCut) m_historyValid = false;
     TemporalConstants temporalConstants{};
     if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) return;

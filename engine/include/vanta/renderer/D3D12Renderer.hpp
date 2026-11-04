@@ -82,6 +82,8 @@ private:
     std::array<bool, kFrameCount> m_profilePending{};
     std::array<double, 7> m_profileAccumulatedMs{};
     std::uint64_t m_sceneDrawCallsAccumulated = 0;
+    std::uint64_t m_sceneHiZOcclusionRejectedAccumulated = 0;
+    std::uint64_t m_hiZOcclusionActiveFrameAccumulated = 0;
     std::array<std::uint64_t, 3> m_shadowDrawCallsAccumulated{};
     std::array<std::uint64_t, 3> m_shadowTrianglesAccumulated{};
     UINT m_profileSampleCount = 0;

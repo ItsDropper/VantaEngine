@@ -1572,9 +1572,9 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     const bool cameraCut = (cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ > 64.0F) ||
         std::abs(cameraYaw - m_previousCameraYaw) > 0.7F || std::abs(cameraPitch - m_previousCameraPitch) > 0.7F;
     const bool hiZStableCamera = m_hasPreviousHiZ && !cameraCut &&
-        cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ <= 0.0064F &&
-        std::abs(cameraYaw - m_previousCameraYaw) <= 0.004F &&
-        std::abs(cameraPitch - m_previousCameraPitch) <= 0.004F;
+        cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ <= 0.000001F &&
+        std::abs(cameraYaw - m_previousCameraYaw) <= 0.0005F &&
+        std::abs(cameraPitch - m_previousCameraPitch) <= 0.0005F;
     if (cameraCut) m_historyValid = false;
     TemporalConstants temporalConstants{};
     if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) return;
@@ -1813,7 +1813,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     if (m_gpuCullingEnabled) {
         GpuCullConstants cull{};
-        cull.cullMatrix = Mat4::Identity();
+        cull.cullMatrix = m_previousViewProjection;
         cull.cameraPosition[0] = cameraX;
         cull.cameraPosition[1] = cameraY;
         cull.cameraPosition[2] = cameraZ;

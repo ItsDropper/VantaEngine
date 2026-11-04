@@ -54,9 +54,121 @@ struct TemporalConstants
 };
 static_assert(sizeof(TemporalConstants) == 160);
 
+struct GpuDrawChunk
+{
+    float centerRadius[4]{};
+    UINT startIndex[5]{};
+    UINT indexCount[5]{};
+};
+static_assert(sizeof(GpuDrawChunk) == 56);
+
+struct GpuCullConstants
+{
+    Mat4 cullMatrix{};
+    float cameraPosition[4]{};
+    float cameraForward[4]{};
+    float cameraRight[4]{};
+    float cameraUp[4]{};
+    float parameters[4]{};
+    UINT chunkCount = 0;
+    UINT padding[3]{};
+};
+static_assert(sizeof(GpuCullConstants) == 160);
+
 constexpr UINT kShadowResolution = 2048;
 constexpr UINT64 kShadowConstantOffset = 512;
 constexpr UINT64 kShadowConstantStride = 256;
+
+constexpr char kGpuCullShader[] = R"(
+cbuffer CullConstants : register(b0)
+{
+    float4x4 cullMatrix;
+    float4 cameraPosition;
+    float4 cameraForward;
+    float4 cameraRight;
+    float4 cameraUp;
+    float4 parameters;
+    uint chunkCount;
+    uint3 cullPadding;
+};
+
+ByteAddressBuffer chunkData : register(t0);
+RWByteAddressBuffer drawArguments : register(u0);
+RWByteAddressBuffer drawCounter : register(u1);
+
+[numthreads(64, 1, 1)]
+void CullCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    const uint chunkIndex = dispatchThreadId.x;
+    if (chunkIndex >= chunkCount)
+        return;
+
+    const uint chunkOffset = chunkIndex * 56U;
+    const float4 bounds = asfloat(chunkData.Load4(chunkOffset));
+    const float3 center = bounds.xyz;
+    const float radius = bounds.w;
+    const float3 toChunk = center - cameraPosition.xyz;
+
+    uint lod = 0U;
+    if (parameters.x > 0.5F)
+    {
+        if (length(toChunk) > parameters.y + radius * 1.5F)
+            return;
+
+        const float4 clip = mul(cullMatrix, float4(center, 1.0F));
+        const float radiusX = radius * length(cullMatrix[0].xyz);
+        const float radiusY = radius * length(cullMatrix[1].xyz);
+        const float radiusZ = radius * length(cullMatrix[2].xyz);
+        if (clip.x + radiusX < -1.0F || clip.x - radiusX > 1.0F ||
+            clip.y + radiusY < -1.0F || clip.y - radiusY > 1.0F ||
+            clip.z + radiusZ < 0.0F || clip.z - radiusZ > 1.0F)
+            return;
+
+        lod = (uint)parameters.z;
+    }
+    else
+    {
+        const float distanceToChunk = length(toChunk);
+        if (distanceToChunk > 270.0F + radius)
+            return;
+
+        const float forwardDistance = dot(toChunk, cameraForward.xyz);
+        if (forwardDistance < -radius)
+            return;
+
+        const float horizontalLimit =
+            max(forwardDistance, 0.0F) * parameters.z * parameters.w + radius;
+        if (abs(dot(toChunk, cameraRight.xyz)) > horizontalLimit)
+            return;
+
+        const float verticalLimit = max(forwardDistance, 0.0F) * parameters.z + radius;
+        if (abs(dot(toChunk, cameraUp.xyz)) > verticalLimit)
+            return;
+
+        lod = distanceToChunk < 65.0F * parameters.y ? 0U :
+            (distanceToChunk < 140.0F * parameters.y ? 1U : 2U);
+    }
+
+    const uint indexCount = chunkData.Load(chunkOffset + 36U + lod * 4U);
+    if (indexCount == 0U)
+        return;
+
+    uint drawSlot = 0U;
+    drawCounter.InterlockedAdd(0U, 1U, drawSlot);
+    uint ignoredTriangleValue = 0U;
+    drawCounter.InterlockedAdd(4U, indexCount / 3U, ignoredTriangleValue);
+    if (drawSlot >= chunkCount)
+        return;
+
+    const uint startIndex = chunkData.Load(chunkOffset + 16U + lod * 4U);
+    const uint argumentOffset = drawSlot * 20U;
+    drawArguments.Store(argumentOffset + 0U, indexCount);
+    drawArguments.Store(argumentOffset + 4U, 1U);
+    drawArguments.Store(argumentOffset + 8U, startIndex);
+    drawArguments.Store(argumentOffset + 12U, 0U);
+    drawArguments.Store(argumentOffset + 16U, 0U);
+}
+)";
 
 Mat4 OrthographicLH(float width, float height, float nearZ, float farZ)
 {
@@ -197,6 +309,30 @@ bool CreateDefaultBuffer(ID3D12Device* device, UINT64 size,
         D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
 }
 
+bool CreateDefaultUavBuffer(ID3D12Device* device, UINT64 size, D3D12_RESOURCE_STATES initialState,
+                            Microsoft::WRL::ComPtr<ID3D12Resource>& resource)
+{
+    if (device == nullptr || size == 0U) return false;
+
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heap.CreationNodeMask = 1;
+    heap.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = size;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    return SUCCEEDED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+        initialState, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
+}
+
 std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UINT width, UINT height, bool srgb)
 {
     std::vector<std::uint8_t> result(static_cast<std::size_t>(width) * height * 4U);
@@ -249,6 +385,14 @@ D3D12Renderer::~D3D12Renderer()
         }
     }
     for (UINT i = 0; i < kFrameCount; ++i) {
+        if (m_mappedGpuCullConstants[i] != nullptr && m_gpuCullConstantBuffers[i]) {
+            m_gpuCullConstantBuffers[i]->Unmap(0, nullptr);
+            m_mappedGpuCullConstants[i] = nullptr;
+        }
+        if (m_mappedGpuCullStats[i] != nullptr && m_gpuCullStatsReadbackBuffers[i]) {
+            m_gpuCullStatsReadbackBuffers[i]->Unmap(0, nullptr);
+            m_mappedGpuCullStats[i] = nullptr;
+        }
         if (m_mappedConstants[i] != nullptr && m_constantBuffers[i]) {
             m_constantBuffers[i]->Unmap(0, nullptr);
             m_mappedConstants[i] = nullptr;
@@ -373,8 +517,11 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     }
 
     if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateShadowResources() || !CreateHdrTarget() ||
-        !CreateTemporalTargets() || !CreateSceneGeometry() || !CreateIndirectDrawResources() || !CreatePipeline() ||
-        !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline()) return false;
+        !CreateTemporalTargets() || !CreateSceneGeometry() || !CreateIndirectDrawResources()) return false;
+    if (!CreateGpuCullResources())
+        LogInfo("Direct3D 12: GPU compute culling unavailable; retaining the CPU culling fallback.");
+    if (!CreatePipeline() || !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline())
+        return false;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     LogInfo("Direct3D 12 scene renderer initialized: HDR PBR shading, three 2048px cascaded shadow maps with 3x3 PCF, ACES tone mapping, highlight bloom, depth-aware contact occlusion, procedural sky and atmospheric fog.");
     LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
@@ -800,6 +947,205 @@ bool D3D12Renderer::CreateIndirectDrawResources()
 }
 
 
+
+bool D3D12Renderer::CreateGpuCullResources()
+{
+    const auto disableGpuCulling = [this](const char* reason) {
+        LogError(reason);
+        m_gpuCullingEnabled = false;
+        for (UINT frame = 0; frame < kFrameCount; ++frame) {
+            if (m_mappedGpuCullConstants[frame] != nullptr && m_gpuCullConstantBuffers[frame]) {
+                m_gpuCullConstantBuffers[frame]->Unmap(0, nullptr);
+                m_mappedGpuCullConstants[frame] = nullptr;
+            }
+            if (m_mappedGpuCullStats[frame] != nullptr && m_gpuCullStatsReadbackBuffers[frame]) {
+                m_gpuCullStatsReadbackBuffers[frame]->Unmap(0, nullptr);
+                m_mappedGpuCullStats[frame] = nullptr;
+            }
+            m_gpuCullConstantBuffers[frame].Reset();
+            m_gpuCullStatsReadbackBuffers[frame].Reset();
+            for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
+                m_gpuCullArgumentBuffers[frame][stream].Reset();
+                m_gpuCullCounterBuffers[frame][stream].Reset();
+            }
+        }
+        m_gpuCullChunkBuffer.Reset();
+        m_zeroCounterBuffer.Reset();
+        m_gpuCullRootSignature.Reset();
+        m_gpuCullPipelineState.Reset();
+        m_gpuCullStatsPending.fill(false);
+        return false;
+    };
+
+    if (m_drawChunks.empty() || m_drawChunks.size() > UINT_MAX)
+        return disableGpuCulling("Direct3D 12: GPU culling rejected an invalid chunk count.");
+
+    Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
+    Microsoft::WRL::ComPtr<ID3DBlob> errors;
+    UINT compileFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined(_DEBUG)
+    compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+    HRESULT result = D3DCompile(kGpuCullShader, sizeof(kGpuCullShader) - 1,
+        "vanta_d3d12_gpu_cull", nullptr, nullptr, "CullCS", "cs_5_0",
+        compileFlags, 0, computeShader.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(result)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        return disableGpuCulling("Direct3D 12: GPU culling compute shader compilation failed.");
+    }
+
+    D3D12_ROOT_PARAMETER rootParameters[4]{};
+    rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    rootParameters[0].Descriptor.ShaderRegister = 0;
+    rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    rootParameters[1].Descriptor.ShaderRegister = 0;
+    rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+    rootParameters[2].Descriptor.ShaderRegister = 0;
+    rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+    rootParameters[3].Descriptor.ShaderRegister = 1;
+    rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_ROOT_SIGNATURE_DESC rootDescription{};
+    rootDescription.NumParameters = static_cast<UINT>(std::size(rootParameters));
+    rootDescription.pParameters = rootParameters;
+    rootDescription.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    Microsoft::WRL::ComPtr<ID3DBlob> serializedRoot;
+    errors.Reset();
+    result = D3D12SerializeRootSignature(&rootDescription, D3D_ROOT_SIGNATURE_VERSION_1,
+        serializedRoot.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(result)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        return disableGpuCulling("Direct3D 12: GPU culling root-signature serialization failed.");
+    }
+    if (FAILED(m_device->CreateRootSignature(0, serializedRoot->GetBufferPointer(),
+            serializedRoot->GetBufferSize(), IID_PPV_ARGS(m_gpuCullRootSignature.GetAddressOf())))) {
+        return disableGpuCulling("Direct3D 12: GPU culling root-signature creation failed.");
+    }
+
+    D3D12_COMPUTE_PIPELINE_STATE_DESC computeDescription{};
+    computeDescription.pRootSignature = m_gpuCullRootSignature.Get();
+    computeDescription.CS.pShaderBytecode = computeShader->GetBufferPointer();
+    computeDescription.CS.BytecodeLength = computeShader->GetBufferSize();
+    if (FAILED(m_device->CreateComputePipelineState(&computeDescription,
+            IID_PPV_ARGS(m_gpuCullPipelineState.GetAddressOf())))) {
+        return disableGpuCulling("Direct3D 12: GPU culling compute pipeline creation failed.");
+    }
+
+    const UINT64 argumentBytes =
+        static_cast<UINT64>(m_drawChunks.size()) * sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
+    constexpr UINT64 counterBytes = sizeof(UINT) * 2U;
+    const UINT64 statsBytes = static_cast<UINT64>(kIndirectStreamCount) * counterBytes;
+    const D3D12_RANGE noCpuRead{0, 0};
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        if (!CreateUploadBuffer(m_device.Get(), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+                m_gpuCullConstantBuffers[frame])) {
+            return disableGpuCulling("Direct3D 12: GPU culling constant-buffer allocation failed.");
+        }
+        void* constants = nullptr;
+        if (FAILED(m_gpuCullConstantBuffers[frame]->Map(0, &noCpuRead, &constants)) || constants == nullptr)
+            return disableGpuCulling("Direct3D 12: GPU culling constant-buffer mapping failed.");
+        m_mappedGpuCullConstants[frame] = constants;
+
+        D3D12_HEAP_PROPERTIES readbackHeap{};
+        readbackHeap.Type = D3D12_HEAP_TYPE_READBACK;
+        readbackHeap.CreationNodeMask = 1;
+        readbackHeap.VisibleNodeMask = 1;
+        D3D12_RESOURCE_DESC readbackDescription{};
+        readbackDescription.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        readbackDescription.Width = statsBytes;
+        readbackDescription.Height = 1;
+        readbackDescription.DepthOrArraySize = 1;
+        readbackDescription.MipLevels = 1;
+        readbackDescription.SampleDesc.Count = 1;
+        readbackDescription.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        if (FAILED(m_device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE,
+                &readbackDescription, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                IID_PPV_ARGS(m_gpuCullStatsReadbackBuffers[frame].GetAddressOf())))) {
+            return disableGpuCulling("Direct3D 12: GPU culling statistics readback allocation failed.");
+        }
+        D3D12_RANGE statsReadRange{0, static_cast<SIZE_T>(statsBytes)};
+        void* stats = nullptr;
+        if (FAILED(m_gpuCullStatsReadbackBuffers[frame]->Map(0, &statsReadRange, &stats)) || stats == nullptr)
+            return disableGpuCulling("Direct3D 12: GPU culling statistics readback mapping failed.");
+        m_mappedGpuCullStats[frame] = static_cast<UINT*>(stats);
+
+        for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
+            if (!CreateDefaultUavBuffer(m_device.Get(), argumentBytes, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                    m_gpuCullArgumentBuffers[frame][stream]) ||
+                !CreateDefaultUavBuffer(m_device.Get(), counterBytes, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    m_gpuCullCounterBuffers[frame][stream])) {
+                return disableGpuCulling("Direct3D 12: GPU-generated indirect buffer allocation failed.");
+            }
+        }
+    }
+
+    if (!CreateUploadBuffer(m_device.Get(), counterBytes, m_zeroCounterBuffer))
+        return disableGpuCulling("Direct3D 12: GPU culling counter-reset buffer allocation failed.");
+    void* zeroBytes = nullptr;
+    if (FAILED(m_zeroCounterBuffer->Map(0, &noCpuRead, &zeroBytes)) || zeroBytes == nullptr)
+        return disableGpuCulling("Direct3D 12: GPU culling counter-reset buffer mapping failed.");
+    std::memset(zeroBytes, 0, static_cast<std::size_t>(counterBytes));
+    const D3D12_RANGE zeroWritten{0, static_cast<SIZE_T>(counterBytes)};
+    m_zeroCounterBuffer->Unmap(0, &zeroWritten);
+
+    std::vector<GpuDrawChunk> gpuChunks;
+    gpuChunks.reserve(m_drawChunks.size());
+    for (const DrawChunk& source : m_drawChunks) {
+        GpuDrawChunk chunk{};
+        chunk.centerRadius[0] = source.centerX;
+        chunk.centerRadius[1] = source.centerY;
+        chunk.centerRadius[2] = source.centerZ;
+        chunk.centerRadius[3] = source.radius;
+        std::copy(source.startIndex.begin(), source.startIndex.end(), std::begin(chunk.startIndex));
+        std::copy(source.indexCount.begin(), source.indexCount.end(), std::begin(chunk.indexCount));
+        gpuChunks.push_back(chunk);
+    }
+    const UINT64 chunkBytes = static_cast<UINT64>(gpuChunks.size()) * sizeof(GpuDrawChunk);
+    Microsoft::WRL::ComPtr<ID3D12Resource> chunkUpload;
+    if (!CreateDefaultBuffer(m_device.Get(), chunkBytes, m_gpuCullChunkBuffer) ||
+        !CreateUploadBuffer(m_device.Get(), chunkBytes, chunkUpload)) {
+        return disableGpuCulling("Direct3D 12: GPU culling chunk-data allocation failed.");
+    }
+    void* mappedChunks = nullptr;
+    if (FAILED(chunkUpload->Map(0, &noCpuRead, &mappedChunks)) || mappedChunks == nullptr)
+        return disableGpuCulling("Direct3D 12: GPU culling chunk-data mapping failed.");
+    std::memcpy(mappedChunks, gpuChunks.data(), static_cast<std::size_t>(chunkBytes));
+    const D3D12_RANGE chunkWritten{0, static_cast<SIZE_T>(chunkBytes)};
+    chunkUpload->Unmap(0, &chunkWritten);
+
+    if (FAILED(m_commandAllocators[0]->Reset()) ||
+        FAILED(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr))) {
+        return disableGpuCulling("Direct3D 12: GPU culling upload command reset failed.");
+    }
+    m_commandList->CopyBufferRegion(m_gpuCullChunkBuffer.Get(), 0, chunkUpload.Get(), 0, chunkBytes);
+    D3D12_RESOURCE_BARRIER chunkBarrier{};
+    chunkBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    chunkBarrier.Transition.pResource = m_gpuCullChunkBuffer.Get();
+    chunkBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    chunkBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    chunkBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &chunkBarrier);
+    if (FAILED(m_commandList->Close()))
+        return disableGpuCulling("Direct3D 12: GPU culling upload command-list close failed.");
+    ID3D12CommandList* uploadLists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, uploadLists);
+    if (!WaitForGpu())
+        return disableGpuCulling("Direct3D 12: GPU culling chunk upload fence wait failed.");
+
+    m_gpuCullingEnabled = true;
+    m_gpuCullStatsPending.fill(false);
+    char message[192]{};
+    std::snprintf(message, sizeof(message),
+        "Direct3D 12: GPU compute culling enabled (%zu chunks, 4 per-frame argument/counter streams).",
+        m_drawChunks.size());
+    LogInfo(message);
+    return true;
+}
+
+
 bool D3D12Renderer::WaitForFrame(UINT frameIndex)
 {
     if (m_fence->GetCompletedValue() >= m_fenceValues[frameIndex]) return true;
@@ -902,6 +1248,22 @@ bool D3D12Renderer::InitializeGpuProfiler() noexcept
 
 void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
 {
+    if (m_gpuCullingEnabled && m_gpuCullStatsPending[frameIndex] &&
+        m_mappedGpuCullStats[frameIndex] != nullptr) {
+        const UINT* stats = m_mappedGpuCullStats[frameIndex];
+        for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
+            const std::uint64_t draws = stats[stream * 2U];
+            const std::uint64_t triangles = stats[stream * 2U + 1U];
+            if (stream < 3U) {
+                m_shadowDrawCallsAccumulated[stream] += draws;
+                m_shadowTrianglesAccumulated[stream] += triangles;
+            } else {
+                m_sceneDrawCallsAccumulated += draws;
+            }
+        }
+        m_gpuCullStatsPending[frameIndex] = false;
+    }
+
     if (m_timestampFrequency == 0 || m_mappedTimestamps == nullptr || !m_profilePending[frameIndex])
         return;
     const std::size_t base = static_cast<std::size_t>(frameIndex) * 7U;
@@ -929,7 +1291,7 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
         LogInfo(message);
         char shadowStats[384]{};
         std::snprintf(shadowStats, sizeof(shadowStats),
-            "D3D12 ExecuteIndirect averages (%u frames, up to 4 batches/frame): scene %llu draws | shadow near %llu/%llu tris | mid %llu/%llu | far %llu/%llu",
+            "D3D12 GPU-cull averages (%u frames, up to 4 indirect streams): scene %llu draws | shadow near %llu/%llu tris | mid %llu/%llu | far %llu/%llu",
             m_profileSampleCount,
             static_cast<unsigned long long>(m_sceneDrawCallsAccumulated / m_profileSampleCount),
             static_cast<unsigned long long>(m_shadowDrawCallsAccumulated[0] / m_profileSampleCount),
@@ -1077,6 +1439,70 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
+    const Vec3 cameraRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
+    const auto normalizedUp = forward.Cross(cameraRight).Normalized();
+    const Vec3 cameraUp = normalizedUp.value_or(Vec3{0.0F, 1.0F, 0.0F});
+    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+    const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
+    const auto submitGpuCull = [this](UINT stream, const GpuCullConstants& cull, bool shadowPass) {
+        std::memcpy(m_mappedGpuCullConstants[m_frameIndex], &cull, sizeof(cull));
+
+        auto& arguments = m_gpuCullArgumentBuffers[m_frameIndex][stream];
+        auto& counter = m_gpuCullCounterBuffers[m_frameIndex][stream];
+        D3D12_RESOURCE_BARRIER counterToCopyDest{};
+        counterToCopyDest.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        counterToCopyDest.Transition.pResource = counter.Get();
+        counterToCopyDest.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        counterToCopyDest.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+        counterToCopyDest.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(1, &counterToCopyDest);
+        m_commandList->CopyBufferRegion(counter.Get(), 0, m_zeroCounterBuffer.Get(), 0, sizeof(UINT) * 2U);
+        D3D12_RESOURCE_BARRIER counterToUav = counterToCopyDest;
+        counterToUav.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        counterToUav.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        m_commandList->ResourceBarrier(1, &counterToUav);
+
+        m_commandList->SetComputeRootSignature(m_gpuCullRootSignature.Get());
+        m_commandList->SetPipelineState(m_gpuCullPipelineState.Get());
+        m_commandList->SetComputeRootConstantBufferView(0,
+            m_gpuCullConstantBuffers[m_frameIndex]->GetGPUVirtualAddress());
+        m_commandList->SetComputeRootShaderResourceView(1, m_gpuCullChunkBuffer->GetGPUVirtualAddress());
+        m_commandList->SetComputeRootUnorderedAccessView(2, arguments->GetGPUVirtualAddress());
+        m_commandList->SetComputeRootUnorderedAccessView(3, counter->GetGPUVirtualAddress());
+        m_commandList->Dispatch((cull.chunkCount + 63U) / 64U, 1U, 1U);
+
+        D3D12_RESOURCE_BARRIER toIndirect[2]{};
+        toIndirect[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        toIndirect[0].Transition.pResource = arguments.Get();
+        toIndirect[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        toIndirect[0].Transition.StateAfter = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+        toIndirect[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        toIndirect[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        toIndirect[1].Transition.pResource = counter.Get();
+        toIndirect[1].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        toIndirect[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+        toIndirect[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(2, toIndirect);
+
+        m_commandList->SetPipelineState(shadowPass ? m_shadowPipelineState.Get() : m_pipelineState.Get());
+        m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), cull.chunkCount,
+            arguments.Get(), 0, counter.Get(), 0);
+
+        D3D12_RESOURCE_BARRIER afterDraw[2]{};
+        afterDraw[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        afterDraw[0].Transition.pResource = arguments.Get();
+        afterDraw[0].Transition.StateBefore = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+        afterDraw[0].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        afterDraw[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        afterDraw[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        afterDraw[1].Transition.pResource = counter.Get();
+        afterDraw[1].Transition.StateBefore = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+        afterDraw[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        afterDraw[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(2, afterDraw);
+        m_commandList->CopyBufferRegion(m_gpuCullStatsReadbackBuffers[m_frameIndex].Get(),
+            static_cast<UINT64>(stream) * sizeof(UINT) * 2U, counter.Get(), 0, sizeof(UINT) * 2U);
+    };
     for (UINT cascade = 0; cascade < 3; ++cascade) {
         const UINT cascadeResolution = cascade == 0 ? kShadowResolution : kShadowResolution / 2U;
         const float cascadeResolutionF = static_cast<float>(cascadeResolution);
@@ -1094,33 +1520,56 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         // GPU-driven quality pressure also reduces mid/near shadow geometry detail.
         const UINT shadowLod = m_worldBudget.ShadowLodForCascade(cascade);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
-        UINT shadowCommandCount = 0;
-        std::uint64_t cascadeTriangles = 0;
-        D3D12_DRAW_INDEXED_ARGUMENTS* shadowArguments =
-            m_mappedIndirectArguments[m_frameIndex][cascade];
-        for (const DrawChunk& chunk : m_drawChunks) {
-            const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
-            if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
-            if (chunk.indexCount[shadowLod] == 0) continue;
-            const math::Vec4 clip = lightViewProjection.Transform({chunk.centerX, chunk.centerY, chunk.centerZ, 1.0F});
-            const float rx = chunk.radius * std::sqrt(lightViewProjection.At(0,0) * lightViewProjection.At(0,0) + lightViewProjection.At(0,1) * lightViewProjection.At(0,1) + lightViewProjection.At(0,2) * lightViewProjection.At(0,2));
-            const float ry = chunk.radius * std::sqrt(lightViewProjection.At(1,0) * lightViewProjection.At(1,0) + lightViewProjection.At(1,1) * lightViewProjection.At(1,1) + lightViewProjection.At(1,2) * lightViewProjection.At(1,2));
-            const float rz = chunk.radius * std::sqrt(lightViewProjection.At(2,0) * lightViewProjection.At(2,0) + lightViewProjection.At(2,1) * lightViewProjection.At(2,1) + lightViewProjection.At(2,2) * lightViewProjection.At(2,2));
-            if (clip.x + rx < -1.0F || clip.x - rx > 1.0F ||
-                clip.y + ry < -1.0F || clip.y - ry > 1.0F ||
-                clip.z + rz < 0.0F || clip.z - rz > 1.0F) continue;
+        if (m_gpuCullingEnabled) {
+            GpuCullConstants cull{};
+            cull.cullMatrix = lightViewProjection;
+            cull.cameraPosition[0] = cameraX;
+            cull.cameraPosition[1] = cameraY;
+            cull.cameraPosition[2] = cameraZ;
+            cull.cameraForward[0] = forward.x;
+            cull.cameraForward[1] = forward.y;
+            cull.cameraForward[2] = forward.z;
+            cull.cameraRight[0] = cameraRight.x;
+            cull.cameraRight[1] = cameraRight.y;
+            cull.cameraRight[2] = cameraRight.z;
+            cull.cameraUp[0] = cameraUp.x;
+            cull.cameraUp[1] = cameraUp.y;
+            cull.cameraUp[2] = cameraUp.z;
+            cull.parameters[0] = 1.0F;
+            cull.parameters[1] = cascadeRange;
+            cull.parameters[2] = static_cast<float>(shadowLod);
+            cull.parameters[3] = aspect;
+            cull.chunkCount = static_cast<UINT>(m_drawChunks.size());
+            submitGpuCull(cascade, cull, true);
+        } else {
+            UINT shadowCommandCount = 0;
+            std::uint64_t cascadeTriangles = 0;
+            D3D12_DRAW_INDEXED_ARGUMENTS* shadowArguments =
+                m_mappedIndirectArguments[m_frameIndex][cascade];
+            for (const DrawChunk& chunk : m_drawChunks) {
+                const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
+                if (toChunk.Length() > cascadeRange + chunk.radius * 1.5F) continue;
+                if (chunk.indexCount[shadowLod] == 0) continue;
+                const math::Vec4 clip = lightViewProjection.Transform({chunk.centerX, chunk.centerY, chunk.centerZ, 1.0F});
+                const float rx = chunk.radius * std::sqrt(lightViewProjection.At(0,0) * lightViewProjection.At(0,0) + lightViewProjection.At(0,1) * lightViewProjection.At(0,1) + lightViewProjection.At(0,2) * lightViewProjection.At(0,2));
+                const float ry = chunk.radius * std::sqrt(lightViewProjection.At(1,0) * lightViewProjection.At(1,0) + lightViewProjection.At(1,1) * lightViewProjection.At(1,1) + lightViewProjection.At(1,2) * lightViewProjection.At(1,2));
+                const float rz = chunk.radius * std::sqrt(lightViewProjection.At(2,0) * lightViewProjection.At(2,0) + lightViewProjection.At(2,1) * lightViewProjection.At(2,1) + lightViewProjection.At(2,2) * lightViewProjection.At(2,2));
+                if (clip.x + rx < -1.0F || clip.x - rx > 1.0F ||
+                    clip.y + ry < -1.0F || clip.y - ry > 1.0F ||
+                    clip.z + rz < 0.0F || clip.z - rz > 1.0F) continue;
 
-            shadowArguments[shadowCommandCount++] = {
-                chunk.indexCount[shadowLod], 1U, chunk.startIndex[shadowLod], 0, 0U
-            };
-            cascadeTriangles += chunk.indexCount[shadowLod] / 3U;
+                shadowArguments[shadowCommandCount++] = {
+                    chunk.indexCount[shadowLod], 1U, chunk.startIndex[shadowLod], 0, 0U
+                };
+                cascadeTriangles += chunk.indexCount[shadowLod] / 3U;
+            }
+            if (shadowCommandCount != 0U) {
+                m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), shadowCommandCount,
+                    m_indirectArgumentBuffers[m_frameIndex][cascade].Get(), 0, nullptr, 0);
+            }
+            m_shadowDrawCallsAccumulated[cascade] += shadowCommandCount;
+            m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
         }
-        if (shadowCommandCount != 0U) {
-            m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), shadowCommandCount,
-                m_indirectArgumentBuffers[m_frameIndex][cascade].Get(), 0, nullptr, 0);
-        }
-        m_shadowDrawCallsAccumulated[cascade] += shadowCommandCount;
-        m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
         if (m_timestampFrequency != 0)
             m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + cascade + 1U);
     }
@@ -1164,37 +1613,55 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
-    const Vec3 cameraRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
-    const auto normalizedUp = forward.Cross(cameraRight).Normalized();
-    const Vec3 cameraUp = normalizedUp.value_or(Vec3{0.0F, 1.0F, 0.0F});
-    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
-    UINT sceneCommandCount = 0;
-    D3D12_DRAW_INDEXED_ARGUMENTS* sceneArguments =
-        m_mappedIndirectArguments[m_frameIndex][3];
-    for (const DrawChunk& chunk : m_drawChunks) {
-        const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
-        const float distance = toChunk.Length();
-        if (distance > 270.0F + chunk.radius) continue;
-        const float forwardDistance = toChunk.Dot(forward);
-        if (forwardDistance < -chunk.radius) continue;
-        const float horizontalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov * aspect + chunk.radius;
-        if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
-        const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov + chunk.radius;
-        if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
-        const UINT lod = distance < 65.0F * adaptiveDetailScale ? 0U :
-            (distance < 140.0F * adaptiveDetailScale ? 1U : 2U);
-        if (chunk.indexCount[lod] != 0U) {
-            sceneArguments[sceneCommandCount++] = {
-                chunk.indexCount[lod], 1U, chunk.startIndex[lod], 0, 0U
-            };
+    if (m_gpuCullingEnabled) {
+        GpuCullConstants cull{};
+        cull.cullMatrix = Mat4::Identity();
+        cull.cameraPosition[0] = cameraX;
+        cull.cameraPosition[1] = cameraY;
+        cull.cameraPosition[2] = cameraZ;
+        cull.cameraForward[0] = forward.x;
+        cull.cameraForward[1] = forward.y;
+        cull.cameraForward[2] = forward.z;
+        cull.cameraRight[0] = cameraRight.x;
+        cull.cameraRight[1] = cameraRight.y;
+        cull.cameraRight[2] = cameraRight.z;
+        cull.cameraUp[0] = cameraUp.x;
+        cull.cameraUp[1] = cameraUp.y;
+        cull.cameraUp[2] = cameraUp.z;
+        cull.parameters[0] = 0.0F;
+        cull.parameters[1] = adaptiveDetailScale;
+        cull.parameters[2] = tanHalfVerticalFov;
+        cull.parameters[3] = aspect;
+        cull.chunkCount = static_cast<UINT>(m_drawChunks.size());
+        submitGpuCull(3U, cull, false);
+    } else {
+        UINT sceneCommandCount = 0;
+        D3D12_DRAW_INDEXED_ARGUMENTS* sceneArguments =
+            m_mappedIndirectArguments[m_frameIndex][3];
+        for (const DrawChunk& chunk : m_drawChunks) {
+            const Vec3 toChunk{chunk.centerX - cameraX, chunk.centerY - cameraY, chunk.centerZ - cameraZ};
+            const float distance = toChunk.Length();
+            if (distance > 270.0F + chunk.radius) continue;
+            const float forwardDistance = toChunk.Dot(forward);
+            if (forwardDistance < -chunk.radius) continue;
+            const float horizontalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov * aspect + chunk.radius;
+            if (std::abs(toChunk.Dot(cameraRight)) > horizontalLimit) continue;
+            const float verticalLimit = std::max(forwardDistance, 0.0F) * tanHalfVerticalFov + chunk.radius;
+            if (std::abs(toChunk.Dot(cameraUp)) > verticalLimit) continue;
+            const UINT lod = distance < 65.0F * adaptiveDetailScale ? 0U :
+                (distance < 140.0F * adaptiveDetailScale ? 1U : 2U);
+            if (chunk.indexCount[lod] != 0U) {
+                sceneArguments[sceneCommandCount++] = {
+                    chunk.indexCount[lod], 1U, chunk.startIndex[lod], 0, 0U
+                };
+            }
         }
+        if (sceneCommandCount != 0U) {
+            m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), sceneCommandCount,
+                m_indirectArgumentBuffers[m_frameIndex][3].Get(), 0, nullptr, 0);
+        }
+        m_sceneDrawCallsAccumulated += sceneCommandCount;
     }
-    if (sceneCommandCount != 0U) {
-        m_commandList->ExecuteIndirect(m_drawCommandSignature.Get(), sceneCommandCount,
-            m_indirectArgumentBuffers[m_frameIndex][3].Get(), 0, nullptr, 0);
-    }
-    m_sceneDrawCallsAccumulated += sceneCommandCount;
 
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
@@ -1287,6 +1754,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
+    if (m_gpuCullingEnabled) m_gpuCullStatsPending[m_frameIndex] = true;
     if (m_timestampFrequency != 0) m_profilePending[m_frameIndex] = true;
     // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
     const HRESULT presentResult = m_swapChain->Present(0, 0);

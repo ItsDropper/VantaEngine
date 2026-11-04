@@ -51,6 +51,7 @@ private:
     [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreateIndirectDrawResources();
+    [[nodiscard]] bool CreateGpuCullResources();
     [[nodiscard]] bool CreatePipeline();
     [[nodiscard]] bool WaitForGpu();
     [[nodiscard]] bool WaitForFrame(UINT frameIndex);
@@ -94,6 +95,17 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_drawCommandSignature;
     std::array<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kIndirectStreamCount>, kFrameCount> m_indirectArgumentBuffers;
     std::array<std::array<D3D12_DRAW_INDEXED_ARGUMENTS*, kIndirectStreamCount>, kFrameCount> m_mappedIndirectArguments{};
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_gpuCullChunkBuffer;
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_zeroCounterBuffer;
+    std::array<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kIndirectStreamCount>, kFrameCount> m_gpuCullArgumentBuffers;
+    std::array<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kIndirectStreamCount>, kFrameCount> m_gpuCullCounterBuffers;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_gpuCullConstantBuffers;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_gpuCullStatsReadbackBuffers;
+    std::array<void*, kFrameCount> m_mappedGpuCullConstants{};
+    std::array<std::uint32_t*, kFrameCount> m_mappedGpuCullStats{};
+    std::array<bool, kFrameCount> m_gpuCullStatsPending{};
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_gpuCullRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gpuCullPipelineState;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_temporalConstantBuffers;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
@@ -128,6 +140,7 @@ private:
     std::vector<DrawChunk> m_drawChunks;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView{};
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView{};
+    bool m_gpuCullingEnabled = false;
     bool m_failed = false;
 };
 } // namespace vanta

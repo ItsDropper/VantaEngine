@@ -174,6 +174,29 @@ bool CreateUploadBuffer(ID3D12Device* device, UINT64 size, Microsoft::WRL::ComPt
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
 }
 
+bool CreateDefaultBuffer(ID3D12Device* device, UINT64 size,
+                         Microsoft::WRL::ComPtr<ID3D12Resource>& resource)
+{
+    if (device == nullptr || size == 0U) return false;
+
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heap.CreationNodeMask = 1;
+    heap.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = size;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    return SUCCEEDED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
+}
+
 std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UINT width, UINT height, bool srgb)
 {
     std::vector<std::uint8_t> result(static_cast<std::size_t>(width) * height * 4U);
@@ -630,19 +653,75 @@ bool D3D12Renderer::CreateSceneGeometry()
     }
     const UINT64 vertexBytes = static_cast<UINT64>(gpuVertices.size()) * sizeof(D3D12WorldVertex);
     const UINT64 indexBytes = static_cast<UINT64>(indices.size()) * sizeof(unsigned int);
-    if (vertexBytes > UINT_MAX || indexBytes > UINT_MAX ||
-        !CreateUploadBuffer(m_device.Get(), vertexBytes, m_vertexBuffer) ||
-        !CreateUploadBuffer(m_device.Get(), indexBytes, m_indexBuffer)) {
-        LogError("Direct3D 12: scene geometry buffer allocation failed.");
+    if (vertexBytes == 0U || indexBytes == 0U || vertexBytes > UINT_MAX || indexBytes > UINT_MAX ||
+        !CreateDefaultBuffer(m_device.Get(), vertexBytes, m_vertexBuffer) ||
+        !CreateDefaultBuffer(m_device.Get(), indexBytes, m_indexBuffer)) {
+        LogError("Direct3D 12: device-local scene geometry buffer allocation failed.");
         return false;
     }
+
+    // Keep static geometry in DEFAULT heaps so the GPU reads it from device-local memory.
+    // UPLOAD heaps are used only as short-lived staging resources during this initialization.
+    Microsoft::WRL::ComPtr<ID3D12Resource> vertexUpload;
+    Microsoft::WRL::ComPtr<ID3D12Resource> indexUpload;
+    if (!CreateUploadBuffer(m_device.Get(), vertexBytes, vertexUpload) ||
+        !CreateUploadBuffer(m_device.Get(), indexBytes, indexUpload)) {
+        LogError("Direct3D 12: scene geometry staging-buffer allocation failed.");
+        return false;
+    }
+
+    const D3D12_RANGE noCpuRead{0, 0};
     void* mapped = nullptr;
-    if (FAILED(m_vertexBuffer->Map(0, nullptr, &mapped))) return false;
-    std::memcpy(mapped, gpuVertices.data(), static_cast<size_t>(vertexBytes));
-    m_vertexBuffer->Unmap(0, nullptr);
-    if (FAILED(m_indexBuffer->Map(0, nullptr, &mapped))) return false;
-    std::memcpy(mapped, indices.data(), static_cast<size_t>(indexBytes));
-    m_indexBuffer->Unmap(0, nullptr);
+    if (FAILED(vertexUpload->Map(0, &noCpuRead, &mapped)) || mapped == nullptr) {
+        LogError("Direct3D 12: vertex staging-buffer mapping failed.");
+        return false;
+    }
+    std::memcpy(mapped, gpuVertices.data(), static_cast<std::size_t>(vertexBytes));
+    const D3D12_RANGE vertexWritten{0, static_cast<SIZE_T>(vertexBytes)};
+    vertexUpload->Unmap(0, &vertexWritten);
+
+    mapped = nullptr;
+    if (FAILED(indexUpload->Map(0, &noCpuRead, &mapped)) || mapped == nullptr) {
+        LogError("Direct3D 12: index staging-buffer mapping failed.");
+        return false;
+    }
+    std::memcpy(mapped, indices.data(), static_cast<std::size_t>(indexBytes));
+    const D3D12_RANGE indexWritten{0, static_cast<SIZE_T>(indexBytes)};
+    indexUpload->Unmap(0, &indexWritten);
+
+    // Both copies share one upload submission and one fence wait. The staging resources
+    // remain alive until the fence completes, then their ComPtrs release them automatically.
+    if (FAILED(m_commandAllocators[0]->Reset()) ||
+        FAILED(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr))) {
+        LogError("Direct3D 12: scene geometry upload command reset failed.");
+        return false;
+    }
+    m_commandList->CopyBufferRegion(m_vertexBuffer.Get(), 0, vertexUpload.Get(), 0, vertexBytes);
+    m_commandList->CopyBufferRegion(m_indexBuffer.Get(), 0, indexUpload.Get(), 0, indexBytes);
+
+    D3D12_RESOURCE_BARRIER geometryBarriers[2]{};
+    geometryBarriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    geometryBarriers[0].Transition.pResource = m_vertexBuffer.Get();
+    geometryBarriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    geometryBarriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    geometryBarriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    geometryBarriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    geometryBarriers[1].Transition.pResource = m_indexBuffer.Get();
+    geometryBarriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    geometryBarriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_INDEX_BUFFER;
+    geometryBarriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(2, geometryBarriers);
+
+    if (FAILED(m_commandList->Close())) {
+        LogError("Direct3D 12: scene geometry upload command-list close failed.");
+        return false;
+    }
+    ID3D12CommandList* uploadLists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, uploadLists);
+    if (!WaitForGpu()) {
+        LogError("Direct3D 12: scene geometry upload fence wait failed.");
+        return false;
+    }
 
     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
     m_vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
@@ -651,6 +730,13 @@ bool D3D12Renderer::CreateSceneGeometry()
     m_indexBufferView.SizeInBytes = static_cast<UINT>(indexBytes);
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     m_indexCount = static_cast<UINT>(indices.size());
+
+    char uploadSummary[192]{};
+    std::snprintf(uploadSummary, sizeof(uploadSummary),
+        "Direct3D 12: static geometry now resides in DEFAULT heaps (%.2f MiB vertices, %.2f MiB indices).",
+        static_cast<double>(vertexBytes) / (1024.0 * 1024.0),
+        static_cast<double>(indexBytes) / (1024.0 * 1024.0));
+    LogInfo(uploadSummary);
     LogInfo("Direct3D 12: loaded procedural environment and imported base-color PBR model geometry.");
     return true;
 }

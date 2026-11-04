@@ -152,7 +152,8 @@ bool D3D12Renderer::CreateHdrTarget()
     m_device->CreateRenderTargetView(m_hdrTexture.Get(), nullptr, rtv);
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDescription{};
-    srvDescription.NumDescriptors = 12;
+    srvDescription.NumDescriptors = D3D12Renderer::kHiZBaseUavIndex +
+        D3D12Renderer::kFrameCount * D3D12Renderer::kHiZMipCapacity;
     srvDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(m_device->CreateDescriptorHeap(&srvDescription, IID_PPV_ARGS(m_srvHeap.GetAddressOf())))) {
@@ -183,6 +184,109 @@ bool D3D12Renderer::CreateHdrTarget()
     D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     shadowHandle.ptr += static_cast<SIZE_T>(2) * m_srvDescriptorSize;
     m_device->CreateShaderResourceView(m_shadowTexture.Get(), &shadowSrv, shadowHandle);
+    return true;
+}
+
+
+bool D3D12Renderer::CreateHiZResources()
+{
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        if (m_mappedHiZConstants[frame] != nullptr && m_hiZConstantBuffers[frame]) {
+            m_hiZConstantBuffers[frame]->Unmap(0, nullptr);
+            m_mappedHiZConstants[frame] = nullptr;
+        }
+        m_hiZConstantBuffers[frame].Reset();
+        m_hiZTextures[frame].Reset();
+    }
+
+    const UINT maximumDimension = std::max(m_width, m_height);
+    if (maximumDimension == 0U) {
+        LogError("Direct3D 12: Hi-Z pyramid requires a non-zero target size.");
+        m_hiZMipLevels = 0;
+        return false;
+    }
+
+    m_hiZMipLevels = 1U;
+    for (UINT dimension = maximumDimension; dimension > 1U; dimension >>= 1U)
+        ++m_hiZMipLevels;
+    if (m_hiZMipLevels > kHiZMipCapacity) {
+        LogError("Direct3D 12: Hi-Z target exceeds the supported mip capacity.");
+        m_hiZMipLevels = 0;
+        return false;
+    }
+
+    D3D12_HEAP_PROPERTIES defaultHeap{};
+    defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    defaultHeap.CreationNodeMask = 1;
+    defaultHeap.VisibleNodeMask = 1;
+    D3D12_RESOURCE_DESC textureDescription{};
+    textureDescription.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    textureDescription.Width = m_width;
+    textureDescription.Height = m_height;
+    textureDescription.DepthOrArraySize = 1;
+    textureDescription.MipLevels = static_cast<UINT16>(m_hiZMipLevels);
+    textureDescription.Format = DXGI_FORMAT_R32_FLOAT;
+    textureDescription.SampleDesc.Count = 1;
+    textureDescription.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    textureDescription.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv.Format = DXGI_FORMAT_R32_FLOAT;
+    srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srv.Texture2D.MostDetailedMip = 0;
+    srv.Texture2D.MipLevels = m_hiZMipLevels;
+    srv.Texture2D.ResourceMinLODClamp = 0.0F;
+
+    const D3D12_RANGE noCpuRead{0, 0};
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,
+                &textureDescription, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
+                IID_PPV_ARGS(m_hiZTextures[frame].GetAddressOf())))) {
+            LogError("Direct3D 12: Hi-Z texture allocation failed.");
+            m_hiZMipLevels = 0;
+            return false;
+        }
+
+        D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+        srvHandle.ptr += static_cast<SIZE_T>(kHiZBaseSrvIndex + frame) * m_srvDescriptorSize;
+        m_device->CreateShaderResourceView(m_hiZTextures[frame].Get(), &srv, srvHandle);
+
+        for (UINT mip = 0; mip < m_hiZMipLevels; ++mip) {
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+            uav.Format = DXGI_FORMAT_R32_FLOAT;
+            uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+            uav.Texture2D.MipSlice = mip;
+            uav.Texture2D.PlaneSlice = 0;
+            D3D12_CPU_DESCRIPTOR_HANDLE uavHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+            const UINT descriptorIndex = kHiZBaseUavIndex + frame * kHiZMipCapacity + mip;
+            uavHandle.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvDescriptorSize;
+            m_device->CreateUnorderedAccessView(m_hiZTextures[frame].Get(), nullptr, &uav, uavHandle);
+        }
+
+        if (!CreateUploadBuffer(m_device.Get(),
+                D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT * kHiZMipCapacity,
+                m_hiZConstantBuffers[frame])) {
+            LogError("Direct3D 12: Hi-Z build constant-buffer allocation failed.");
+            m_hiZMipLevels = 0;
+            return false;
+        }
+        void* mapped = nullptr;
+        if (FAILED(m_hiZConstantBuffers[frame]->Map(0, &noCpuRead, &mapped)) || mapped == nullptr) {
+            LogError("Direct3D 12: Hi-Z build constant-buffer mapping failed.");
+            m_hiZMipLevels = 0;
+            return false;
+        }
+        m_mappedHiZConstants[frame] = mapped;
+    }
+
+    m_lastHiZFrameIndex = 0;
+    m_hasPreviousHiZ = false;
+    char message[160]{};
+    std::snprintf(message, sizeof(message),
+        "Direct3D 12: allocated two %ux%u Hi-Z pyramids with %u max-reduced mip levels.",
+        m_width, m_height, m_hiZMipLevels);
+    LogInfo(message);
     return true;
 }
 

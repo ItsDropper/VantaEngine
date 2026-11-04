@@ -71,9 +71,21 @@ struct GpuCullConstants
     float cameraUp[4]{};
     float parameters[4]{};
     UINT chunkCount = 0;
-    UINT padding[3]{};
+    UINT useHiZOcclusion = 0;
+    UINT padding[2]{};
 };
 static_assert(sizeof(GpuCullConstants) == 160);
+
+struct HiZBuildConstants
+{
+    UINT sourceWidth = 0;
+    UINT sourceHeight = 0;
+    UINT destinationWidth = 0;
+    UINT destinationHeight = 0;
+    UINT sourceMip = 0;
+    UINT padding[3]{};
+};
+static_assert(sizeof(HiZBuildConstants) == 32);
 
 constexpr UINT kShadowResolution = 2048;
 constexpr UINT64 kShadowConstantOffset = 512;
@@ -89,12 +101,75 @@ cbuffer CullConstants : register(b0)
     float4 cameraUp;
     float4 parameters;
     uint chunkCount;
-    uint3 cullPadding;
+    uint useHiZOcclusion;
+    uint2 cullPadding;
 };
 
 ByteAddressBuffer chunkData : register(t0);
+Texture2D<float> previousHiZ : register(t1);
 RWByteAddressBuffer drawArguments : register(u0);
 RWByteAddressBuffer drawCounter : register(u1);
+
+bool IsOccludedByPreviousHiZ(float3 center, float radius)
+{
+    if (useHiZOcclusion == 0U)
+        return false;
+
+    const float4 clip = mul(cullMatrix, float4(center, 1.0F));
+    const float radiusX = radius * length(cullMatrix[0].xyz);
+    const float radiusY = radius * length(cullMatrix[1].xyz);
+    const float radiusZ = radius * length(cullMatrix[2].xyz);
+    const float radiusW = radius * length(cullMatrix[3].xyz);
+    const float minimumW = clip.w - radiusW;
+    if (minimumW <= 0.05F || clip.w <= 0.0F)
+        return false;
+
+    const float ndcX = clip.x / clip.w;
+    const float ndcY = clip.y / clip.w;
+    const float inverseDenominator = 1.0F / (clip.w * minimumW);
+    const float extentX = (radiusX * clip.w + abs(clip.x) * radiusW) * inverseDenominator;
+    const float extentY = (radiusY * clip.w + abs(clip.y) * radiusW) * inverseDenominator;
+
+    uint baseWidth, baseHeight, mipCount;
+    previousHiZ.GetDimensions(0U, baseWidth, baseHeight, mipCount);
+    const float2 pixelExpansion = 2.0F / float2(baseWidth, baseHeight);
+    const float2 uvMinimum = float2(
+        (ndcX - extentX) * 0.5F + 0.5F,
+        0.5F - (ndcY + extentY) * 0.5F) - pixelExpansion;
+    const float2 uvMaximum = float2(
+        (ndcX + extentX) * 0.5F + 0.5F,
+        0.5F - (ndcY - extentY) * 0.5F) + pixelExpansion;
+    if (any(uvMinimum < 0.0F) || any(uvMaximum > 1.0F))
+        return false;
+
+    const float nearestDepth = (clip.z - radiusZ) / (clip.w + radiusW);
+    if (nearestDepth <= 0.0F || nearestDepth >= 1.0F)
+        return false;
+
+    const float2 rectanglePixels = max((uvMaximum - uvMinimum) * float2(baseWidth, baseHeight), 1.0F);
+    const uint mipLevel = min((uint)max(floor(log2(max(rectanglePixels.x, rectanglePixels.y))), 0.0F),
+                              max(mipCount, 1U) - 1U);
+    uint mipWidth, mipHeight, ignoredLevels;
+    previousHiZ.GetDimensions(mipLevel, mipWidth, mipHeight, ignoredLevels);
+    const int2 minimumCell = clamp(int2(floor(uvMinimum * float2(mipWidth, mipHeight))),
+                                   int2(0, 0), int2(mipWidth - 1U, mipHeight - 1U));
+    const int2 maximumCell = clamp(int2(floor(uvMaximum * float2(mipWidth, mipHeight))),
+                                   int2(0, 0), int2(mipWidth - 1U, mipHeight - 1U));
+    if (any(maximumCell - minimumCell > 1))
+        return false;
+
+    float farthestOccluderDepth = previousHiZ.Load(int3(minimumCell, mipLevel));
+    farthestOccluderDepth = max(farthestOccluderDepth,
+        previousHiZ.Load(int3(maximumCell.x, minimumCell.y, mipLevel)));
+    farthestOccluderDepth = max(farthestOccluderDepth,
+        previousHiZ.Load(int3(minimumCell.x, maximumCell.y, mipLevel)));
+    farthestOccluderDepth = max(farthestOccluderDepth,
+        previousHiZ.Load(int3(maximumCell, mipLevel)));
+
+    // Max-reduced depth plus a conservative near bound can only reject a chunk when
+    // every HZB tile covering its projected sphere is closer than the sphere itself.
+    return farthestOccluderDepth + 0.0025F < nearestDepth;
+}
 
 [numthreads(64, 1, 1)]
 void CullCS(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -143,6 +218,8 @@ void CullCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
         const float verticalLimit = max(forwardDistance, 0.0F) * parameters.z + radius;
         if (abs(dot(toChunk, cameraUp.xyz)) > verticalLimit)
+            return;
+        if (IsOccludedByPreviousHiZ(center, radius + 0.25F))
             return;
 
         lod = distanceToChunk < 65.0F * parameters.y ? 0U :
@@ -385,6 +462,10 @@ D3D12Renderer::~D3D12Renderer()
         }
     }
     for (UINT i = 0; i < kFrameCount; ++i) {
+        if (m_mappedHiZConstants[i] != nullptr && m_hiZConstantBuffers[i]) {
+            m_hiZConstantBuffers[i]->Unmap(0, nullptr);
+            m_mappedHiZConstants[i] = nullptr;
+        }
         if (m_mappedGpuCullConstants[i] != nullptr && m_gpuCullConstantBuffers[i]) {
             m_gpuCullConstantBuffers[i]->Unmap(0, nullptr);
             m_mappedGpuCullConstants[i] = nullptr;
@@ -518,8 +599,12 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
 
     if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateShadowResources() || !CreateHdrTarget() ||
         !CreateTemporalTargets() || !CreateSceneGeometry() || !CreateIndirectDrawResources()) return false;
-    if (!CreateGpuCullResources())
-        LogInfo("Direct3D 12: GPU compute culling unavailable; retaining the CPU culling fallback.");
+    if (CreateHiZResources() && CreateHiZPipeline()) {
+        if (!CreateGpuCullResources())
+            LogInfo("Direct3D 12: GPU compute culling unavailable; retaining the CPU culling fallback.");
+    } else {
+        LogInfo("Direct3D 12: Hi-Z setup unavailable; retaining the CPU culling fallback.");
+    }
     if (!CreatePipeline() || !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline())
         return false;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -994,7 +1079,13 @@ bool D3D12Renderer::CreateGpuCullResources()
         return disableGpuCulling("Direct3D 12: GPU culling compute shader compilation failed.");
     }
 
-    D3D12_ROOT_PARAMETER rootParameters[4]{};
+    D3D12_DESCRIPTOR_RANGE hiZRange{};
+    hiZRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    hiZRange.NumDescriptors = 1;
+    hiZRange.BaseShaderRegister = 1;
+    hiZRange.RegisterSpace = 0;
+    hiZRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    D3D12_ROOT_PARAMETER rootParameters[5]{};
     rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[0].Descriptor.ShaderRegister = 0;
     rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -1007,6 +1098,10 @@ bool D3D12Renderer::CreateGpuCullResources()
     rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
     rootParameters[3].Descriptor.ShaderRegister = 1;
     rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[4].DescriptorTable.NumDescriptorRanges = 1;
+    rootParameters[4].DescriptorTable.pDescriptorRanges = &hiZRange;
+    rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     D3D12_ROOT_SIGNATURE_DESC rootDescription{};
     rootDescription.NumParameters = static_cast<UINT>(std::size(rootParameters));
@@ -1147,6 +1242,91 @@ bool D3D12Renderer::CreateGpuCullResources()
 }
 
 
+
+void D3D12Renderer::BuildHiZPyramid(UINT frameIndex)
+{
+    if (!m_gpuCullingEnabled || m_hiZMipLevels == 0U ||
+        !m_hiZTextures[frameIndex] || !m_hiZConstantBuffers[frameIndex] ||
+        m_mappedHiZConstants[frameIndex] == nullptr)
+        return;
+
+    D3D12_RESOURCE_BARRIER toUav{};
+    toUav.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    toUav.Transition.pResource = m_hiZTextures[frameIndex].Get();
+    toUav.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    toUav.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    toUav.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &toUav);
+
+    ID3D12DescriptorHeap* heaps[] = {m_srvHeap.Get()};
+    m_commandList->SetDescriptorHeaps(1, heaps);
+    m_commandList->SetComputeRootSignature(m_hiZRootSignature.Get());
+    const D3D12_GPU_DESCRIPTOR_HANDLE heapStart = m_srvHeap->GetGPUDescriptorHandleForHeapStart();
+
+    const auto writeConstants = [this, frameIndex](UINT mip, UINT sourceWidth, UINT sourceHeight,
+                                                    UINT destinationWidth, UINT destinationHeight,
+                                                    UINT sourceMip) {
+        HiZBuildConstants constants{};
+        constants.sourceWidth = sourceWidth;
+        constants.sourceHeight = sourceHeight;
+        constants.destinationWidth = destinationWidth;
+        constants.destinationHeight = destinationHeight;
+        constants.sourceMip = sourceMip;
+        auto* destination = static_cast<unsigned char*>(m_mappedHiZConstants[frameIndex]) +
+            static_cast<std::size_t>(mip) * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        std::memcpy(destination, &constants, sizeof(constants));
+        return m_hiZConstantBuffers[frameIndex]->GetGPUVirtualAddress() +
+            static_cast<UINT64>(mip) * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+    };
+
+    D3D12_GPU_DESCRIPTOR_HANDLE destinationHandle = heapStart;
+    destinationHandle.ptr += static_cast<UINT64>(kHiZBaseUavIndex +
+        frameIndex * kHiZMipCapacity) * m_srvDescriptorSize;
+    m_commandList->SetPipelineState(m_hiZCopyPipelineState.Get());
+    m_commandList->SetComputeRootConstantBufferView(0,
+        writeConstants(0U, m_width, m_height, m_width, m_height, 0U));
+    D3D12_GPU_DESCRIPTOR_HANDLE sourceHandle = heapStart;
+    sourceHandle.ptr += static_cast<UINT64>(1U) * m_srvDescriptorSize; // Scene depth SRV.
+    m_commandList->SetComputeRootDescriptorTable(1, sourceHandle);
+    m_commandList->SetComputeRootDescriptorTable(2, destinationHandle);
+    m_commandList->Dispatch((m_width + 7U) / 8U, (m_height + 7U) / 8U, 1U);
+
+    D3D12_RESOURCE_BARRIER mipReady{};
+    mipReady.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    mipReady.Transition.pResource = m_hiZTextures[frameIndex].Get();
+    mipReady.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    mipReady.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    mipReady.Transition.Subresource = 0U;
+    m_commandList->ResourceBarrier(1, &mipReady);
+
+    UINT sourceWidth = m_width;
+    UINT sourceHeight = m_height;
+    for (UINT mip = 1U; mip < m_hiZMipLevels; ++mip) {
+        const UINT destinationWidth = std::max(1U, sourceWidth >> 1U);
+        const UINT destinationHeight = std::max(1U, sourceHeight >> 1U);
+        const UINT64 constantAddress = writeConstants(mip, sourceWidth, sourceHeight,
+                                                        destinationWidth, destinationHeight, mip - 1U);
+        sourceHandle = heapStart;
+        sourceHandle.ptr += static_cast<UINT64>(kHiZBaseSrvIndex + frameIndex) * m_srvDescriptorSize;
+        destinationHandle = heapStart;
+        destinationHandle.ptr += static_cast<UINT64>(kHiZBaseUavIndex +
+            frameIndex * kHiZMipCapacity + mip) * m_srvDescriptorSize;
+
+        m_commandList->SetPipelineState(m_hiZDownsamplePipelineState.Get());
+        m_commandList->SetComputeRootConstantBufferView(0, constantAddress);
+        m_commandList->SetComputeRootDescriptorTable(1, sourceHandle);
+        m_commandList->SetComputeRootDescriptorTable(2, destinationHandle);
+        m_commandList->Dispatch((destinationWidth + 7U) / 8U,
+                                (destinationHeight + 7U) / 8U, 1U);
+
+        mipReady.Transition.Subresource = mip;
+        m_commandList->ResourceBarrier(1, &mipReady);
+        sourceWidth = destinationWidth;
+        sourceHeight = destinationHeight;
+    }
+}
+
+
 bool D3D12Renderer::WaitForFrame(UINT frameIndex)
 {
     if (m_fence->GetCompletedValue() >= m_fenceValues[frameIndex]) return true;
@@ -1191,6 +1371,11 @@ bool D3D12Renderer::Resize(int width, int height)
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
     if (!CreateRenderTargets() || !CreateDepthTarget() || !CreateHdrTarget() || !CreateTemporalTargets()) return false;
+    if (!CreateHiZResources()) {
+        m_gpuCullingEnabled = false;
+        LogInfo("Direct3D 12: Hi-Z resize allocation failed; falling back to CPU culling.");
+    }
+    m_hasPreviousHiZ = false;
     m_historyValid = false;
     m_historyWriteIndex = 0;
     m_previousViewProjection = Mat4::Identity();
@@ -1386,6 +1571,10 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     const float cameraDeltaZ = cameraZ - m_previousCameraZ;
     const bool cameraCut = (cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ > 64.0F) ||
         std::abs(cameraYaw - m_previousCameraYaw) > 0.7F || std::abs(cameraPitch - m_previousCameraPitch) > 0.7F;
+    const bool hiZStableCamera = m_hasPreviousHiZ && !cameraCut &&
+        cameraDeltaX * cameraDeltaX + cameraDeltaY * cameraDeltaY + cameraDeltaZ * cameraDeltaZ <= 0.0064F &&
+        std::abs(cameraYaw - m_previousCameraYaw) <= 0.004F &&
+        std::abs(cameraPitch - m_previousCameraPitch) <= 0.004F;
     if (cameraCut) m_historyValid = false;
     TemporalConstants temporalConstants{};
     if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) return;
@@ -1473,6 +1662,11 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_commandList->SetComputeRootShaderResourceView(1, m_gpuCullChunkBuffer->GetGPUVirtualAddress());
         m_commandList->SetComputeRootUnorderedAccessView(2, arguments->GetGPUVirtualAddress());
         m_commandList->SetComputeRootUnorderedAccessView(3, counter->GetGPUVirtualAddress());
+        ID3D12DescriptorHeap* cullHeaps[] = {m_srvHeap.Get()};
+        m_commandList->SetDescriptorHeaps(1, cullHeaps);
+        D3D12_GPU_DESCRIPTOR_HANDLE hiZHandle = m_srvHeap->GetGPUDescriptorHandleForHeapStart();
+        hiZHandle.ptr += static_cast<UINT64>(kHiZBaseSrvIndex + m_lastHiZFrameIndex) * m_srvDescriptorSize;
+        m_commandList->SetComputeRootDescriptorTable(4, hiZHandle);
         m_commandList->Dispatch((cull.chunkCount + 63U) / 64U, 1U, 1U);
 
         D3D12_RESOURCE_BARRIER toIndirect[2]{};
@@ -1637,6 +1831,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         cull.parameters[2] = tanHalfVerticalFov;
         cull.parameters[3] = aspect;
         cull.chunkCount = static_cast<UINT>(m_drawChunks.size());
+        cull.useHiZOcclusion = hiZStableCamera ? 1U : 0U;
         submitGpuCull(3U, cull, false);
     } else {
         UINT sceneCommandCount = 0;
@@ -1673,9 +1868,11 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     depthToSample.Transition.pResource = m_depthTexture.Get();
     depthToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-    depthToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    depthToSample.Transition.StateAfter =
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     depthToSample.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &depthToSample);
+    BuildHiZPyramid(m_frameIndex);
 
     D3D12_RESOURCE_BARRIER hdrToSample{};
     hdrToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -1744,7 +1941,8 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             timestampBase, 7U, m_timestampReadback.Get(), static_cast<UINT64>(timestampBase) * sizeof(UINT64));
     }
     D3D12_RESOURCE_BARRIER depthToWrite = depthToSample;
-    depthToWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    depthToWrite.Transition.StateBefore =
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     depthToWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
     m_commandList->ResourceBarrier(1, &depthToWrite);
     D3D12_RESOURCE_BARRIER toPresent = backToTarget;
@@ -1758,7 +1956,11 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
-    if (m_gpuCullingEnabled) m_gpuCullStatsPending[m_frameIndex] = true;
+    if (m_gpuCullingEnabled) {
+        m_gpuCullStatsPending[m_frameIndex] = true;
+        m_lastHiZFrameIndex = m_frameIndex;
+        m_hasPreviousHiZ = true;
+    }
     if (m_timestampFrequency != 0) m_profilePending[m_frameIndex] = true;
     // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
     const HRESULT presentResult = m_swapChain->Present(0, 0);

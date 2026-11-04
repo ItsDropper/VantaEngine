@@ -31,6 +31,9 @@ public:
 private:
     static constexpr UINT kFrameCount = 2;
     static constexpr UINT kIndirectStreamCount = 4;
+    static constexpr UINT kHiZMipCapacity = 16;
+    static constexpr UINT kHiZBaseSrvIndex = 12;
+    static constexpr UINT kHiZBaseUavIndex = 14;
     struct DrawChunk
     {
         std::array<UINT, 5> startIndex{};
@@ -52,6 +55,9 @@ private:
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreateIndirectDrawResources();
     [[nodiscard]] bool CreateGpuCullResources();
+    [[nodiscard]] bool CreateHiZResources();
+    [[nodiscard]] bool CreateHiZPipeline();
+    void BuildHiZPyramid(UINT frameIndex);
     [[nodiscard]] bool CreatePipeline();
     [[nodiscard]] bool WaitForGpu();
     [[nodiscard]] bool WaitForFrame(UINT frameIndex);
@@ -106,6 +112,15 @@ private:
     std::array<bool, kFrameCount> m_gpuCullStatsPending{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_gpuCullRootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_gpuCullPipelineState;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_hiZTextures;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_hiZConstantBuffers;
+    std::array<void*, kFrameCount> m_mappedHiZConstants{};
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_hiZRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_hiZCopyPipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_hiZDownsamplePipelineState;
+    UINT m_hiZMipLevels = 0;
+    UINT m_lastHiZFrameIndex = 0;
+    bool m_hasPreviousHiZ = false;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_constantBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_temporalConstantBuffers;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;

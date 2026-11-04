@@ -791,4 +791,139 @@ float4 PSMain(VSOut input) : SV_TARGET
 }
 
 
+
+bool D3D12Renderer::CreateHiZPipeline()
+{
+    constexpr char shader[] = R"(
+cbuffer HiZBuildConstants : register(b0)
+{
+    uint sourceWidth;
+    uint sourceHeight;
+    uint destinationWidth;
+    uint destinationHeight;
+    uint sourceMip;
+    uint3 padding;
+};
+Texture2D<float> sourceDepth : register(t0);
+RWTexture2D<float> destinationDepth : register(u0);
+
+[numthreads(8, 8, 1)]
+void CopyDepthCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    const uint2 destination = dispatchThreadId.xy;
+    if (destination.x >= destinationWidth || destination.y >= destinationHeight)
+        return;
+    destinationDepth[destination] = sourceDepth.Load(int3(destination, 0));
+}
+
+[numthreads(8, 8, 1)]
+void DownsampleHiZCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    const uint2 destination = dispatchThreadId.xy;
+    if (destination.x >= destinationWidth || destination.y >= destinationHeight)
+        return;
+
+    // Integer partitioning covers odd source dimensions too; every source texel
+    // contributes to exactly one destination texel, with no dropped border row/column.
+    const uint2 begin = destination * uint2(sourceWidth, sourceHeight) /
+                        uint2(destinationWidth, destinationHeight);
+    const uint2 end = (destination + 1U) * uint2(sourceWidth, sourceHeight) /
+                      uint2(destinationWidth, destinationHeight);
+    float maximumDepth = 0.0F;
+    [loop] for (uint y = begin.y; y < end.y; ++y)
+    {
+        [loop] for (uint x = begin.x; x < end.x; ++x)
+        {
+            maximumDepth = max(maximumDepth, sourceDepth.Load(int3(x, y, sourceMip)));
+        }
+    }
+    destinationDepth[destination] = maximumDepth;
+}
+)";
+
+    Microsoft::WRL::ComPtr<ID3DBlob> copyShader, downsampleShader, errors;
+    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined(_DEBUG)
+    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+    HRESULT result = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_hiz", nullptr, nullptr,
+        "CopyDepthCS", "cs_5_0", flags, 0, copyShader.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(result)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        LogError("Direct3D 12: Hi-Z depth-copy shader compilation failed.");
+        return false;
+    }
+    errors.Reset();
+    result = D3DCompile(shader, sizeof(shader) - 1, "vanta_d3d12_hiz", nullptr, nullptr,
+        "DownsampleHiZCS", "cs_5_0", flags, 0, downsampleShader.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(result)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        LogError("Direct3D 12: Hi-Z downsample shader compilation failed.");
+        return false;
+    }
+
+    D3D12_DESCRIPTOR_RANGE srvRange{};
+    srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    srvRange.NumDescriptors = 1;
+    srvRange.BaseShaderRegister = 0;
+    srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    D3D12_DESCRIPTOR_RANGE uavRange{};
+    uavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    uavRange.NumDescriptors = 1;
+    uavRange.BaseShaderRegister = 0;
+    uavRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    D3D12_ROOT_PARAMETER parameters[3]{};
+    parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[0].Descriptor.ShaderRegister = 0;
+    parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    parameters[1].DescriptorTable.NumDescriptorRanges = 1;
+    parameters[1].DescriptorTable.pDescriptorRanges = &srvRange;
+    parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    parameters[2].DescriptorTable.NumDescriptorRanges = 1;
+    parameters[2].DescriptorTable.pDescriptorRanges = &uavRange;
+    parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_ROOT_SIGNATURE_DESC rootDescription{};
+    rootDescription.NumParameters = static_cast<UINT>(std::size(parameters));
+    rootDescription.pParameters = parameters;
+    Microsoft::WRL::ComPtr<ID3DBlob> serializedRoot;
+    errors.Reset();
+    result = D3D12SerializeRootSignature(&rootDescription, D3D_ROOT_SIGNATURE_VERSION_1,
+        serializedRoot.GetAddressOf(), errors.GetAddressOf());
+    if (FAILED(result)) {
+        if (errors) LogError(static_cast<const char*>(errors->GetBufferPointer()));
+        LogError("Direct3D 12: Hi-Z root-signature serialization failed.");
+        return false;
+    }
+    if (FAILED(m_device->CreateRootSignature(0, serializedRoot->GetBufferPointer(),
+            serializedRoot->GetBufferSize(), IID_PPV_ARGS(m_hiZRootSignature.GetAddressOf())))) {
+        LogError("Direct3D 12: Hi-Z root-signature creation failed.");
+        return false;
+    }
+
+    D3D12_COMPUTE_PIPELINE_STATE_DESC pipeline{};
+    pipeline.pRootSignature = m_hiZRootSignature.Get();
+    pipeline.CS.pShaderBytecode = copyShader->GetBufferPointer();
+    pipeline.CS.BytecodeLength = copyShader->GetBufferSize();
+    if (FAILED(m_device->CreateComputePipelineState(&pipeline,
+            IID_PPV_ARGS(m_hiZCopyPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: Hi-Z copy pipeline creation failed.");
+        return false;
+    }
+    pipeline.CS.pShaderBytecode = downsampleShader->GetBufferPointer();
+    pipeline.CS.BytecodeLength = downsampleShader->GetBufferSize();
+    if (FAILED(m_device->CreateComputePipelineState(&pipeline,
+            IID_PPV_ARGS(m_hiZDownsamplePipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: Hi-Z downsample pipeline creation failed.");
+        return false;
+    }
+
+    LogInfo("Direct3D 12: max-reduced hierarchical depth pipeline initialized.");
+    return true;
+}
+
+
 } // namespace vanta

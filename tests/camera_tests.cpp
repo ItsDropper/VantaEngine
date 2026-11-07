@@ -30,7 +30,7 @@ bool initialPose()
 bool yawRotation()
 {
     Camera camera;
-    camera.Rotate(vanta::vanta::math::kPi * 0.5F, 0.0F);
+    camera.Rotate(vanta::math::kPi * 0.5F, 0.0F);
     const Vec3 forward = camera.Forward();
     return Near(forward.x, 1.0F) && Near(forward.z, 0.0F);
 }
@@ -102,10 +102,10 @@ bool interpolationBlendsPositionAndPitch()
 
 bool interpolationUsesShortestYawPath()
 {
-    Camera previous({}, math::kPi - 0.1F, 0.0F);
-    Camera current({}, -math::kPi + 0.1F, 0.0F);
+    Camera previous({}, vanta::math::kPi - 0.1F, 0.0F);
+    Camera current({}, -vanta::math::kPi + 0.1F, 0.0F);
     const Camera halfway = Camera::Interpolate(previous, current, 0.5F);
-    return std::abs(std::abs(halfway.Yaw()) - math::kPi) < kTolerance;
+    return std::abs(std::abs(halfway.Yaw()) - vanta::math::kPi) < kTolerance;
 }
 
 bool interpolationClampsAlphaAndRejectsNan()

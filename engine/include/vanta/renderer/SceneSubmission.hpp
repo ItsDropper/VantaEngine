@@ -133,6 +133,7 @@ private:
     };
 
     [[nodiscard]] static bool IsFinite(const math::Mat4& matrix) noexcept;
+    [[nodiscard]] static bool IsValidWorldTransform(const math::Mat4& matrix) noexcept;
     [[nodiscard]] static bool IsValid(const MaterialDescription& description) noexcept;
     [[nodiscard]] const MeshResource* Find(MeshHandle handle) const noexcept;
     [[nodiscard]] const MaterialResource* Find(MaterialHandle handle) const noexcept;

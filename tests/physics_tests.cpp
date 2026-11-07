@@ -233,7 +233,7 @@ bool broadphaseMatchesBruteForceAcrossDenseAndSparseLayouts()
     std::vector<Aabb> bounds;
     std::vector<vanta::ColliderHandle> handles;
     std::uint32_t state = 0xC001D00DU;
-    const auto next = [&state]() mutable {
+    const auto next = [&state]() {
         state = state * 1664525U + 1013904223U;
         return state;
     };
@@ -271,6 +271,14 @@ bool broadphaseMatchesBruteForceAcrossDenseAndSparseLayouts()
                     (first % 7U) == 0U || (second % 7U) == 0U});
         }
     }
+    const auto byHandle = [](const vanta::ColliderPair& left,
+                             const vanta::ColliderPair& right) {
+        if (left.first.index != right.first.index)
+            return left.first.index < right.first.index;
+        return left.second.index < right.second.index;
+    };
+    std::sort(actual.begin(), actual.end(), byHandle);
+    std::sort(expected.begin(), expected.end(), byHandle);
     return actual == expected;
 }
 

@@ -1357,7 +1357,10 @@ void D3D12Renderer::BuildHiZPyramid(UINT frameIndex)
 bool D3D12Renderer::WaitForFrame(UINT frameIndex)
 {
     if (m_fence->GetCompletedValue() >= m_fenceValues[frameIndex]) return true;
-    if (FAILED(m_fence->SetEventOnCompletion(m_fenceValues[frameIndex], m_fenceEvent))) return false;
+    if (FAILED(m_fence->SetEventOnCompletion(m_fenceValues[frameIndex], m_fenceEvent))) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        return false;
+    }
     return WaitForSingleObject(m_fenceEvent, INFINITE) == WAIT_OBJECT_0;
 }
 
@@ -1365,8 +1368,14 @@ bool D3D12Renderer::WaitForGpu()
 {
     if (!m_commandQueue || !m_fence || m_fenceEvent == nullptr) return true;
     const UINT64 value = m_nextFenceValue++;
-    if (FAILED(m_commandQueue->Signal(m_fence.Get(), value))) return false;
-    if (FAILED(m_fence->SetEventOnCompletion(value, m_fenceEvent))) return false;
+    if (FAILED(m_commandQueue->Signal(m_fence.Get(), value))) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        return false;
+    }
+    if (FAILED(m_fence->SetEventOnCompletion(value, m_fenceEvent))) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        return false;
+    }
     if (WaitForSingleObject(m_fenceEvent, INFINITE) != WAIT_OBJECT_0) return false;
     m_fenceValues.fill(value);
     return true;
@@ -1378,6 +1387,7 @@ bool D3D12Renderer::Resize(int width, int height)
     if (width <= 0 || height <= 0 ||
         (m_width == static_cast<UINT>(width) && m_height == static_cast<UINT>(height))) return true;
     if (!WaitForGpu()) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: GPU wait failed before resize.");
         return false;
     }
@@ -1389,6 +1399,8 @@ bool D3D12Renderer::Resize(int width, int height)
     const HRESULT resizeResult = m_swapChain->ResizeBuffers(kFrameCount, static_cast<UINT>(width),
             static_cast<UINT>(height), DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     if (FAILED(resizeResult)) {
+        m_deviceLost = resizeResult == DXGI_ERROR_DEVICE_REMOVED || resizeResult == DXGI_ERROR_DEVICE_RESET ||
+            (m_device && FAILED(m_device->GetDeviceRemovedReason()));
         char message[160]{};
         std::snprintf(message, sizeof(message), "Direct3D 12: swap-chain resize failed (HRESULT 0x%08lX).",
             static_cast<unsigned long>(resizeResult));
@@ -2131,6 +2143,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             "Direct3D 12: Present failed (HRESULT 0x%08lX, device reason 0x%08lX).",
             static_cast<unsigned long>(presentResult), static_cast<unsigned long>(deviceReason));
         LogError(message);
+        m_deviceLost = presentResult == DXGI_ERROR_DEVICE_REMOVED || presentResult == DXGI_ERROR_DEVICE_RESET ||
+            FAILED(deviceReason);
         m_failed = true;
         return;
     }

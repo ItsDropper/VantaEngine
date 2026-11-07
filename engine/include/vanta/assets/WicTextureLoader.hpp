@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace vanta::assets
@@ -16,4 +18,6 @@ struct CpuTexture
 };
 
 [[nodiscard]] bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output);
+[[nodiscard]] bool LoadWicTexture(std::span<const std::uint8_t> encodedBytes,
+                                  CpuTexture& output, std::string& error);
 } // namespace vanta::assets

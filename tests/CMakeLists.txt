@@ -57,3 +57,9 @@ add_executable(VantaEngineCameraTests
 )
 vanta_configure_test(VantaEngineCameraTests)
 add_test(NAME VantaEngine.CameraTests COMMAND VantaEngineCameraTests)
+
+add_executable(VantaEngineFixedStepTests
+    fixed_step_tests.cpp
+)
+vanta_configure_test(VantaEngineFixedStepTests)
+add_test(NAME VantaEngine.FixedStepTests COMMAND VantaEngineFixedStepTests)

@@ -1,6 +1,6 @@
 #include "vanta/core/Engine.hpp"
 
-#include "vanta/core/FrameTime.hpp"
+#include "vanta/core/FixedStepClock.hpp"
 #include "vanta/core/Log.hpp"
 #include "vanta/core/Camera.hpp"
 #include "vanta/platform/Window.hpp"
@@ -21,6 +21,7 @@ int RunCameraLoop(Window& window, Renderer& renderer)
     auto previousFrame = Clock::now();
     float elapsedSeconds = 0.0F;
     Camera camera({3.4F, 2.6F, -5.5F}, -0.554F, -0.360F);
+    FixedStepClock simulationClock;
 
     LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
 
@@ -31,10 +32,8 @@ int RunCameraLoop(Window& window, Renderer& renderer)
             break;
 
         const auto now = Clock::now();
-        const float deltaSeconds = static_cast<float>(
-            ClampDeltaSeconds(std::chrono::duration<double>(now - previousFrame).count()));
+        const double frameSeconds = std::chrono::duration<double>(now - previousFrame).count();
         previousFrame = now;
-        elapsedSeconds += deltaSeconds;
 
         constexpr float moveSpeed = 4.5F;
         constexpr float lookSpeed = 1.65F;
@@ -48,14 +47,23 @@ int RunCameraLoop(Window& window, Renderer& renderer)
         if (window.IsKeyDown('E')) vertical += 1.0F;
         if (window.IsKeyDown('Q')) vertical -= 1.0F;
 
-        float yawDelta = 0.0F;
-        float pitchDelta = 0.0F;
-        if (window.IsKeyDown(VK_LEFT)) yawDelta -= lookSpeed * deltaSeconds;
-        if (window.IsKeyDown(VK_RIGHT)) yawDelta += lookSpeed * deltaSeconds;
-        if (window.IsKeyDown(VK_UP)) pitchDelta += lookSpeed * deltaSeconds;
-        if (window.IsKeyDown(VK_DOWN)) pitchDelta -= lookSpeed * deltaSeconds;
-        camera.Rotate(yawDelta, pitchDelta);
-        camera.MoveLocal(forward, right, vertical, moveSpeed, deltaSeconds);
+        float yawInput = 0.0F;
+        float pitchInput = 0.0F;
+        if (window.IsKeyDown(VK_LEFT)) yawInput -= lookSpeed;
+        if (window.IsKeyDown(VK_RIGHT)) yawInput += lookSpeed;
+        if (window.IsKeyDown(VK_UP)) pitchInput += lookSpeed;
+        if (window.IsKeyDown(VK_DOWN)) pitchInput -= lookSpeed;
+
+        const FixedStepResult simulation = simulationClock.Advance(
+            frameSeconds, [&](const double stepSeconds) {
+                const float deltaSeconds = static_cast<float>(stepSeconds);
+                camera.Rotate(yawInput * deltaSeconds, pitchInput * deltaSeconds);
+                camera.MoveLocal(forward, right, vertical, moveSpeed, deltaSeconds);
+                elapsedSeconds += deltaSeconds;
+            });
+
+        if (simulation.droppedSeconds > 0.0)
+            LogInfo("Simulation fell behind; excess whole steps were dropped to preserve frame responsiveness.");
 
         const int width = window.Width();
         const int height = window.Height();

@@ -57,11 +57,11 @@ The camera is controllable while the VantaEngine window is focused:
 - **Arrow keys** — look around.
 - **Escape** — exit.
 
-Movement is delta-time based, so it remains consistent across frame rates. The camera uses the engine math layer to build a view matrix each frame.
+Camera movement and look input are applied by a fixed 60 Hz simulation clock, independent of render frequency. The clock bounds catch-up work after stalls, drops excess whole simulation steps rather than freezing rendering, and preserves the fractional remainder for smooth scheduling. The camera uses the engine math layer to build a view matrix each frame.
 
 ## Architecture
 
-- core: runtime entry point, logging, frame-time policy
+- core: runtime entry point, logging, fixed-step simulation clock, camera controller and frame-time policy
 - math: Vec3, Vec4, Quaternion, Mat4
 - platform: Win32 window/event lifecycle
 - renderer: Direct3D 12 scene pipeline (default) plus Direct3D 11 compatibility renderer; shaders, buffers, depth and temporal-history targets
@@ -108,7 +108,7 @@ The clean option removes only generated output in build/.
 
 ## Tests, performance diagnostics, and CI
 
-CTest runs without creating a window or requiring a GPU. It covers frame-time clamping, math, model import, deterministic procedural-world invariants, and the adaptive world-detail controller. The adaptive controller has deterministic timing-input tests for overload response, recovery, invalid samples, and its quality bounds.
+CTest runs without creating a window or requiring a GPU. It covers frame-time clamping, fixed-step simulation accumulation and overload handling, camera movement, math, model import, deterministic procedural-world invariants, and the adaptive world-detail controller. The adaptive controller has deterministic timing-input tests for overload response, recovery, invalid samples, and its quality bounds.
 
 GitHub Actions builds and tests Debug and Release on Windows. The manual **Performance Baseline** workflow repeats the Release build/tests and uploads a small build-metadata artifact (compiler configuration, executable size, commit, and test result). This catches build/test regressions; it is deliberately **not** presented as an FPS benchmark because hosted CI does not run the same GPU, driver, resolution, or scene as a player's PC.
 

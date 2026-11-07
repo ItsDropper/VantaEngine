@@ -8,6 +8,7 @@
 #include "vanta/world/ProceduralWorld.hpp"
 #include "vanta/assets/WicTextureLoader.hpp"
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -1240,8 +1241,13 @@ bool D3D11Renderer::Resize(const int width, const int height)
 
 void D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
 {
+    const float forwardX = submittedScene.view.view.At(2, 0);
+    const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
+    const float forwardZ = submittedScene.view.view.At(2, 2);
+    const float yaw = std::atan2(forwardX, forwardZ);
+    const float pitch = std::asin(forwardY);
     Render(submittedScene.view.elapsedSeconds, submittedScene.view.cameraPosition.x,
-        submittedScene.view.cameraPosition.y, submittedScene.view.cameraPosition.z, 0.0F, 0.0F,
+        submittedScene.view.cameraPosition.y, submittedScene.view.cameraPosition.z, yaw, pitch,
         &submittedScene);
 }
 

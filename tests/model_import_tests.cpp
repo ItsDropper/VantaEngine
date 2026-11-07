@@ -81,7 +81,6 @@ int main()
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
 
-    std::cout << (11 - failures) << "/11 model import tests passed.\n";
 
     const auto malformedIndexPath = std::filesystem::temp_directory_path() / "vanta_obj_import_malformed_index.obj";
     {

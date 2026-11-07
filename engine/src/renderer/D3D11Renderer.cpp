@@ -1668,8 +1668,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
         m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        ID3D11ShaderResourceView* noTextures[6]{};
-        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noTextures)), noTextures);
+        ID3D11ShaderResourceView* noMaterialTexture = nullptr;
+        m_context->PSSetShaderResources(0, 1, &noMaterialTexture);
         for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
             SceneConstants constants{};
             constants.worldViewProjection = projection * view;

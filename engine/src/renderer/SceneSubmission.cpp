@@ -1,6 +1,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <utility>
 
@@ -42,9 +43,9 @@ bool SceneSubmission::IsFinite(const math::Mat4& matrix) noexcept
 
 bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
 {
-    return std::isfinite(description.baseColor.x) &&
-           std::isfinite(description.baseColor.y) &&
-           std::isfinite(description.baseColor.z) &&
+    return std::isfinite(description.baseColor.x) && description.baseColor.x >= 0.0F &&
+           std::isfinite(description.baseColor.y) && description.baseColor.y >= 0.0F &&
+           std::isfinite(description.baseColor.z) && description.baseColor.z >= 0.0F &&
            std::isfinite(description.roughness) &&
            std::isfinite(description.metallic) &&
            description.roughness >= 0.0F && description.roughness <= 1.0F &&

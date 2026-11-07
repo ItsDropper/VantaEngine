@@ -250,31 +250,50 @@ std::optional<math::Mat4> Scene::GetWorldMatrix(const EntityHandle entity) const
 
 std::vector<SceneEntitySnapshot> Scene::CreateSnapshot() const
 {
-    std::vector<SceneEntitySnapshot> snapshot;
-    snapshot.reserve(m_entityCount);
+    struct PendingEntity
+    {
+        std::size_t index = 0;
+        math::Mat4 parentWorld = math::Mat4::Identity();
+        bool parentActive = true;
+    };
+
+    std::vector<std::vector<std::size_t>> children(m_slots.size());
+    std::vector<std::size_t> roots;
+    roots.reserve(m_entityCount);
     for (std::size_t index = 0; index < m_slots.size(); ++index)
     {
         const Slot& slot = m_slots[index];
         if (!slot.occupied)
             continue;
-        const EntityHandle entity{static_cast<std::uint32_t>(index), slot.generation};
-        const auto world = BuildWorldMatrix(entity);
-        if (!world)
+        if (slot.parent.IsValid() && Find(slot.parent) != nullptr)
+            children[slot.parent.index].push_back(index);
+        else
+            roots.push_back(index);
+    }
+
+    std::vector<PendingEntity> pending;
+    pending.reserve(m_entityCount);
+    for (auto iterator = roots.rbegin(); iterator != roots.rend(); ++iterator)
+        pending.push_back({*iterator, math::Mat4::Identity(), true});
+
+    std::vector<SceneEntitySnapshot> snapshot;
+    snapshot.reserve(m_entityCount);
+    while (!pending.empty())
+    {
+        const PendingEntity current = pending.back();
+        pending.pop_back();
+        const Slot& slot = m_slots[current.index];
+        if (!slot.occupied)
             continue;
-        bool active = true;
-        EntityHandle ancestor = entity;
-        std::size_t visited = 0;
-        while (ancestor.IsValid())
-        {
-            const Slot* current = Find(ancestor);
-            if (current == nullptr || !current->active || ++visited > m_slots.size())
-            {
-                active = false;
-                break;
-            }
-            ancestor = current->parent;
-        }
-        snapshot.push_back({entity, slot.name, *world, active});
+
+        const math::Mat4 world = current.parentWorld * slot.transform.Matrix();
+        const bool active = current.parentActive && slot.active;
+        const EntityHandle entity{static_cast<std::uint32_t>(current.index), slot.generation};
+        snapshot.push_back({entity, slot.name, world, active});
+
+        const auto& entityChildren = children[current.index];
+        for (auto iterator = entityChildren.rbegin(); iterator != entityChildren.rend(); ++iterator)
+            pending.push_back({*iterator, world, active});
     }
     return snapshot;
 }

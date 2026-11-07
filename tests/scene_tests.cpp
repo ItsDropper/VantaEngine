@@ -147,6 +147,30 @@ bool snapshotsOwnNamesMatricesAndActiveState()
     return found->name=="node"&&Near(found->worldMatrix.At(0,3),7);
 }
 
+
+bool snapshotTraversesDeepHierarchyWithoutLosingTransforms()
+{
+    Scene scene;
+    EntityHandle parent{};
+    constexpr int depth=512;
+    EntityHandle last{};
+    for(int index=0;index<depth;++index)
+    {
+        const auto entity=scene.CreateEntity();
+        if(!scene.GetTransform(entity)->SetPosition({1,0,0}))
+            return false;
+        if(parent.IsValid()&&!scene.SetParent(entity,parent))
+            return false;
+        parent=entity;
+        last=entity;
+    }
+    const auto snapshot=scene.CreateSnapshot();
+    const auto found=std::find_if(snapshot.begin(),snapshot.end(),
+        [&](const SceneEntitySnapshot& item){return item.entity==last;});
+    return snapshot.size()==depth&&found!=snapshot.end()&&
+           Near(found->worldMatrix.At(0,3),static_cast<float>(depth))&&found->active;
+}
+
 constexpr std::array kCases{
     TestCase{"TRS transform composition",transformComposesTranslationRotationAndScale},
     TestCase{"transform rejects invalid values",transformRejectsInvalidValues},
@@ -157,7 +181,8 @@ constexpr std::array kCases{
     TestCase{"reparent and unparent update world matrix",reparentingAndUnparentingUpdateWorldMatrix},
     TestCase{"destroying parent detaches children",destroyingParentDetachesChildren},
     TestCase{"active state inherits through hierarchy",activeStateInheritsThroughHierarchy},
-    TestCase{"snapshots own names matrices and active state",snapshotsOwnNamesMatricesAndActiveState}
+    TestCase{"snapshots own names matrices and active state",snapshotsOwnNamesMatricesAndActiveState},
+    TestCase{"snapshot traverses deep hierarchies correctly",snapshotTraversesDeepHierarchyWithoutLosingTransforms}
 };
 }
 

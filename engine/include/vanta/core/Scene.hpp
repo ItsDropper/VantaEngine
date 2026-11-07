@@ -50,7 +50,9 @@ struct SceneEntitySnapshot
     bool active = false;
 };
 
-// Scene mutation and snapshot generation are single-threaded. A snapshot owns its names
+// Scene mutation and snapshot generation are single-threaded. Transform/name pointers remain
+// stable across entity creation, and are invalidated only when their entity is destroyed or the
+// scene itself is destroyed. A snapshot owns its names
 // and matrices, so callers may retain it while the scene is subsequently modified.
 class Scene final
 {

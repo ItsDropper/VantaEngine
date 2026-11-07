@@ -131,13 +131,13 @@ LRESULT Window::HandleMessage(const UINT message, const WPARAM wParam, const LPA
         }
         if (wParam < InputState::kKeyCount)
             m_input.SetKey(static_cast<int>(wParam), true);
-        return 0;
+        return DefWindowProcW(m_handle, message, wParam, lParam);
 
     case WM_KEYUP:
     case WM_SYSKEYUP:
         if (wParam < InputState::kKeyCount)
             m_input.SetKey(static_cast<int>(wParam), false);
-        return 0;
+        return DefWindowProcW(m_handle, message, wParam, lParam);
 
     case WM_MOUSEMOVE:
     {

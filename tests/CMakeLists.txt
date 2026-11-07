@@ -27,21 +27,21 @@ add_test(NAME VantaEngine.MathTests COMMAND VantaEngineMathTests)
 
 add_executable(VantaEngineModelImportTests
     model_import_tests.cpp
-    ../engine/src/assets/ObjLoader.cpp
+    ../engine/src/renderer/ObjLoader.cpp
 )
 vanta_configure_test(VantaEngineModelImportTests)
 add_test(NAME VantaEngine.ModelImportTests COMMAND VantaEngineModelImportTests)
 
 add_executable(VantaEngineProceduralWorldTests
     procedural_world_tests.cpp
-    ../engine/src/world/ProceduralWorld.cpp
+    ../engine/src/renderer/ProceduralWorld.cpp
 )
 vanta_configure_test(VantaEngineProceduralWorldTests)
 add_test(NAME VantaEngine.ProceduralWorldTests COMMAND VantaEngineProceduralWorldTests)
 
 add_executable(VantaEngineGltfImportTests
     gltf_import_tests.cpp
-    ../engine/src/assets/GltfLoader.cpp
+    ../engine/src/renderer/GltfLoader.cpp
 )
 vanta_configure_test(VantaEngineGltfImportTests)
 add_test(NAME VantaEngine.GltfImportTests COMMAND VantaEngineGltfImportTests)
@@ -86,9 +86,9 @@ add_test(NAME VantaEngine.SceneTests COMMAND VantaEngineSceneTests)
 
 add_executable(VantaEngineAssetStoreTests
     asset_store_tests.cpp
-    ../engine/src/assets/ObjLoader.cpp
-    ../engine/src/assets/GltfLoader.cpp
-    ../engine/src/assets/ModelAssetStore.cpp
+    ../engine/src/renderer/ObjLoader.cpp
+    ../engine/src/renderer/GltfLoader.cpp
+    ../engine/src/renderer/ModelAssetStore.cpp
 )
 vanta_configure_test(VantaEngineAssetStoreTests)
 add_test(NAME VantaEngine.AssetStoreTests COMMAND VantaEngineAssetStoreTests)

@@ -94,8 +94,11 @@ Camera movement and look input are applied by a fixed 60 Hz simulation clock, in
 - math: Vec3, Vec4, Quaternion, Mat4
 - platform: Win32 window/event lifecycle, edge-triggered keyboard and mouse input, vertical/horizontal wheel deltas, focus-loss recovery, and configurable action bindings
 - physics: generation-safe AABB collider lifecycle, filtered shape-overlap queries, deterministic sweep-and-prune broadphase pairs with trigger tagging, enter/stay/exit event tracking, and nearest-hit raycasts
-- assets: canonical-path CPU model cache for OBJ, glTF and GLB with validated indexed geometry and generation-safe handles
-- renderer: Direct3D 12 scene pipeline (default) plus Direct3D 11 compatibility renderer; shaders, buffers, depth and temporal-history targets
+- assets: backend-independent CPU model/material types, OBJ and glTF/GLB importers, validated canonical-path asset cache, and WIC image decoding; GPU upload and lifetime remain backend responsibilities
+- world: deterministic procedural forest-valley sample geometry, kept outside the renderer implementation
+- renderer: Direct3D 12 backend (default) and Direct3D 11 compatibility backend; API-specific shaders, GPU resources, command submission, depth and temporal-history targets
+
+The current renderer still constructs and renders the built-in sample scene during backend initialization. A public game-owned render-scene submission API is not yet available, so the engine is not yet a drop-in runtime for a separate game repository.
 - tests: GPU-independent runtime and math tests
 
 ## Math conventions

@@ -291,9 +291,15 @@ bool PhysicsWorld::ComputeOverlaps(
                 firstBounds.maximum.z < secondBounds.minimum.z)
                 continue;
 
+            ColliderHandle firstHandle{
+                static_cast<std::uint32_t>(firstIndex), first.generation};
+            ColliderHandle secondHandle{
+                static_cast<std::uint32_t>(secondIndex), second.generation};
+            if (secondHandle.index < firstHandle.index)
+                std::swap(firstHandle, secondHandle);
             pairs.push_back({
-                {static_cast<std::uint32_t>(firstIndex), first.generation},
-                {static_cast<std::uint32_t>(secondIndex), second.generation},
+                firstHandle,
+                secondHandle,
                 first.description.isTrigger || second.description.isTrigger
             });
         }

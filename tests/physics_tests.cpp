@@ -1,5 +1,6 @@
 #include "vanta/physics/PhysicsWorld.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -226,9 +227,57 @@ bool broadphasePairsTrackGenerationAfterColliderReuse()
            pairs.front() == vanta::ColliderPair{first, replacement, false};
 }
 
+bool broadphaseMatchesBruteForceAcrossDenseAndSparseLayouts()
+{
+    PhysicsWorld world;
+    std::vector<Aabb> bounds;
+    std::vector<vanta::ColliderHandle> handles;
+    std::uint32_t state = 0xC001D00DU;
+    const auto next = [&state]() mutable {
+        state = state * 1664525U + 1013904223U;
+        return state;
+    };
+    for (std::size_t index = 0; index < 96; ++index)
+    {
+        const float x = static_cast<float>(next() % 80U) * 0.25F;
+        const float y = static_cast<float>(next() % 24U) * 0.25F;
+        const float z = static_cast<float>(next() % 80U) * 0.25F;
+        const float extent = 0.25F + static_cast<float>(next() % 8U) * 0.25F;
+        const Aabb box{{x,y,z},{x+extent,y+extent,z+extent}};
+        const auto handle = world.AddCollider({box, (index % 3U) == 0U ? 2U : 1U,
+                                                (index % 7U) == 0U});
+        if (!handle.IsValid())
+            return false;
+        bounds.push_back(box);
+        handles.push_back(handle);
+    }
+
+    std::vector<vanta::ColliderPair> actual;
+    if (!world.ComputeOverlaps(actual))
+        return false;
+    std::vector<vanta::ColliderPair> expected;
+    for (std::size_t first = 0; first < bounds.size(); ++first)
+    {
+        for (std::size_t second = first + 1U; second < bounds.size(); ++second)
+        {
+            const Aabb& a = bounds[first];
+            const Aabb& b = bounds[second];
+            const bool intersects =
+                a.minimum.x <= b.maximum.x && a.maximum.x >= b.minimum.x &&
+                a.minimum.y <= b.maximum.y && a.maximum.y >= b.minimum.y &&
+                a.minimum.z <= b.maximum.z && a.maximum.z >= b.minimum.z;
+            if (intersects)
+                expected.push_back({handles[first], handles[second],
+                    (first % 7U) == 0U || (second % 7U) == 0U});
+        }
+    }
+    return actual == expected;
+}
+
 constexpr std::array kCases{
     TestCase{"collider lifecycle invalidates stale handles",addUpdateRemoveAndStaleHandles},
     TestCase{"broadphase emits deterministic solid and trigger pairs",broadphaseBuildsDeterministicSolidAndTriggerPairs},
+    TestCase{"broadphase matches brute force across dense and sparse layouts",broadphaseMatchesBruteForceAcrossDenseAndSparseLayouts},
     TestCase{"broadphase pairs use current collider generations",broadphasePairsTrackGenerationAfterColliderReuse},
     TestCase{"invalid collider descriptions are rejected",rejectsInvalidColliderDescriptions},
     TestCase{"raycast returns nearest hit and surface normal",raycastFindsNearestAndCorrectNormal},

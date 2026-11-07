@@ -30,7 +30,7 @@ bool initialPose()
 bool yawRotation()
 {
     Camera camera;
-    camera.Rotate(vanta::math::kPi * 0.5F, 0.0F);
+    camera.Rotate(vanta::vanta::math::kPi * 0.5F, 0.0F);
     const Vec3 forward = camera.Forward();
     return Near(forward.x, 1.0F) && Near(forward.z, 0.0F);
 }

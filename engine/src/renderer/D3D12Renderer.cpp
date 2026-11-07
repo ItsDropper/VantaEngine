@@ -58,8 +58,11 @@ struct TemporalConstants
     Mat4 previousViewProjection;
     float parameters[4];
     float sunParameters[4];
+    float skyHorizonColor[4];
+    float skyZenithColor[4];
+    float environmentSunColor[4];
 };
-static_assert(sizeof(TemporalConstants) == 160);
+static_assert(sizeof(TemporalConstants) == 208);
 
 struct GpuDrawChunk
 {
@@ -1899,8 +1902,19 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const float sunNdcY = lightDirection.Dot(cameraUpForSky) / (sunDenominator * tanHalfFov);
     temporalConstants.sunParameters[0] = sunForward > 0.0F ? 0.5F + 0.5F * sunNdcX : 2.0F;
     temporalConstants.sunParameters[1] = 0.5F - 0.5F * sunNdcY;
-    temporalConstants.sunParameters[2] = sunIntensity;
+    temporalConstants.sunParameters[2] = environment.enabled
+        ? std::clamp((lightDirection.y + 0.04F) / 0.42F, 0.0F, 1.0F) : sunIntensity;
     temporalConstants.sunParameters[3] = std::clamp(lightDirection.y * 2.5F + 0.35F, 0.0F, 1.0F);
+    temporalConstants.skyHorizonColor[0] = environment.fogColor.x;
+    temporalConstants.skyHorizonColor[1] = environment.fogColor.y;
+    temporalConstants.skyHorizonColor[2] = environment.fogColor.z;
+    temporalConstants.skyZenithColor[0] = environment.ambientColor.x;
+    temporalConstants.skyZenithColor[1] = environment.ambientColor.y;
+    temporalConstants.skyZenithColor[2] = environment.ambientColor.z;
+    temporalConstants.environmentSunColor[0] = environment.sunColor.x;
+    temporalConstants.environmentSunColor[1] = environment.sunColor.y;
+    temporalConstants.environmentSunColor[2] = environment.sunColor.z;
+    temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
     std::memcpy(m_mappedTemporalConstants[m_frameIndex], &temporalConstants, sizeof(temporalConstants));
     std::memcpy(m_mappedConstants[m_frameIndex], &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {

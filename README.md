@@ -48,6 +48,32 @@ The renderer now includes:
 - Cook–Torrance/GGX PBR-style direct/environment lighting, multi-frequency world-space terrain shading, slope/height-based grass/soil/rock blending, linear R16G16B16A16_FLOAT HDR, ACES tone mapping, thresholded bloom, depth-neighborhood contact-occlusion approximation, procedural sky and atmospheric fog. The AO and environment lighting are still approximations rather than production GTAO and prefiltered HDR image-based lighting.
 - A small sample house asset under `assets/models/` so the OBJ importer and texture path are exercised on startup. If `stone_house.glb` or `stone_house.gltf` is placed in that directory, the engine prefers it over the OBJ sample.
 
+## Game input actions
+
+The runtime exposes a platform-neutral action map above the low-level keyboard/mouse state. Bind multiple physical inputs to one named action; aggregate press/release edges remain correct when switching between alternate bindings.
+
+```cpp
+vanta::InputState input;
+vanta::InputActionMap actions;
+actions.BindKey("move_forward", 'W');
+actions.BindKey("move_forward", VK_UP);
+actions.BindKey("jump", VK_SPACE);
+actions.BindMouseButton("aim", 1);
+
+// Once per frame, after platform events have been polled:
+actions.Evaluate(input);
+if (actions.State("jump").pressed)
+{
+    // Start a jump.
+}
+if (actions.State("move_forward").down)
+{
+    // Apply movement for this simulation step.
+}
+```
+
+`InputState` also exposes per-frame vertical and horizontal mouse-wheel deltas in native Windows wheel units (120 per detent). `BeginFrame()` clears transient edges, motion, and wheel deltas while preserving held keys/buttons. Focus loss releases held inputs and clears motion deltas.
+
 ## Camera controls
 
 The camera is controllable while the VantaEngine window is focused:

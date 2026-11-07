@@ -95,6 +95,8 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedVertexBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndexBuffers;
+    std::array<UINT64, kFrameCount> m_submittedVertexBufferCapacities{};
+    std::array<UINT64, kFrameCount> m_submittedIndexBufferCapacities{};
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyDepthTextures;
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> m_historyColorRtvs{};

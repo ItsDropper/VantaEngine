@@ -4,6 +4,8 @@
 #include <charconv>
 #include <cmath>
 #include <fstream>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -271,17 +273,19 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
         }
         else if (tag == "mtllib")
         {
+            bool foundLibrary = false;
             std::string name;
             while (row >> name)
             {
                 if (!name.empty() && name.front() == '#')
                     break;
+                foundLibrary = true;
                 const auto library = path.parent_path() / std::filesystem::path(name);
                 if (std::find(model.materialLibraries.begin(), model.materialLibraries.end(), library) ==
                     model.materialLibraries.end())
                     model.materialLibraries.push_back(library);
             }
-            if (model.materialLibraries.empty())
+            if (!foundLibrary)
             {
                 error = "MTL library declaration is empty at line " + std::to_string(lineNumber);
                 return false;

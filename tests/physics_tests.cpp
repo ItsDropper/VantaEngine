@@ -92,7 +92,7 @@ bool triggerFilteringIsConsistent()
     if (!world.Raycast({0,0,0},{1,0,0},10,hit,1,false) || hit.collider != solid)
         return false;
     std::vector<vanta::ColliderHandle> overlaps;
-    return world.OverlapAabb(Box(-10,-10,-10,10,10,10),overlaps,1,false) &&
+    return world.OverlapAabb(Box(-10,-10,-10,10,10,10).bounds,overlaps,1,false) &&
            overlaps.size() == 1 && overlaps[0] == solid;
 }
 
@@ -117,7 +117,7 @@ bool invalidQueriesClearResults()
     const bool invalidSphere = !world.OverlapSphere({0,0,0},-1,overlaps);
     const bool clearedSphere = overlaps.empty();
     overlaps.resize(2);
-    const bool invalidBox = !world.OverlapAabb(Box(1,0,0,0,1,1),overlaps);
+    const bool invalidBox = !world.OverlapAabb(Box(1,0,0,0,1,1).bounds,overlaps);
     const bool clearedBox = overlaps.empty();
     RaycastHit hit{};
     const bool invalidRay = !world.Raycast({0,0,0},{0,0,0},10,hit);

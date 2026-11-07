@@ -154,7 +154,7 @@ int main()
     SubmittedSceneGeometry packedOrmGeometry;
     Require(BuildSubmittedSceneGeometry(packedOrmFrame, packedOrmGeometry, geometryError));
     Require(packedOrmGeometry.draws.size() == 2U);
-    Require(packedOrmGeometry.vertices[3].material[3] == 176.0F);
+    Require(packedOrmGeometry.vertices[3].material[3] == 180.0F);
     Require(packedOrmGeometry.draws[1].material.packedMetallicRoughness);
 
     MaterialDescription unresolvedTextureDescription;

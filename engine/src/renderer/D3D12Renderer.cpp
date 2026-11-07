@@ -1559,7 +1559,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     RenderInternal(elapsedSeconds, cameraX, cameraY, cameraZ, cameraYaw, cameraPitch, nullptr);
 }
 
-void D3D12Renderer::Render(const renderer::SceneFrame& submittedScene)
+bool D3D12Renderer::Render(const renderer::SceneFrame& submittedScene)
 {
     const float forwardX = submittedScene.view.view.At(2, 0);
     const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
@@ -1568,12 +1568,14 @@ void D3D12Renderer::Render(const renderer::SceneFrame& submittedScene)
         submittedScene.view.cameraPosition.x, submittedScene.view.cameraPosition.y,
         submittedScene.view.cameraPosition.z, std::atan2(forwardX, forwardZ),
         std::asin(forwardY), &submittedScene);
+    return m_lastFrameSucceeded;
 }
 
 void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                            float cameraYaw, float cameraPitch,
                            const renderer::SceneFrame* submittedScene)
 {
+    m_lastFrameSucceeded = false;
     if (m_failed || m_deviceLost) return;
     if (!WaitForFrame(m_frameIndex)) {
         m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());

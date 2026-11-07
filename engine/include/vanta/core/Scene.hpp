@@ -3,6 +3,7 @@
 #include "vanta/math/Math.hpp"
 
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <optional>
 #include <string>
@@ -71,7 +72,7 @@ public:
     // local transform; callers that need world-space preservation should calculate it.
     [[nodiscard]] bool SetParent(EntityHandle entity, EntityHandle parent = {}) noexcept;
     [[nodiscard]] EntityHandle GetParent(EntityHandle entity) const noexcept;
-    [[nodiscard]] std::optional<math::Mat4> GetWorldMatrix(EntityHandle entity) const noexcept;
+    [[nodiscard]] std::optional<math::Mat4> GetWorldMatrix(EntityHandle entity) const;
     [[nodiscard]] std::vector<SceneEntitySnapshot> CreateSnapshot() const;
 
 private:
@@ -87,9 +88,9 @@ private:
 
     [[nodiscard]] const Slot* Find(EntityHandle entity) const noexcept;
     [[nodiscard]] Slot* Find(EntityHandle entity) noexcept;
-    [[nodiscard]] std::optional<math::Mat4> BuildWorldMatrix(EntityHandle entity) const noexcept;
+    [[nodiscard]] std::optional<math::Mat4> BuildWorldMatrix(EntityHandle entity) const;
 
-    std::vector<Slot> m_slots;
+    std::deque<Slot> m_slots;
     std::size_t m_entityCount = 0;
 };
 } // namespace vanta

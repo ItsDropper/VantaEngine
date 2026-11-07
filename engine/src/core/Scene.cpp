@@ -221,7 +221,7 @@ EntityHandle Scene::GetParent(const EntityHandle entity) const noexcept
     return slot == nullptr ? EntityHandle{} : slot->parent;
 }
 
-std::optional<math::Mat4> Scene::BuildWorldMatrix(const EntityHandle entity) const noexcept
+std::optional<math::Mat4> Scene::BuildWorldMatrix(const EntityHandle entity) const
 {
     if (Find(entity) == nullptr)
         return std::nullopt;
@@ -243,7 +243,7 @@ std::optional<math::Mat4> Scene::BuildWorldMatrix(const EntityHandle entity) con
     return world;
 }
 
-std::optional<math::Mat4> Scene::GetWorldMatrix(const EntityHandle entity) const noexcept
+std::optional<math::Mat4> Scene::GetWorldMatrix(const EntityHandle entity) const
 {
     return BuildWorldMatrix(entity);
 }

@@ -78,10 +78,10 @@ int main()
     {
         std::ifstream input(path, std::ios::binary);
         std::string document((std::istreambuf_iterator<char>(input)), {});
-        const std::string scale = "\\"scale\\":[2,1,0.5]";
+                const std::string scale = "\"scale\":[2,1,0.5]";
         const auto scalePosition = document.find(scale);
         if (scalePosition != std::string::npos)
-            document.replace(scalePosition, scale.size(), "\\"scale\\":[0,1,1]");
+                        document.replace(scalePosition, scale.size(), "\"scale\":[0,1,1]");
         std::ofstream output(singularPath, std::ios::binary);
         output << document;
     }

@@ -455,6 +455,104 @@ std::vector<std::uint8_t> ResampleTexture(const assets::CpuTexture& source, UINT
 }
 } // namespace
 
+bool D3D12Renderer::PrepareSubmittedMaterialTextures(
+    const renderer::SubmittedSceneGeometry& geometry, std::string& error)
+{
+    if (geometry.draws.empty()) {
+        m_submittedMaterialCacheKey.clear();
+        m_submittedMaterialLayerCount = 0U;
+        error.clear();
+        return true;
+    }
+    if (geometry.draws.size() > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) {
+        error = "Submitted scene exceeds the Direct3D 12 material texture-array layer limit.";
+        return false;
+    }
+
+    const std::array<std::array<std::uint8_t, 4>, 5> neutralPixels = {{
+        {{255U, 255U, 255U, 255U}},
+        {{128U, 128U, 255U, 255U}},
+        {{255U, 255U, 255U, 255U}},
+        {{255U, 255U, 255U, 255U}},
+        {{255U, 255U, 255U, 255U}}
+    }};
+    std::array<bool, 5> usedSlots{};
+    std::string cacheKey = std::to_string(geometry.draws.size());
+    for (const renderer::SubmittedDrawRange& draw : geometry.draws) {
+        const std::array<std::filesystem::path, 5> paths = {
+            draw.material.baseColorTexture,
+            draw.material.normalTexture,
+            draw.material.roughnessTexture,
+            draw.material.metallicTexture,
+            draw.material.ambientOcclusionTexture
+        };
+        for (std::size_t slot = 0; slot < paths.size(); ++slot) {
+            cacheKey.push_back('|');
+            cacheKey += paths[slot].generic_string();
+            usedSlots[slot] = usedSlots[slot] || !paths[slot].empty();
+        }
+    }
+    if (cacheKey == m_submittedMaterialCacheKey &&
+        m_submittedMaterialLayerCount == geometry.draws.size()) {
+        error.clear();
+        return true;
+    }
+
+    for (UINT slot = 0; slot < usedSlots.size(); ++slot) {
+        if (!usedSlots[slot])
+            continue;
+        std::vector<assets::CpuTexture> materialMaps;
+        materialMaps.reserve(geometry.draws.size());
+        UINT textureResolution = 1U;
+        for (const renderer::SubmittedDrawRange& draw : geometry.draws) {
+            const std::array<std::filesystem::path, 5> paths = {
+                draw.material.baseColorTexture,
+                draw.material.normalTexture,
+                draw.material.roughnessTexture,
+                draw.material.metallicTexture,
+                draw.material.ambientOcclusionTexture
+            };
+            assets::CpuTexture texture;
+            texture.width = 1U;
+            texture.height = 1U;
+            texture.rgba.assign(neutralPixels[slot].begin(), neutralPixels[slot].end());
+            if (!paths[slot].empty()) {
+                if (!assets::LoadWicTexture(paths[slot], texture) ||
+                    texture.width == 0U || texture.height == 0U ||
+                    texture.rgba.size() < static_cast<std::size_t>(texture.width) *
+                        texture.height * 4U) {
+                    error = "Could not decode submitted material texture: " + paths[slot].string();
+                    return false;
+                }
+                textureResolution = std::max(textureResolution,
+                    std::max(texture.width, texture.height));
+            }
+            materialMaps.push_back(std::move(texture));
+        }
+        textureResolution = std::clamp(textureResolution, 1U, 2048U);
+        const std::size_t layerBytes = static_cast<std::size_t>(textureResolution) *
+            textureResolution * 4U;
+        std::vector<std::uint8_t> textureLayers;
+        textureLayers.reserve(layerBytes * materialMaps.size());
+        for (const assets::CpuTexture& texture : materialMaps) {
+            const auto pixels = ResampleTexture(texture, textureResolution,
+                textureResolution, slot == 0U);
+            textureLayers.insert(textureLayers.end(), pixels.begin(), pixels.end());
+        }
+        if (!CreateModelTextureArray(textureResolution, textureResolution,
+                static_cast<UINT>(materialMaps.size()), textureLayers,
+                kSubmittedMaterialBaseSrvIndex + slot, slot == 0U)) {
+            error = "Could not upload a submitted material texture array to Direct3D 12.";
+            return false;
+        }
+    }
+
+    m_submittedMaterialCacheKey = std::move(cacheKey);
+    m_submittedMaterialLayerCount = static_cast<UINT>(geometry.draws.size());
+    error.clear();
+    return true;
+}
+
 D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
@@ -1591,6 +1689,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+            LogError(geometryError.c_str());
+            return;
+        }
+        if (!PrepareSubmittedMaterialTextures(submittedGeometry, geometryError)) {
             LogError(geometryError.c_str());
             return;
         }

@@ -121,9 +121,24 @@ int main()
     Require(std::abs(normalGeometry.vertices[0].normal[0] - 0.4472136F) < 0.0001F);
     Require(std::abs(normalGeometry.vertices[0].normal[1] - 0.8944272F) < 0.0001F);
 
-    const MaterialHandle invalidTextureMaterial = scene.CreateMaterial(
-        MaterialDescription{{1.0F, 1.0F, 1.0F}, 0.5F, 0.0F, "albedo.png"});
-    Require(!invalidTextureMaterial.IsValid());
+    SceneSubmission texturedScene;
+    const MeshHandle texturedMesh = texturedScene.CreateMesh(Triangle());
+    MaterialDescription texturedDescription;
+    texturedDescription.baseColorTexture = "albedo.png";
+    texturedDescription.normalTexture = "normal.png";
+    texturedDescription.roughnessTexture = "roughness.png";
+    texturedDescription.metallicTexture = "metallic.png";
+    texturedDescription.ambientOcclusionTexture = "ao.png";
+    const MaterialHandle texturedMaterial = texturedScene.CreateMaterial(texturedDescription);
+    Require(texturedMaterial.IsValid());
+    Require(texturedScene.CreateInstance(texturedMesh, texturedMaterial, math::Mat4::Identity()).IsValid());
+    const SceneFrame texturedFrame = texturedScene.BuildFrame(view);
+    SubmittedSceneGeometry texturedGeometry;
+    Require(BuildSubmittedSceneGeometry(texturedFrame, texturedGeometry, geometryError));
+    Require(texturedGeometry.draws.size() == 1U);
+    Require(texturedGeometry.draws[0].material.normalTexture == "normal.png");
+    Require(texturedGeometry.vertices[0].color[3] == 0.0F);
+    Require(texturedGeometry.vertices[0].material[3] == 159.0F);
 
     const MaterialHandle invalidMaterial = scene.CreateMaterial(
         MaterialDescription{{1.0F, 1.0F, 1.0F}, 2.0F, 0.0F});

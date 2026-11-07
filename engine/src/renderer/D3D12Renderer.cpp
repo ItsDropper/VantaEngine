@@ -1588,8 +1588,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const bool hasSubmittedScene = submittedScene != nullptr;
     D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
     D3D12_INDEX_BUFFER_VIEW submittedIndexView{};
-    m_submittedVertexBuffers[m_frameIndex].Reset();
-    m_submittedIndexBuffers[m_frameIndex].Reset();
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
@@ -1605,23 +1603,36 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 return;
             }
             const auto createUploadBuffer = [this](const UINT64 byteCount,
-                Microsoft::WRL::ComPtr<ID3D12Resource>& resource, const void* source) {
-                D3D12_HEAP_PROPERTIES heap{};
-                heap.Type = D3D12_HEAP_TYPE_UPLOAD;
-                heap.CreationNodeMask = 1;
-                heap.VisibleNodeMask = 1;
-                D3D12_RESOURCE_DESC description{};
-                description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-                description.Width = byteCount;
-                description.Height = 1;
-                description.DepthOrArraySize = 1;
-                description.MipLevels = 1;
-                description.SampleDesc.Count = 1;
-                description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-                if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-                    &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                    IID_PPV_ARGS(resource.GetAddressOf()))))
-                    return false;
+                Microsoft::WRL::ComPtr<ID3D12Resource>& resource, UINT64& capacity,
+                const void* source) {
+                if (resource.Get() == nullptr || capacity < byteCount) {
+                    UINT64 newCapacity = capacity == 0U ? 65536U : capacity;
+                    while (newCapacity < byteCount && newCapacity <= UINT_MAX / 2U)
+                        newCapacity *= 2U;
+                    if (newCapacity < byteCount || newCapacity > UINT_MAX)
+                        newCapacity = byteCount;
+
+                    resource.Reset();
+                    capacity = 0U;
+                    D3D12_HEAP_PROPERTIES heap{};
+                    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+                    heap.CreationNodeMask = 1;
+                    heap.VisibleNodeMask = 1;
+                    D3D12_RESOURCE_DESC description{};
+                    description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+                    description.Width = newCapacity;
+                    description.Height = 1;
+                    description.DepthOrArraySize = 1;
+                    description.MipLevels = 1;
+                    description.SampleDesc.Count = 1;
+                    description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+                    if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+                        &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                        IID_PPV_ARGS(resource.GetAddressOf()))))
+                        return false;
+                    capacity = newCapacity;
+                }
+
                 void* mapped = nullptr;
                 const D3D12_RANGE readRange{0, 0};
                 if (FAILED(resource->Map(0, &readRange, &mapped)))
@@ -1632,9 +1643,11 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 return true;
             };
             if (!createUploadBuffer(static_cast<UINT64>(vertexBytes),
-                    m_submittedVertexBuffers[m_frameIndex], submittedGeometry.vertices.data()) ||
+                    m_submittedVertexBuffers[m_frameIndex],
+                    m_submittedVertexBufferCapacities[m_frameIndex], submittedGeometry.vertices.data()) ||
                 !createUploadBuffer(static_cast<UINT64>(indexBytes),
-                    m_submittedIndexBuffers[m_frameIndex], submittedGeometry.indices.data())) {
+                    m_submittedIndexBuffers[m_frameIndex],
+                    m_submittedIndexBufferCapacities[m_frameIndex], submittedGeometry.indices.data())) {
                 LogError("Direct3D 12: submitted scene upload buffer creation or mapping failed.");
                 return;
             }

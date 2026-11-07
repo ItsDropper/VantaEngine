@@ -50,6 +50,7 @@ public:
     [[nodiscard]] ColliderHandle AddCollider(const ColliderDescription& description);
     [[nodiscard]] bool UpdateCollider(ColliderHandle handle, const ColliderDescription& description) noexcept;
     [[nodiscard]] bool RemoveCollider(ColliderHandle handle) noexcept;
+    void Clear() noexcept;
     [[nodiscard]] bool Contains(ColliderHandle handle) const noexcept;
     [[nodiscard]] std::size_t ColliderCount() const noexcept { return m_colliderCount; }
 

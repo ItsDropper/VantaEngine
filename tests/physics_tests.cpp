@@ -161,6 +161,20 @@ bool failedRaycastClearsPreviousHit()
     return missed && !hit.collider.IsValid();
 }
 
+
+bool clearInvalidatesAllCollidersAndAllowsReuse()
+{
+    PhysicsWorld world;
+    const auto first=world.AddCollider(Box(0,0,0,1,1,1));
+    const auto second=world.AddCollider(Box(2,2,2,3,3,3));
+    if(!first.IsValid()||!second.IsValid())return false;
+    world.Clear();
+    if(world.ColliderCount()!=0||world.Contains(first)||world.Contains(second))return false;
+    const auto replacement=world.AddCollider(Box(-1,-1,-1,0,0,0));
+    return replacement.IsValid()&&replacement.index==first.index&&
+           replacement.generation!=first.generation&&world.ColliderCount()==1;
+}
+
 constexpr std::array kCases{
     TestCase{"collider lifecycle invalidates stale handles",addUpdateRemoveAndStaleHandles},
     TestCase{"invalid collider descriptions are rejected",rejectsInvalidColliderDescriptions},
@@ -173,6 +187,7 @@ constexpr std::array kCases{
     TestCase{"vertical capsule overlap uses segment distance",verticalCapsuleOverlapUsesSegmentDistance},
     TestCase{"vertical capsule rejects invalid dimensions",capsuleRejectsInvalidDimensions},
     TestCase{"failed raycast clears stale hit data",failedRaycastClearsPreviousHit},
+    TestCase{"clear invalidates colliders and supports reuse",clearInvalidatesAllCollidersAndAllowsReuse},
 };
 }
 

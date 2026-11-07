@@ -171,6 +171,21 @@ bool snapshotTraversesDeepHierarchyWithoutLosingTransforms()
            Near(found->worldMatrix.At(0,3),static_cast<float>(depth))&&found->active;
 }
 
+
+bool clearInvalidatesAllEntitiesAndAllowsReuse()
+{
+    Scene scene;
+    const auto first=scene.CreateEntity("first");
+    const auto second=scene.CreateEntity("second");
+    if(!scene.SetParent(second,first))return false;
+    scene.Clear();
+    if(scene.EntityCount()!=0||scene.IsAlive(first)||scene.IsAlive(second)||
+       scene.GetWorldMatrix(first).has_value())return false;
+    const auto replacement=scene.CreateEntity("replacement");
+    return replacement.IsValid()&&replacement.index==first.index&&
+           replacement.generation!=first.generation&&scene.EntityCount()==1;
+}
+
 constexpr std::array kCases{
     TestCase{"TRS transform composition",transformComposesTranslationRotationAndScale},
     TestCase{"transform rejects invalid values",transformRejectsInvalidValues},
@@ -182,7 +197,8 @@ constexpr std::array kCases{
     TestCase{"destroying parent detaches children",destroyingParentDetachesChildren},
     TestCase{"active state inherits through hierarchy",activeStateInheritsThroughHierarchy},
     TestCase{"snapshots own names matrices and active state",snapshotsOwnNamesMatricesAndActiveState},
-    TestCase{"snapshot traverses deep hierarchies correctly",snapshotTraversesDeepHierarchyWithoutLosingTransforms}
+    TestCase{"snapshot traverses deep hierarchies correctly",snapshotTraversesDeepHierarchyWithoutLosingTransforms},
+    TestCase{"clear invalidates entities and supports reuse",clearInvalidatesAllEntitiesAndAllowsReuse}
 };
 }
 

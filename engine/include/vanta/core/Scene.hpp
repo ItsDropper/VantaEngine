@@ -59,6 +59,7 @@ class Scene final
 public:
     [[nodiscard]] EntityHandle CreateEntity(std::string name = {});
     [[nodiscard]] bool DestroyEntity(EntityHandle entity) noexcept;
+    void Clear() noexcept;
     [[nodiscard]] bool IsAlive(EntityHandle entity) const noexcept;
     [[nodiscard]] std::size_t EntityCount() const noexcept { return m_entityCount; }
 

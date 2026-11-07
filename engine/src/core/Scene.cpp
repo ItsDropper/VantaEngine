@@ -127,6 +127,25 @@ bool Scene::DestroyEntity(const EntityHandle entity) noexcept
     return true;
 }
 
+
+void Scene::Clear() noexcept
+{
+    for (Slot& slot : m_slots)
+    {
+        if (!slot.occupied)
+            continue;
+        slot.occupied = false;
+        slot.active = false;
+        slot.parent = {};
+        slot.name.clear();
+        slot.transform = {};
+        ++slot.generation;
+        if (slot.generation == 0U)
+            slot.generation = 1U;
+    }
+    m_entityCount = 0;
+}
+
 bool Scene::IsAlive(const EntityHandle entity) const noexcept
 {
     return Find(entity) != nullptr;

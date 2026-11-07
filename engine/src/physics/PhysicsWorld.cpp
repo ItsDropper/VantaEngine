@@ -113,6 +113,22 @@ bool PhysicsWorld::RemoveCollider(const ColliderHandle handle) noexcept
     return true;
 }
 
+
+void PhysicsWorld::Clear() noexcept
+{
+    for (Slot& slot : m_slots)
+    {
+        if (!slot.occupied)
+            continue;
+        slot.occupied = false;
+        slot.description = {};
+        ++slot.generation;
+        if (slot.generation == 0U)
+            slot.generation = 1U;
+    }
+    m_colliderCount = 0;
+}
+
 bool PhysicsWorld::Contains(const ColliderHandle handle) const noexcept
 {
     return Find(handle) != nullptr;

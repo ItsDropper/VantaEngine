@@ -901,7 +901,7 @@ bool D3D11Renderer::CreatePipeline()
 
     // Merge the road, stream, timber buildings, dense trees, shrubs, rocks,
     // grass, fencing, logs and utility poles into one static environment mesh.
-    std::vector<renderer::WorldVertex> generatedWorldVertices;
+    std::vector<world::WorldVertex> generatedWorldVertices;
     std::vector<unsigned int> forestIndices;
     world::BuildDetailedWorld(generatedWorldVertices, forestIndices);
 
@@ -991,7 +991,7 @@ bool D3D11Renderer::CreatePipeline()
 
     std::vector<Vertex> forestVertices;
     forestVertices.reserve(generatedWorldVertices.size());
-    for (const renderer::WorldVertex& source : generatedWorldVertices) {
+    for (const world::WorldVertex& source : generatedWorldVertices) {
         forestVertices.push_back({{source.position[0],source.position[1],source.position[2]},
             {source.normal[0],source.normal[1],source.normal[2]},
             {source.color[0],source.color[1],source.color[2],source.color[3]},

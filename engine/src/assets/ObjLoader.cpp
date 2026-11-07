@@ -1,4 +1,4 @@
-#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/assets/ObjLoader.hpp"
 
 #include <fstream>
 #include <charconv>
@@ -11,7 +11,7 @@
 #include <vector>
 #include <utility>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 namespace
 {
@@ -225,4 +225,4 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
     error.clear();
     return true;
 }
-} // namespace vanta::renderer
+} // namespace vanta::assets

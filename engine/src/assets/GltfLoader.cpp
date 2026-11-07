@@ -1,4 +1,4 @@
-#include "vanta/renderer/GltfLoader.hpp"
+#include "vanta/assets/GltfLoader.hpp"
 
 #define CGLTF_IMPLEMENTATION
 #include "../../third_party/cgltf.h"
@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 namespace
 {
@@ -397,4 +397,4 @@ bool LoadGltf(const std::filesystem::path& path, CpuModel& output, std::string& 
     error.clear();
     return true;
 }
-} // namespace vanta::renderer
+} // namespace vanta::assets

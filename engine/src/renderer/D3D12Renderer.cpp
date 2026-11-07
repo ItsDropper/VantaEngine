@@ -2,9 +2,9 @@
 
 #include "vanta/core/Log.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
-#include "vanta/renderer/GltfLoader.hpp"
-#include "vanta/renderer/ObjLoader.hpp"
-#include "vanta/renderer/WicTextureLoader.hpp"
+#include "vanta/assets/GltfLoader.hpp"
+#include "vanta/assets/ObjLoader.hpp"
+#include "vanta/assets/WicTextureLoader.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -414,7 +414,7 @@ bool CreateDefaultUavBuffer(ID3D12Device* device, UINT64 size, D3D12_RESOURCE_ST
         initialState, nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
 }
 
-std::vector<std::uint8_t> ResampleTexture(const renderer::CpuTexture& source, UINT width, UINT height, bool srgb)
+std::vector<std::uint8_t> ResampleTexture(const assets::CpuTexture& source, UINT width, UINT height, bool srgb)
 {
     std::vector<std::uint8_t> result(static_cast<std::size_t>(width) * height * 4U);
     const auto toLinear = [](float c) {
@@ -660,15 +660,15 @@ bool D3D12Renderer::CreateSceneGeometry()
     const std::array<std::filesystem::path, 3> modelCandidates = {
         modelDirectory / "stone_house.glb", modelDirectory / "stone_house.gltf", modelDirectory / "stone_house.obj"
     };
-    renderer::CpuModel model;
+    assets::CpuModel model;
     std::string importError;
     bool modelLoaded = false;
     for (const auto& path : modelCandidates) {
         if (!std::filesystem::exists(path)) continue;
         const std::string extension = path.extension().string();
         const bool loaded = (extension == ".glb" || extension == ".gltf")
-            ? renderer::LoadGltf(path, model, importError)
-            : renderer::LoadWavefrontObj(path, model, importError);
+            ? assets::LoadGltf(path, model, importError)
+            : assets::LoadWavefrontObj(path, model, importError);
         if (loaded) {
             modelLoaded = true;
             break;
@@ -701,14 +701,14 @@ bool D3D12Renderer::CreateSceneGeometry()
     }
     m_modelMaterialLayerCount = static_cast<UINT>(materialCount);
     UINT materialTextureResolution = 1U;
-    const std::array<renderer::CpuTexture, 5> neutralTextures = {{
+    const std::array<assets::CpuTexture, 5> neutralTextures = {{
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {128, 128, 255, 255}},
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {0, 0, 0, 255}},
         {1, 1, {255, 255, 255, 255}}
     }};
-    std::array<std::vector<renderer::CpuTexture>, 5> materialMaps;
+    std::array<std::vector<assets::CpuTexture>, 5> materialMaps;
     std::array<std::vector<bool>, 5> materialMapPresent;
     std::vector<std::array<std::filesystem::path, 5>> materialPaths(materialCount);
     std::vector<UINT> materialTextureFlags(materialCount, 0U);
@@ -727,8 +727,8 @@ bool D3D12Renderer::CreateSceneGeometry()
         for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
             const auto& path = materialPaths[materialIndex][slot];
             if (path.empty() || !std::filesystem::exists(path)) continue;
-            renderer::CpuTexture loadedTexture;
-            if (renderer::LoadWicTexture(path, loadedTexture) &&
+            assets::CpuTexture loadedTexture;
+            if (assets::LoadWicTexture(path, loadedTexture) &&
                 loadedTexture.width > 0 && loadedTexture.height > 0 &&
                 loadedTexture.rgba.size() >= static_cast<std::size_t>(loadedTexture.width) * loadedTexture.height * 4U) {
                 materialMaps[slot][materialIndex] = std::move(loadedTexture);

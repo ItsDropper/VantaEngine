@@ -1,4 +1,4 @@
-#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/assets/ObjLoader.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -48,9 +48,9 @@ int main()
                 "f 1/1 2/2 3/3 4/4\n";
     }
 
-    vanta::renderer::CpuModel model;
+    vanta::assets::CpuModel model;
     std::string error;
-    Check(vanta::renderer::LoadWavefrontObj(path, model, error), "loads a Wavefront OBJ quad");
+    Check(vanta::assets::LoadWavefrontObj(path, model, error), "loads a Wavefront OBJ quad");
     Check(model.vertices.size() == 6 && model.indices.size() == 6, "triangulates a quad into two triangles");
     Check(model.vertices.size() >= 3 && std::abs(model.vertices[0].normal.z - 1.0F) < 0.001F,
         "generates a face normal when OBJ normals are absent");
@@ -76,7 +76,7 @@ int main()
         std::ofstream file(invalidPath);
         file << "v 0 0 0\nf 1 2 3\n";
     }
-    Check(!vanta::renderer::LoadWavefrontObj(invalidPath, model, error),
+    Check(!vanta::assets::LoadWavefrontObj(invalidPath, model, error),
         "rejects face indices outside the vertex array");
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
@@ -87,13 +87,13 @@ int main()
         std::ofstream file(malformedIndexPath);
         file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1junk 2 3\n";
     }
-    Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
+    Check(!vanta::assets::LoadWavefrontObj(malformedIndexPath, model, error),
         "rejects partially numeric face indices");
     {
         std::ofstream file(malformedIndexPath, std::ios::trunc);
         file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1/1/1/1 2 3\n";
     }
-    Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
+    Check(!vanta::assets::LoadWavefrontObj(malformedIndexPath, model, error),
         "rejects face indices with excess slash components");
     std::filesystem::remove(malformedIndexPath);
 
@@ -102,7 +102,7 @@ int main()
         std::ofstream file(negativeIndexPath);
         file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf -3//1 -2//1 -1//1\n";
     }
-    Check(vanta::renderer::LoadWavefrontObj(negativeIndexPath, model, error) &&
+    Check(vanta::assets::LoadWavefrontObj(negativeIndexPath, model, error) &&
           model.indices.size() == 3 && std::abs(model.vertices[0].normal.z - 1.0F) < 0.001F,
         "supports negative OBJ indices and omitted texture-coordinate fields");
     std::filesystem::remove(negativeIndexPath);

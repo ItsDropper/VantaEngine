@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <vector>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 struct CpuTexture
 {
@@ -16,4 +16,4 @@ struct CpuTexture
 };
 
 [[nodiscard]] bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output);
-} // namespace vanta::renderer
+} // namespace vanta::assets

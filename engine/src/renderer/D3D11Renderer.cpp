@@ -2,10 +2,10 @@
 
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
-#include "vanta/renderer/ObjLoader.hpp"
-#include "vanta/renderer/GltfLoader.hpp"
+#include "vanta/assets/ObjLoader.hpp"
+#include "vanta/assets/GltfLoader.hpp"
 #include "vanta/renderer/ProceduralWorld.hpp"
-#include "vanta/renderer/WicTextureLoader.hpp"
+#include "vanta/assets/WicTextureLoader.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <limits>
@@ -768,12 +768,12 @@ bool D3D11Renderer::CreatePipeline()
     const std::filesystem::path objPath = modelDirectory / "stone_house.obj";
     const std::filesystem::path modelPath = std::filesystem::exists(glbPath) ? glbPath
         : (std::filesystem::exists(gltfPath) ? gltfPath : objPath);
-    renderer::CpuModel model;
+    assets::CpuModel model;
     std::string importError;
     const std::string extension = modelPath.extension().string();
     const bool loadedModel = (extension == ".glb" || extension == ".gltf")
-        ? renderer::LoadGltf(modelPath, model, importError)
-        : renderer::LoadWavefrontObj(modelPath, model, importError);
+        ? assets::LoadGltf(modelPath, model, importError)
+        : assets::LoadWavefrontObj(modelPath, model, importError);
     if (!loadedModel) {
         LogError(importError.c_str());
         return false;
@@ -1015,7 +1015,7 @@ bool D3D11Renderer::CreatePipeline()
 
     // Upload each material texture with a complete GPU-generated mip chain.
     // This prevents distant surfaces from shimmering and reduces texture aliasing.
-    const auto uploadMipmappedTexture = [&](const renderer::CpuTexture& image, DXGI_FORMAT format,
+    const auto uploadMipmappedTexture = [&](const assets::CpuTexture& image, DXGI_FORMAT format,
                                              Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
                                              const char* label) -> bool {
         if (image.width == 0 || image.height == 0 || image.rgba.size() !=
@@ -1058,8 +1058,8 @@ bool D3D11Renderer::CreatePipeline()
                                                 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination,
                                                 const char* label) -> bool {
         if (path.empty()) return true;
-        renderer::CpuTexture map;
-        if (!renderer::LoadWicTexture(path, map)) {
+        assets::CpuTexture map;
+        if (!assets::LoadWicTexture(path, map)) {
             LogError((std::string("Could not load material ") + label + " map: " + path.string()).c_str());
             return false;
         }
@@ -1080,8 +1080,8 @@ bool D3D11Renderer::CreatePipeline()
         material.metallicFactor = std::clamp(source.metallic, 0.0F, 1.0F);
 
         if (!source.diffuseTexture.empty()) {
-            renderer::CpuTexture diffuse;
-            if (!renderer::LoadWicTexture(source.diffuseTexture, diffuse) ||
+            assets::CpuTexture diffuse;
+            if (!assets::LoadWicTexture(source.diffuseTexture, diffuse) ||
                 !uploadMipmappedTexture(diffuse, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
                     material.diffuse, "base-color")) {
                 LogError((std::string("Could not load base-color texture: ") + source.diffuseTexture.string()).c_str());
@@ -1106,7 +1106,7 @@ bool D3D11Renderer::CreatePipeline()
     // and weathered timber are sampled in world space for the merged environment mesh.
     const auto makeProceduralAlbedo = [](const int kind) {
         constexpr UINT size = 256;
-        renderer::CpuTexture texture;
+        assets::CpuTexture texture;
         texture.width = size;
         texture.height = size;
         texture.rgba.resize(static_cast<std::size_t>(size) * size * 4U);
@@ -1147,9 +1147,9 @@ bool D3D11Renderer::CreatePipeline()
         }
         return texture;
     };
-    const renderer::CpuTexture grassTile = makeProceduralAlbedo(0);
-    const renderer::CpuTexture rockTile = makeProceduralAlbedo(1);
-    const renderer::CpuTexture woodTile = makeProceduralAlbedo(2);
+    const assets::CpuTexture grassTile = makeProceduralAlbedo(0);
+    const assets::CpuTexture rockTile = makeProceduralAlbedo(1);
+    const assets::CpuTexture woodTile = makeProceduralAlbedo(2);
     if (!uploadMipmappedTexture(grassTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_grassAlbedoTexture, "procedural grass") ||
         !uploadMipmappedTexture(rockTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_rockAlbedoTexture, "procedural rock") ||
         !uploadMipmappedTexture(woodTile, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, m_woodAlbedoTexture, "procedural wood")) {

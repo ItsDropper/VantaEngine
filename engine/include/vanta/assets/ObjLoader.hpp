@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 struct ModelVertex
 {
@@ -54,4 +54,4 @@ struct CpuModel
 };
 
 [[nodiscard]] bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::string& error);
-} // namespace vanta::renderer
+} // namespace vanta::assets

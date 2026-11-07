@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vanta/renderer/ObjLoader.hpp"
+#include "vanta/assets/ObjLoader.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +10,7 @@
 #include <map>
 #include <string>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 struct ModelHandle
 {
@@ -59,4 +59,4 @@ private:
     std::map<std::wstring, ModelHandle> m_pathCache;
     std::size_t m_loadedCount = 0;
 };
-} // namespace vanta::renderer
+} // namespace vanta::assets

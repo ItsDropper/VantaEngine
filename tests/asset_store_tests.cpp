@@ -1,4 +1,4 @@
-#include "vanta/renderer/ModelAssetStore.hpp"
+#include "vanta/assets/ModelAssetStore.hpp"
 
 #include <array>
 #include <filesystem>
@@ -9,7 +9,7 @@
 
 namespace
 {
-using namespace vanta::renderer;
+using namespace vanta::assets;
 struct TestCase{std::string_view name;bool(*run)();};
 const auto kDirectory=std::filesystem::temp_directory_path()/"vanta_asset_store_tests";
 const auto kModelPath=kDirectory/"simple.obj";

@@ -1,4 +1,4 @@
-#include "vanta/renderer/GltfLoader.hpp"
+#include "vanta/assets/GltfLoader.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -47,9 +47,9 @@ int main()
 })GLTF";
     }
 
-    vanta::renderer::CpuModel model;
+    vanta::assets::CpuModel model;
     std::string error;
-    const bool loaded = vanta::renderer::LoadGltf(path, model, error);
+    const bool loaded = vanta::assets::LoadGltf(path, model, error);
     Check(loaded, "loads a glTF 2.0 scene with an embedded geometry buffer");
     if (!loaded) std::cerr << error << '\n';
     Check(model.vertices.size() == 3 && model.indices.size() == 3,
@@ -85,7 +85,7 @@ int main()
         std::ofstream output(singularPath, std::ios::binary);
         output << document;
     }
-    Check(!vanta::renderer::LoadGltf(singularPath, model, error),
+    Check(!vanta::assets::LoadGltf(singularPath, model, error),
         "rejects singular node transforms when imported normals cannot be transformed");
     std::filesystem::remove(singularPath);
 
@@ -100,7 +100,7 @@ int main()
         std::ofstream output(mirroredPath, std::ios::binary);
         output << document;
     }
-    Check(vanta::renderer::LoadGltf(mirroredPath, model, error) &&
+    Check(vanta::assets::LoadGltf(mirroredPath, model, error) &&
           model.indices.size() == 3 && model.indices[0] == 0 &&
           model.indices[1] == 2 && model.indices[2] == 1 &&
           std::abs(model.vertices[0].normal.x + 0.4472136F) < 0.001F &&
@@ -119,7 +119,7 @@ int main()
         std::ofstream output(malformedUriPath, std::ios::binary);
         output << document;
     }
-    Check(!vanta::renderer::LoadGltf(malformedUriPath, model, error),
+    Check(!vanta::assets::LoadGltf(malformedUriPath, model, error),
         "rejects malformed percent-encoded external texture URIs");
     std::filesystem::remove(malformedUriPath);
 

@@ -12,13 +12,14 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/D3D12Pipelines.cpp
     src/renderer/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
-    src/renderer/ObjLoader.cpp
-    src/renderer/ModelAssetStore.cpp
-    src/renderer/GltfLoader.cpp
-    src/renderer/WicTextureLoader.cpp
+    src/assets/ObjLoader.cpp
+    src/assets/ModelAssetStore.cpp
+    src/assets/GltfLoader.cpp
+    src/assets/WicTextureLoader.cpp
 )
 
 add_library(VantaEngineRuntime STATIC ${VANTA_RUNTIME_SOURCES})
+# Model import, CPU asset validation/cache and image decoding are backend-independent asset services.
 add_library(VantaEngine::Runtime ALIAS VantaEngineRuntime)
 
 target_compile_features(VantaEngineRuntime PUBLIC cxx_std_23)

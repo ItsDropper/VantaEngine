@@ -1,4 +1,4 @@
-#include "vanta/renderer/WicTextureLoader.hpp"
+#include "vanta/assets/WicTextureLoader.hpp"
 
 #include "vanta/core/Log.hpp"
 
@@ -8,7 +8,7 @@
 #include <limits>
 #include <utility>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
 {
@@ -60,4 +60,4 @@ bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
     if (!success) LogError(("Could not decode texture: " + path.string()).c_str());
     return success;
 }
-} // namespace vanta::renderer
+} // namespace vanta::assets

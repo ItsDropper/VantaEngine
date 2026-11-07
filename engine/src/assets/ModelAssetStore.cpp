@@ -1,6 +1,6 @@
-#include "vanta/renderer/ModelAssetStore.hpp"
+#include "vanta/assets/ModelAssetStore.hpp"
 
-#include "vanta/renderer/GltfLoader.hpp"
+#include "vanta/assets/GltfLoader.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace vanta::renderer
+namespace vanta::assets
 {
 namespace
 {
@@ -272,4 +272,4 @@ const std::filesystem::path* ModelAssetStore::GetSourcePath(const ModelHandle ha
     const Slot* slot = Find(handle);
     return slot == nullptr ? nullptr : &slot->sourcePath;
 }
-} // namespace vanta::renderer
+} // namespace vanta::assets

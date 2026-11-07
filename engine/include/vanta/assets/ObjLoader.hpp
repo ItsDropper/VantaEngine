@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -17,9 +18,20 @@ struct ModelVertex
     float v = 0.0F;
 };
 
+struct CpuEmbeddedImage
+{
+    std::vector<std::uint8_t> encodedBytes;
+    std::string mimeType;
+};
+
 struct CpuMaterial
 {
     std::string name;
+    std::shared_ptr<const CpuEmbeddedImage> embeddedDiffuseTexture;
+    std::shared_ptr<const CpuEmbeddedImage> embeddedNormalTexture;
+    std::shared_ptr<const CpuEmbeddedImage> embeddedRoughnessTexture;
+    std::shared_ptr<const CpuEmbeddedImage> embeddedMetallicTexture;
+    std::shared_ptr<const CpuEmbeddedImage> embeddedAmbientOcclusionTexture;
     std::filesystem::path diffuseTexture;
     std::filesystem::path normalTexture;
     std::filesystem::path roughnessTexture;

@@ -53,15 +53,6 @@ bool BuildSubmittedSceneGeometry(
             error = "Scene frame contains a draw with a missing mesh or material.";
             return false;
         }
-        if (!draw.material->description.baseColorTexture.empty() ||
-            !draw.material->description.normalTexture.empty() ||
-            !draw.material->description.roughnessTexture.empty() ||
-            !draw.material->description.metallicTexture.empty() ||
-            !draw.material->description.ambientOcclusionTexture.empty())
-        {
-            error = "Submitted material texture paths are not supported by the current GPU submission path.";
-            return false;
-        }
         if (draw.mesh->vertices.empty() || draw.mesh->indices.empty() ||
             draw.mesh->indices.size() % 3U != 0U)
         {
@@ -90,6 +81,14 @@ bool BuildSubmittedSceneGeometry(
         range.firstIndex = static_cast<std::uint32_t>(output.indices.size());
         range.indexCount = static_cast<std::uint32_t>(draw.mesh->indices.size());
         range.material = draw.material->description;
+        const std::uint32_t materialLayer = static_cast<std::uint32_t>(output.draws.size());
+        std::uint32_t materialFlags = 0U;
+        if (!range.material.baseColorTexture.empty()) materialFlags |= 1U;
+        if (!range.material.normalTexture.empty()) materialFlags |= 2U;
+        if (!range.material.roughnessTexture.empty()) materialFlags |= 4U;
+        if (!range.material.metallicTexture.empty()) materialFlags |= 8U;
+        if (!range.material.ambientOcclusionTexture.empty()) materialFlags |= 16U;
+        if (materialFlags != 0U) materialFlags |= 128U;
 
         for (const assets::ModelVertex& source : draw.mesh->vertices)
         {
@@ -123,13 +122,13 @@ bool BuildSubmittedSceneGeometry(
             vertex.color[0] = range.material.baseColor.x;
             vertex.color[1] = range.material.baseColor.y;
             vertex.color[2] = range.material.baseColor.z;
-            vertex.color[3] = 0.0F;
+            vertex.color[3] = static_cast<float>(materialLayer);
             vertex.uv[0] = source.u;
             vertex.uv[1] = source.v;
             vertex.material[0] = range.material.roughness;
             vertex.material[1] = range.material.metallic;
             vertex.material[2] = 1.0F;
-            vertex.material[3] = 0.0F;
+            vertex.material[3] = static_cast<float>(materialFlags);
             output.vertices.push_back(vertex);
         }
 

@@ -28,7 +28,7 @@ public:
     [[nodiscard]] bool Resize(int width, int height);
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ, float cameraYaw, float cameraPitch,
                 const renderer::SceneFrame* submittedScene = nullptr);
-    void Render(const renderer::SceneFrame& submittedScene);
+    [[nodiscard]] bool Render(const renderer::SceneFrame& submittedScene);
     [[nodiscard]] bool IsDeviceLost() const noexcept { return m_deviceLost; }
 
 private:
@@ -128,6 +128,7 @@ private:
 
     renderer::AdaptiveWorldBudget m_worldBudget;
     bool m_deviceLost = false;
+    bool m_lastFrameSucceeded = false;
     UINT m_width = 0;
     UINT m_height = 0;
 };

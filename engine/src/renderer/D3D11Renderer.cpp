@@ -1661,7 +1661,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     drawCube(Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     }
 
-    if (hasSubmittedScene && m_submittedVertexBuffer && m_submittedIndexBuffer) {
+    if (hasSubmittedScene && m_submittedVertexBuffer.Get() != nullptr &&
+        m_submittedIndexBuffer.Get() != nullptr) {
         constexpr UINT submittedStride = sizeof(renderer::SubmittedSceneVertex);
         constexpr UINT submittedOffset = 0;
         ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();

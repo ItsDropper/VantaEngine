@@ -154,7 +154,8 @@ bool D3D12Renderer::CreateHdrTarget()
 
     D3D12_DESCRIPTOR_HEAP_DESC srvDescription{};
     srvDescription.NumDescriptors = D3D12Renderer::kHiZBaseUavIndex +
-        D3D12Renderer::kFrameCount * D3D12Renderer::kHiZMipCapacity;
+        D3D12Renderer::kFrameCount * D3D12Renderer::kHiZMipCapacity +
+        D3D12Renderer::kSubmittedMaterialSrvCount;
     srvDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     if (FAILED(m_device->CreateDescriptorHeap(&srvDescription, IID_PPV_ARGS(m_srvHeap.GetAddressOf())))) {
@@ -373,9 +374,15 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
                                                     const std::vector<std::uint8_t>& rgbaLayers,
                                                     UINT descriptorIndex, bool srgb)
 {
+    const bool submittedMaterial = descriptorIndex >= kSubmittedMaterialBaseSrvIndex &&
+        descriptorIndex < kSubmittedMaterialBaseSrvIndex + kSubmittedMaterialSrvCount;
+    const bool importedMaterial = descriptorIndex >= 7U && descriptorIndex < 12U;
     if (width == 0 || height == 0 || layers == 0 ||
         layers > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION ||
-        descriptorIndex < 7U || descriptorIndex >= 12U) return false;
+        (!submittedMaterial && !importedMaterial)) return false;
+    auto& destinationTexture = submittedMaterial
+        ? m_submittedMaterialTextures[descriptorIndex - kSubmittedMaterialBaseSrvIndex]
+        : m_modelMaterialTextures[descriptorIndex - 7U];
     const std::size_t layerBytes = static_cast<std::size_t>(width) * height * 4U;
     if (layerBytes == 0U || rgbaLayers.size() < layerBytes * layers) return false;
 
@@ -447,7 +454,7 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-            IID_PPV_ARGS(m_modelMaterialTextures[descriptorIndex - 7U].GetAddressOf())))) {
+            IID_PPV_ARGS(destinationTexture.GetAddressOf())))) {
         LogError("Direct3D 12: imported material texture-array allocation failed.");
         return false;
     }
@@ -498,7 +505,7 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
         for (UINT mip = 0; mip < mipLevels; ++mip) {
             const UINT subresource = layer * mipLevels + mip;
             D3D12_TEXTURE_COPY_LOCATION destination{};
-            destination.pResource = m_modelMaterialTextures[descriptorIndex - 7U].Get();
+            destination.pResource = destinationTexture.Get();
             destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             destination.SubresourceIndex = subresource;
             D3D12_TEXTURE_COPY_LOCATION source{};
@@ -510,7 +517,7 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
     }
     D3D12_RESOURCE_BARRIER toShaderResource{};
     toShaderResource.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    toShaderResource.Transition.pResource = m_modelMaterialTextures[descriptorIndex - 7U].Get();
+    toShaderResource.Transition.pResource = destinationTexture.Get();
     toShaderResource.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     toShaderResource.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     toShaderResource.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -530,8 +537,13 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
     srv.Texture2DArray.MipLevels = mipLevels;
     srv.Texture2DArray.ArraySize = layers;
     srv.Texture2DArray.FirstArraySlice = 0;
-    m_modelMaterialMipLevels[descriptorIndex - 7U] = mipLevels;
-    m_modelMaterialLayerCount = layers;
+    if (submittedMaterial) {
+        m_submittedMaterialMipLevels[descriptorIndex - kSubmittedMaterialBaseSrvIndex] = mipLevels;
+        m_submittedMaterialLayerCount = layers;
+    } else {
+        m_modelMaterialMipLevels[descriptorIndex - 7U] = mipLevels;
+        m_modelMaterialLayerCount = layers;
+    }
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvDescriptorSize;
     m_device->CreateShaderResourceView(m_modelMaterialTextures[descriptorIndex - 7U].Get(), &srv, handle);

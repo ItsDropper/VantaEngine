@@ -82,6 +82,16 @@ math::Vec3 TransformPoint(const float matrix[16], const math::Vec3& p)
     };
 }
 
+double LinearDeterminant(const float matrix[16]) noexcept
+{
+    const double a00 = matrix[0], a01 = matrix[4], a02 = matrix[8];
+    const double a10 = matrix[1], a11 = matrix[5], a12 = matrix[9];
+    const double a20 = matrix[2], a21 = matrix[6], a22 = matrix[10];
+    return a00 * (a11 * a22 - a12 * a21) -
+           a01 * (a10 * a22 - a12 * a20) +
+           a02 * (a10 * a21 - a11 * a20);
+}
+
 std::optional<math::Vec3> TransformNormal(const float matrix[16], const math::Vec3& normal)
 {
     // glTF node matrices are column-major. Normals must use inverse-transpose of
@@ -100,8 +110,8 @@ std::optional<math::Vec3> TransformNormal(const float matrix[16], const math::Ve
     const double c20 = a01 * a12 - a02 * a11;
     const double c21 = a02 * a10 - a00 * a12;
     const double c22 = a00 * a11 - a01 * a10;
-    const double determinant = a00 * c00 + a01 * c01 + a02 * c02;
-    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-12)
+    const double determinant = LinearDeterminant(matrix);
+    if (!std::isfinite(determinant) || determinant == 0.0)
         return std::nullopt;
 
     const double inverseDeterminant = 1.0 / determinant;
@@ -128,6 +138,13 @@ struct ImportContext
 
 bool AppendMesh(const cgltf_mesh& mesh, const float world[16], ImportContext& context)
 {
+    const double transformDeterminant = LinearDeterminant(world);
+    if (!std::isfinite(transformDeterminant) || transformDeterminant == 0.0)
+    {
+        context.error = "glTF node transform has a singular or invalid linear component.";
+        return false;
+    }
+
     for (cgltf_size primitiveIndex = 0; primitiveIndex < mesh.primitives_count; ++primitiveIndex)
     {
         const cgltf_primitive& primitive = mesh.primitives[primitiveIndex];
@@ -216,6 +233,13 @@ bool AppendMesh(const cgltf_mesh& mesh, const float world[16], ImportContext& co
                 return false;
             }
             context.model.indices.push_back(baseVertex + static_cast<std::uint32_t>(localIndex));
+        }
+        if (transformDeterminant < 0.0)
+        {
+            // A mirrored node transform reverses triangle winding. Restore the
+            // original front-face orientation so back-face culling and normals agree.
+            for (std::size_t index = firstIndex; index < context.model.indices.size(); index += 3U)
+                std::swap(context.model.indices[index + 1U], context.model.indices[index + 2U]);
         }
 
         std::uint32_t materialIndex = 0;

@@ -1,10 +1,10 @@
-#include "vanta/renderer/ProceduralWorld.hpp"
+#include "vanta/world/ProceduralWorld.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 
-namespace vanta::renderer
+namespace vanta::world
 {
 namespace
 {
@@ -681,4 +681,4 @@ void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned
         b.tri({x-petal,y+h,z},{x,y+h+petal*0.2F,z+petal},{x+petal,y+h,z},r,g,bl);
     }
 }
-} // namespace vanta::renderer
+} // namespace vanta::world

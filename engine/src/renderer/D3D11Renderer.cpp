@@ -4,7 +4,7 @@
 #include "vanta/math/Math.hpp"
 #include "vanta/assets/ObjLoader.hpp"
 #include "vanta/assets/GltfLoader.hpp"
-#include "vanta/renderer/ProceduralWorld.hpp"
+#include "vanta/world/ProceduralWorld.hpp"
 #include "vanta/assets/WicTextureLoader.hpp"
 #include <algorithm>
 #include <filesystem>
@@ -843,7 +843,7 @@ bool D3D11Renderer::CreatePipeline()
     constexpr int terrainCells = 256;
     constexpr float terrainExtent = 72.0F;
     const auto terrainHeight = [](const float x, const float z) {
-        return renderer::TerrainHeightAt(x, z);
+        return world::TerrainHeightAt(x, z);
     };
     std::vector<Vertex> terrainVertices;
     std::vector<unsigned int> terrainIndices;
@@ -900,7 +900,7 @@ bool D3D11Renderer::CreatePipeline()
     // grass, fencing, logs and utility poles into one static environment mesh.
     std::vector<renderer::WorldVertex> generatedWorldVertices;
     std::vector<unsigned int> forestIndices;
-    renderer::BuildDetailedWorld(generatedWorldVertices, forestIndices);
+    world::BuildDetailedWorld(generatedWorldVertices, forestIndices);
 
     // Partition the merged environment by X/Z so D3D11 can reject whole regions and
     // select progressively cheaper foliage index lists without duplicating vertices.

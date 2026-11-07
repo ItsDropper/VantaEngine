@@ -2,7 +2,7 @@
 
 #include <vector>
 
-namespace vanta::renderer
+namespace vanta::world
 {
 struct WorldVertex
 {
@@ -17,4 +17,4 @@ float TerrainHeightAt(float x, float z);
 
 // Builds one deterministic, merged environment mesh to keep draw calls low.
 void BuildDetailedWorld(std::vector<WorldVertex>& vertices, std::vector<unsigned int>& indices);
-} // namespace vanta::renderer
+} // namespace vanta::world

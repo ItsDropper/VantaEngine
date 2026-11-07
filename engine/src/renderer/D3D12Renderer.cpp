@@ -1,7 +1,7 @@
 #include "vanta/renderer/D3D12Renderer.hpp"
 
 #include "vanta/core/Log.hpp"
-#include "vanta/renderer/ProceduralWorld.hpp"
+#include "vanta/world/ProceduralWorld.hpp"
 #include "vanta/assets/GltfLoader.hpp"
 #include "vanta/assets/ObjLoader.hpp"
 #include "vanta/assets/WicTextureLoader.hpp"
@@ -304,7 +304,7 @@ bool InvertMatrix(const Mat4& input, Mat4& output)
 
 float TerrainHeight(float x, float z)
 {
-    return renderer::TerrainHeightAt(x, z);
+    return world::TerrainHeightAt(x, z);
 }
 
 void AppendTerrain(std::vector<renderer::WorldVertex>& vertices, std::vector<unsigned int>& indices)
@@ -650,7 +650,7 @@ bool D3D12Renderer::CreateSceneGeometry()
     std::vector<unsigned int> indices;
     AppendTerrain(vertices, indices);
     const std::size_t terrainVertexCount = vertices.size();
-    renderer::BuildDetailedWorld(vertices, indices);
+    world::BuildDetailedWorld(vertices, indices);
     std::vector<std::array<float, 4>> materialParameters(vertices.size(), std::array<float, 4>{0.78F, 0.0F, 0.0F, 0.0F});
     // Reserve material flag bit 6 for terrain-only procedural shading. This lets the
     // pixel shader skip terrain noise on foliage, cabins, rocks and other scene meshes.

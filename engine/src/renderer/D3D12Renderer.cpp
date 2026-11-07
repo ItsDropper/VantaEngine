@@ -498,6 +498,13 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         return true;
     }
 
+    // Submitted material arrays are shared by both frame slots. Retire every in-flight
+    // reference before replacing any array resource, not merely the current frame slot.
+    if (!WaitForGpu()) {
+        error = "Could not retire in-flight frames before replacing submitted material textures.";
+        return false;
+    }
+
     for (UINT slot = 0; slot < usedSlots.size(); ++slot) {
         if (!usedSlots[slot])
             continue;

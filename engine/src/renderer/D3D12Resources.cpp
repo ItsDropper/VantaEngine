@@ -364,6 +364,20 @@ bool D3D12Renderer::CreateTemporalTargets()
         materialHandle.ptr += static_cast<SIZE_T>(7U + slot) * m_srvDescriptorSize;
         m_device->CreateShaderResourceView(m_modelMaterialTextures[slot].Get(), &materialSrv, materialHandle);
     }
+    for (UINT slot = 0; slot < m_submittedMaterialTextures.size(); ++slot) {
+        if (!m_submittedMaterialTextures[slot] || m_submittedMaterialMipLevels[slot] == 0U)
+            continue;
+        D3D12_SHADER_RESOURCE_VIEW_DESC materialSrv{};
+        materialSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        materialSrv.Format = slot == 0U ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+        materialSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+        materialSrv.Texture2DArray.MipLevels = m_submittedMaterialMipLevels[slot];
+        materialSrv.Texture2DArray.ArraySize = m_submittedMaterialLayerCount;
+        materialSrv.Texture2DArray.FirstArraySlice = 0;
+        D3D12_CPU_DESCRIPTOR_HANDLE materialHandle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+        materialHandle.ptr += static_cast<SIZE_T>(kSubmittedMaterialBaseSrvIndex + slot) * m_srvDescriptorSize;
+        m_device->CreateShaderResourceView(m_submittedMaterialTextures[slot].Get(), &materialSrv, materialHandle);
+    }
     m_historyWriteIndex = 0;
     m_historyValid = false;
     m_previousViewProjection = Mat4::Identity();

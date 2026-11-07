@@ -11,6 +11,7 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/D3D12Resources.cpp
     src/renderer/D3D12Pipelines.cpp
     src/renderer/SceneSubmission.cpp
+    src/renderer/SceneGeometry.cpp
     src/world/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
     src/assets/ObjLoader.cpp

@@ -246,6 +246,63 @@ bool PhysicsWorld::Raycast(
     return found;
 }
 
+bool PhysicsWorld::ComputeOverlaps(
+    std::vector<ColliderPair>& results,
+    const std::uint32_t layerMask) const
+{
+    results.clear();
+    if (layerMask == 0U)
+        return false;
+
+    std::vector<std::size_t> sortedIndices;
+    sortedIndices.reserve(m_colliderCount);
+    for (std::size_t index = 0; index < m_slots.size(); ++index)
+    {
+        const Slot& slot = m_slots[index];
+        if (slot.occupied && (slot.description.layer & layerMask) != 0U)
+            sortedIndices.push_back(index);
+    }
+
+    std::sort(sortedIndices.begin(), sortedIndices.end(),
+        [this](const std::size_t left, const std::size_t right) {
+            const float leftMinimum = m_slots[left].description.bounds.minimum.x;
+            const float rightMinimum = m_slots[right].description.bounds.minimum.x;
+            return leftMinimum < rightMinimum ||
+                   (leftMinimum == rightMinimum && left < right);
+        });
+
+    std::vector<ColliderPair> pairs;
+    for (std::size_t firstPosition = 0; firstPosition < sortedIndices.size(); ++firstPosition)
+    {
+        const std::size_t firstIndex = sortedIndices[firstPosition];
+        const Slot& first = m_slots[firstIndex];
+        const Aabb& firstBounds = first.description.bounds;
+        for (std::size_t secondPosition = firstPosition + 1U;
+             secondPosition < sortedIndices.size(); ++secondPosition)
+        {
+            const std::size_t secondIndex = sortedIndices[secondPosition];
+            const Slot& second = m_slots[secondIndex];
+            const Aabb& secondBounds = second.description.bounds;
+            if (secondBounds.minimum.x > firstBounds.maximum.x)
+                break;
+            if (firstBounds.minimum.y > secondBounds.maximum.y ||
+                firstBounds.maximum.y < secondBounds.minimum.y ||
+                firstBounds.minimum.z > secondBounds.maximum.z ||
+                firstBounds.maximum.z < secondBounds.minimum.z)
+                continue;
+
+            pairs.push_back({
+                {static_cast<std::uint32_t>(firstIndex), first.generation},
+                {static_cast<std::uint32_t>(secondIndex), second.generation},
+                first.description.isTrigger || second.description.isTrigger
+            });
+        }
+    }
+
+    results.swap(pairs);
+    return true;
+}
+
 bool PhysicsWorld::OverlapAabb(
     const Aabb& bounds,
     std::vector<ColliderHandle>& results,

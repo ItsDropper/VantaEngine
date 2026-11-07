@@ -35,6 +35,14 @@ struct ColliderDescription
     bool isTrigger = false;
 };
 
+struct ColliderPair
+{
+    ColliderHandle first{};
+    ColliderHandle second{};
+    bool involvesTrigger = false;
+    [[nodiscard]] constexpr bool operator==(const ColliderPair&) const noexcept = default;
+};
+
 struct RaycastHit
 {
     ColliderHandle collider{};
@@ -61,6 +69,11 @@ public:
         RaycastHit& hit,
         std::uint32_t layerMask = 0xFFFFFFFFU,
         bool includeTriggers = true) const noexcept;
+
+    // Builds a deterministic broadphase pair list. Trigger pairs are included and marked.
+    [[nodiscard]] bool ComputeOverlaps(
+        std::vector<ColliderPair>& results,
+        std::uint32_t layerMask = 0xFFFFFFFFU) const;
 
     [[nodiscard]] bool OverlapAabb(
         const Aabb& bounds,

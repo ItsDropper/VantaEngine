@@ -187,8 +187,49 @@ bool clearInvalidatesAllCollidersAndAllowsReuse()
            replacement.generation!=first.generation&&world.ColliderCount()==1;
 }
 
+bool broadphaseBuildsDeterministicSolidAndTriggerPairs()
+{
+    PhysicsWorld world;
+    const auto first = world.AddCollider(Box(0,0,0,2,2,2));
+    const auto second = world.AddCollider(Box(1,1,1,3,3,3,2,true));
+    const auto third = world.AddCollider(Box(1.5F,0,0,2.5F,1,1,1,false));
+    (void)world.AddCollider(Box(10,10,10,11,11,11));
+    std::vector<vanta::ColliderPair> pairs;
+    if (!world.ComputeOverlaps(pairs) || pairs.size() != 3)
+        return false;
+    const std::array expected{
+        vanta::ColliderPair{first, second, true},
+        vanta::ColliderPair{first, third, false},
+        vanta::ColliderPair{second, third, true}
+    };
+    if (!std::equal(pairs.begin(), pairs.end(), expected.begin(), expected.end()))
+        return false;
+
+    if (!world.ComputeOverlaps(pairs, 1U) || pairs.size() != 1 ||
+        pairs.front() != vanta::ColliderPair{first, third, false})
+        return false;
+    return !world.ComputeOverlaps(pairs, 0U) && pairs.empty();
+}
+
+bool broadphasePairsTrackGenerationAfterColliderReuse()
+{
+    PhysicsWorld world;
+    const auto first = world.AddCollider(Box(0,0,0,1,1,1));
+    const auto oldSecond = world.AddCollider(Box(0,0,0,1,1,1));
+    if (!world.RemoveCollider(oldSecond))
+        return false;
+    const auto replacement = world.AddCollider(Box(0,0,0,1,1,1));
+    std::vector<vanta::ColliderPair> pairs;
+    return replacement.IsValid() && replacement.index == oldSecond.index &&
+           replacement.generation != oldSecond.generation &&
+           world.ComputeOverlaps(pairs) && pairs.size() == 1 &&
+           pairs.front() == vanta::ColliderPair{first, replacement, false};
+}
+
 constexpr std::array kCases{
     TestCase{"collider lifecycle invalidates stale handles",addUpdateRemoveAndStaleHandles},
+    TestCase{"broadphase emits deterministic solid and trigger pairs",broadphaseBuildsDeterministicSolidAndTriggerPairs},
+    TestCase{"broadphase pairs use current collider generations",broadphasePairsTrackGenerationAfterColliderReuse},
     TestCase{"invalid collider descriptions are rejected",rejectsInvalidColliderDescriptions},
     TestCase{"raycast returns nearest hit and surface normal",raycastFindsNearestAndCorrectNormal},
     TestCase{"raycast handles parallel axes and inside origins",raycastHandlesParallelAxesAndInsideOrigins},

@@ -157,7 +157,9 @@ LRESULT Window::HandleMessage(const UINT message, const WPARAM wParam, const LPA
         return 0;
     case WM_LBUTTONUP:
         m_input.SetMouseButton(kLeftMouseButton, false);
-        if (GetCapture() == m_handle)
+        if (!m_input.IsMouseButtonDown(kLeftMouseButton) &&
+            !m_input.IsMouseButtonDown(kRightMouseButton) &&
+            !m_input.IsMouseButtonDown(kMiddleMouseButton) && GetCapture() == m_handle)
             ReleaseCapture();
         return 0;
     case WM_RBUTTONDOWN:
@@ -166,7 +168,9 @@ LRESULT Window::HandleMessage(const UINT message, const WPARAM wParam, const LPA
         return 0;
     case WM_RBUTTONUP:
         m_input.SetMouseButton(kRightMouseButton, false);
-        if (GetCapture() == m_handle)
+        if (!m_input.IsMouseButtonDown(kLeftMouseButton) &&
+            !m_input.IsMouseButtonDown(kRightMouseButton) &&
+            !m_input.IsMouseButtonDown(kMiddleMouseButton) && GetCapture() == m_handle)
             ReleaseCapture();
         return 0;
     case WM_MBUTTONDOWN:
@@ -175,7 +179,9 @@ LRESULT Window::HandleMessage(const UINT message, const WPARAM wParam, const LPA
         return 0;
     case WM_MBUTTONUP:
         m_input.SetMouseButton(kMiddleMouseButton, false);
-        if (GetCapture() == m_handle)
+        if (!m_input.IsMouseButtonDown(kLeftMouseButton) &&
+            !m_input.IsMouseButtonDown(kRightMouseButton) &&
+            !m_input.IsMouseButtonDown(kMiddleMouseButton) && GetCapture() == m_handle)
             ReleaseCapture();
         return 0;
     case WM_CAPTURECHANGED:

@@ -137,10 +137,14 @@ bool PhysicsWorld::Raycast(
         static_cast<double>(direction.x) * direction.x +
         static_cast<double>(direction.y) * direction.y +
         static_cast<double>(direction.z) * direction.z;
-    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-16)
+    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 0.0)
         return false;
-    const float inverseDirectionLength = static_cast<float>(1.0 / std::sqrt(directionLengthSquared));
-    const math::Vec3 normalizedDirection = direction * inverseDirectionLength;
+    const double inverseDirectionLength = 1.0 / std::sqrt(directionLengthSquared);
+    const math::Vec3 normalizedDirection{
+        static_cast<float>(static_cast<double>(direction.x) * inverseDirectionLength),
+        static_cast<float>(static_cast<double>(direction.y) * inverseDirectionLength),
+        static_cast<float>(static_cast<double>(direction.z) * inverseDirectionLength)
+    };
 
     bool found = false;
     float closestDistance = maximumDistance;
@@ -260,8 +264,56 @@ bool PhysicsWorld::OverlapSphere(
         if (!Matches(slot, layerMask, includeTriggers))
             continue;
         const math::Vec3 closest = ClosestPoint(slot.description.bounds, center);
-        const math::Vec3 offset = center - closest;
-        if (offset.LengthSquared() <= radiusSquared)
+        const double dx = static_cast<double>(center.x) - closest.x;
+        const double dy = static_cast<double>(center.y) - closest.y;
+        const double dz = static_cast<double>(center.z) - closest.z;
+        const double distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (distanceSquared <= static_cast<double>(radiusSquared))
+            results.push_back({static_cast<std::uint32_t>(index), slot.generation});
+    }
+    return true;
+}
+
+bool PhysicsWorld::OverlapVerticalCapsule(
+    const math::Vec3& center,
+    const float radius,
+    const float halfHeight,
+    std::vector<ColliderHandle>& results,
+    const std::uint32_t layerMask,
+    const bool includeTriggers) const
+{
+    results.clear();
+    if (!IsFinite(center) || !std::isfinite(radius) || !std::isfinite(halfHeight) ||
+        radius < 0.0F || halfHeight < radius || layerMask == 0U)
+        return false;
+
+    const double segmentHalfLength = static_cast<double>(halfHeight) - radius;
+    const double segmentMinimumY = static_cast<double>(center.y) - segmentHalfLength;
+    const double segmentMaximumY = static_cast<double>(center.y) + segmentHalfLength;
+    const double radiusSquared = static_cast<double>(radius) * radius;
+
+    for (std::size_t index = 0; index < m_slots.size(); ++index)
+    {
+        const Slot& slot = m_slots[index];
+        if (!Matches(slot, layerMask, includeTriggers))
+            continue;
+
+        const Aabb& bounds = slot.description.bounds;
+        const double closestX = std::clamp(
+            static_cast<double>(center.x), static_cast<double>(bounds.minimum.x),
+            static_cast<double>(bounds.maximum.x));
+        const double closestZ = std::clamp(
+            static_cast<double>(center.z), static_cast<double>(bounds.minimum.z),
+            static_cast<double>(bounds.maximum.z));
+        double verticalDistance = 0.0;
+        if (segmentMaximumY < bounds.minimum.y)
+            verticalDistance = static_cast<double>(bounds.minimum.y) - segmentMaximumY;
+        else if (segmentMinimumY > bounds.maximum.y)
+            verticalDistance = segmentMinimumY - static_cast<double>(bounds.maximum.y);
+
+        const double dx = static_cast<double>(center.x) - closestX;
+        const double dz = static_cast<double>(center.z) - closestZ;
+        if (dx * dx + verticalDistance * verticalDistance + dz * dz <= radiusSquared)
             results.push_back({static_cast<std::uint32_t>(index), slot.generation});
     }
     return true;

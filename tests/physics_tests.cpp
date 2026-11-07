@@ -124,6 +124,43 @@ bool invalidQueriesClearResults()
     return invalidSphere && clearedSphere && invalidBox && clearedBox && invalidRay;
 }
 
+
+bool verticalCapsuleOverlapUsesSegmentDistance()
+{
+    PhysicsWorld world;
+    const auto floor = world.AddCollider(Box(-5,-1,-5,5,0,5));
+    const auto wall = world.AddCollider(Box(1,0,-1,2,3,1));
+    std::vector<vanta::ColliderHandle> overlaps;
+    if (!world.OverlapVerticalCapsule({0,1.0F,0},0.5F,1.0F,overlaps))
+        return false;
+    if (overlaps.size()!=1 || overlaps[0]!=floor)
+        return false;
+    if (!world.OverlapVerticalCapsule({0.6F,1.0F,0},0.5F,1.0F,overlaps))
+        return false;
+    return overlaps.size()==2 && overlaps[0]==floor && overlaps[1]==wall;
+}
+
+bool capsuleRejectsInvalidDimensions()
+{
+    PhysicsWorld world;
+    (void)world.AddCollider(Box(-1,-1,-1,1,1,1));
+    std::vector<vanta::ColliderHandle> overlaps(1);
+    const bool negativeRadius = !world.OverlapVerticalCapsule({0,0,0},-0.1F,1.0F,overlaps);
+    const bool tooShort = !world.OverlapVerticalCapsule({0,0,0},0.5F,0.25F,overlaps);
+    return negativeRadius && tooShort && overlaps.empty();
+}
+
+bool failedRaycastClearsPreviousHit()
+{
+    PhysicsWorld world;
+    (void)world.AddCollider(Box(1,-1,-1,2,1,1));
+    RaycastHit hit{};
+    if (!world.Raycast({0,0,0},{1,0,0},5,hit))
+        return false;
+    const bool missed = !world.Raycast({0,0,0},{0,1,0},5,hit);
+    return missed && !hit.collider.IsValid();
+}
+
 constexpr std::array kCases{
     TestCase{"collider lifecycle invalidates stale handles",addUpdateRemoveAndStaleHandles},
     TestCase{"invalid collider descriptions are rejected",rejectsInvalidColliderDescriptions},
@@ -133,6 +170,9 @@ constexpr std::array kCases{
     TestCase{"trigger filtering applies to queries",triggerFilteringIsConsistent},
     TestCase{"sphere overlap uses closest point",sphereOverlapUsesClosestPoint},
     TestCase{"invalid overlap queries clear output",invalidQueriesClearResults},
+    TestCase{"vertical capsule overlap uses segment distance",verticalCapsuleOverlapUsesSegmentDistance},
+    TestCase{"vertical capsule rejects invalid dimensions",capsuleRejectsInvalidDimensions},
+    TestCase{"failed raycast clears stale hit data",failedRaycastClearsPreviousHit},
 };
 }
 

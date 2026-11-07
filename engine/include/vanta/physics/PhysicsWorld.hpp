@@ -74,6 +74,14 @@ public:
         std::uint32_t layerMask = 0xFFFFFFFFU,
         bool includeTriggers = true) const;
 
+    [[nodiscard]] bool OverlapVerticalCapsule(
+        const math::Vec3& center,
+        float radius,
+        float halfHeight,
+        std::vector<ColliderHandle>& results,
+        std::uint32_t layerMask = 0xFFFFFFFFU,
+        bool includeTriggers = true) const;
+
     [[nodiscard]] static bool IsValid(const Aabb& bounds) noexcept;
 
 private:

@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <string_view>
 namespace {
 using namespace vanta::math;
@@ -20,6 +21,9 @@ bool perspectiveDepth(){auto m=Mat4::Perspective(DegreesToRadians(60),16.0F/9.0F
 bool invalidProjection(){auto m=Mat4::Perspective(DegreesToRadians(60),0,.1F,100);return near(m.At(0,0),0)&&near(m.At(1,1),0);}
 bool lookAt(){auto m=Mat4::LookAtLH({0,0,-5},{0,0,0},{0,1,0});if(!m)return false;auto eye=m->Transform({0,0,-5,1});auto target=m->Transform({0,0,0,1});return near(eye.x,0)&&near(eye.y,0)&&near(eye.z,0)&&near(target.z,5);}
 bool invalidLookAt(){return !Mat4::LookAtLH({0,0,0},{0,0,0},{0,1,0})&&!Mat4::LookAtLH({0,0,0},{0,0,1},{0,0,1});}
-constexpr std::array cases{Case{"vector arithmetic and dot product",vectors},Case{"cross product",cross},Case{"zero vector normalization",zeroNorm},Case{"unit normalization",norm},Case{"point and direction transforms",pointsDirections},Case{"matrix composition",composition},Case{"quaternion axis-angle",quaternion},Case{"rotation matrix",rotationMatrix},Case{"Direct3D perspective depth",perspectiveDepth},Case{"invalid projection parameters",invalidProjection},Case{"left-handed look-at",lookAt},Case{"degenerate look-at",invalidLookAt}};
+bool largeVectorNormalization(){const float m=std::numeric_limits<float>::max();auto v=Vec3{m,m,0}.Normalized();return v&&near(v->x,0.70710678F)&&near(v->y,0.70710678F)&&near(v->z,0);}
+bool invalidNormalizationParameters(){const float nan=std::numeric_limits<float>::quiet_NaN();return !Vec3{1,0,0}.Normalized(nan)&&!Vec3{1,0,0}.Normalized(-1)&&!Vec3{std::numeric_limits<float>::infinity(),0,0}.Normalized();}
+bool largeQuaternionNormalization(){const float m=std::numeric_limits<float>::max();auto q=Quaternion{m,m,0,0}.Normalized();return q&&near(q->x,0.70710678F)&&near(q->y,0.70710678F)&&near(q->LengthSquared(),1);}
+constexpr std::array cases{Case{"vector arithmetic and dot product",vectors},Case{"cross product",cross},Case{"zero vector normalization",zeroNorm},Case{"unit normalization",norm},Case{"point and direction transforms",pointsDirections},Case{"matrix composition",composition},Case{"quaternion axis-angle",quaternion},Case{"rotation matrix",rotationMatrix},Case{"Direct3D perspective depth",perspectiveDepth},Case{"invalid projection parameters",invalidProjection},Case{"left-handed look-at",lookAt},Case{"degenerate look-at",invalidLookAt},Case{"large finite vector normalization",largeVectorNormalization},Case{"invalid normalization inputs",invalidNormalizationParameters},Case{"large finite quaternion normalization",largeQuaternionNormalization}};
 }
 int main(){int failures=0;for(const auto& c:cases){if(!c.run()){std::cerr<<"FAIL: "<<c.name<<'\n';++failures;}else std::cout<<"PASS: "<<c.name<<'\n';}std::cout<<(cases.size()-static_cast<std::size_t>(failures))<<'/'<<cases.size()<<" math tests passed.\n";return failures?1:0;}

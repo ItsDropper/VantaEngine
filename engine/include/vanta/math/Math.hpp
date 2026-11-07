@@ -21,7 +21,14 @@ struct Vec3 {
     [[nodiscard]] constexpr float Dot(const Vec3& r) const noexcept { return x*r.x+y*r.y+z*r.z; }
     [[nodiscard]] constexpr Vec3 Cross(const Vec3& r) const noexcept { return {y*r.z-z*r.y,z*r.x-x*r.z,x*r.y-y*r.x}; }
     [[nodiscard]] std::optional<Vec3> Normalized(float epsilon=kEpsilon) const noexcept {
-        const float ls=LengthSquared(); if (ls<=epsilon*epsilon) return std::nullopt; return *this/std::sqrt(ls);
+        if (!std::isfinite(epsilon) || epsilon < 0.0F) return std::nullopt;
+        const double ls=static_cast<double>(x)*x+static_cast<double>(y)*y+static_cast<double>(z)*z;
+        const double threshold=static_cast<double>(epsilon)*epsilon;
+        if (!std::isfinite(ls) || ls<=threshold) return std::nullopt;
+        const double inverseLength=1.0/std::sqrt(ls);
+        return Vec3{static_cast<float>(static_cast<double>(x)*inverseLength),
+                    static_cast<float>(static_cast<double>(y)*inverseLength),
+                    static_cast<float>(static_cast<double>(z)*inverseLength)};
     }
 };
 [[nodiscard]] constexpr Vec3 operator*(float s,const Vec3& v) noexcept { return v*s; }
@@ -37,8 +44,16 @@ struct Quaternion {
     }
     [[nodiscard]] float LengthSquared() const noexcept { return x*x+y*y+z*z+w*w; }
     [[nodiscard]] std::optional<Quaternion> Normalized(float epsilon=kEpsilon) const noexcept {
-        const float ls=LengthSquared(); if(ls<=epsilon*epsilon) return std::nullopt;
-        const float inv=1.0F/std::sqrt(ls); return Quaternion{x*inv,y*inv,z*inv,w*inv};
+        if (!std::isfinite(epsilon) || epsilon < 0.0F) return std::nullopt;
+        const double ls=static_cast<double>(x)*x+static_cast<double>(y)*y+
+                        static_cast<double>(z)*z+static_cast<double>(w)*w;
+        const double threshold=static_cast<double>(epsilon)*epsilon;
+        if (!std::isfinite(ls) || ls<=threshold) return std::nullopt;
+        const double inverseLength=1.0/std::sqrt(ls);
+        return Quaternion{static_cast<float>(static_cast<double>(x)*inverseLength),
+                          static_cast<float>(static_cast<double>(y)*inverseLength),
+                          static_cast<float>(static_cast<double>(z)*inverseLength),
+                          static_cast<float>(static_cast<double>(w)*inverseLength)};
     }
     [[nodiscard]] constexpr Quaternion Conjugate() const noexcept { return {-x,-y,-z,w}; }
     [[nodiscard]] constexpr Quaternion operator*(const Quaternion& r) const noexcept {

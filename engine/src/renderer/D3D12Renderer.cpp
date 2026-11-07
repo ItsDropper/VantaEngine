@@ -1363,7 +1363,7 @@ bool D3D12Renderer::WaitForFrame(UINT frameIndex)
     }
     if (completedValue >= m_fenceValues[frameIndex]) return true;
     if (FAILED(m_fence->SetEventOnCompletion(m_fenceValues[frameIndex], m_fenceEvent))) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
     const DWORD waitResult = WaitForSingleObject(m_fenceEvent, INFINITE);
@@ -1921,8 +1921,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
         }
         }
-        if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex] &&
-            m_submittedIndexBuffers[m_frameIndex]) {
+        if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex].Get() != nullptr &&
+            m_submittedIndexBuffers[m_frameIndex].Get() != nullptr) {
             m_commandList->SetPipelineState(m_shadowPipelineState.Get());
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
@@ -2027,8 +2027,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
 
     }
-    if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex] &&
-        m_submittedIndexBuffers[m_frameIndex]) {
+    if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex].Get() != nullptr &&
+        m_submittedIndexBuffers[m_frameIndex].Get() != nullptr) {
         m_commandList->SetPipelineState(m_pipelineState.Get());
         m_commandList->SetGraphicsRootConstantBufferView(0,
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());

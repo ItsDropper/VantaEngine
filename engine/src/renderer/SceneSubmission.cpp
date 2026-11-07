@@ -110,6 +110,7 @@ MeshHandle SceneSubmission::CreateMesh(MeshDescription description)
             !std::isfinite(vertex.position.z) || !std::isfinite(vertex.normal.x) ||
             !std::isfinite(vertex.normal.y) || !std::isfinite(vertex.normal.z) ||
             !std::isfinite(vertex.u) || !std::isfinite(vertex.v) ||
+            !std::isfinite(vertex.normal.LengthSquared()) ||
             vertex.normal.LengthSquared() <= 1.0e-12F)
             return {};
     }

@@ -1,5 +1,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <exception>
 #include <limits>
@@ -60,8 +62,9 @@ bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
     const bool pathsValid = std::all_of(texturePaths.begin(), texturePaths.end(),
         [](const std::filesystem::path* path)
         {
-            const std::string native = path->native();
-            return native.find('\\0') == std::string::npos &&
+            const std::filesystem::path::string_type& native = path->native();
+            return native.find(std::filesystem::path::value_type{}) ==
+                    std::filesystem::path::string_type::npos &&
                 (path->empty() || path->is_absolute());
         });
     return pathsValid &&

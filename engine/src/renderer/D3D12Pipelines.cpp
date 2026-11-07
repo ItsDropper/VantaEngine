@@ -25,6 +25,11 @@ Texture2DArray modelNormalTexture : register(t8);
 Texture2DArray modelRoughnessTexture : register(t9);
 Texture2DArray modelMetallicTexture : register(t10);
 Texture2DArray modelOcclusionTexture : register(t11);
+Texture2DArray submittedAlbedoTexture : register(t12);
+Texture2DArray submittedNormalTexture : register(t13);
+Texture2DArray submittedRoughnessTexture : register(t14);
+Texture2DArray submittedMetallicTexture : register(t15);
+Texture2DArray submittedOcclusionTexture : register(t16);
 SamplerState linearClamp : register(s0);
 SamplerState linearWrap : register(s1);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
@@ -128,9 +133,12 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 dp2 = ddy(input.worldPosition);
     float2 duv1 = ddx(input.uv);
     float2 duv2 = ddy(input.uv);
+    const bool submittedMaterial = (materialFlags & 128U) != 0U;
     if ((materialFlags & 2U) != 0U)
     {
-        float3 tangentNormal = modelNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
+        float3 tangentNormal = submittedMaterial
+            ? submittedNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0
+            : modelNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
         float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
@@ -140,7 +148,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
     if ((materialFlags & 1U) != 0U)
-        albedo *= modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
+        albedo *= submittedMaterial
+            ? submittedAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb
+            : modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
     // Determine whether this pixel belongs to the procedural terrain before evaluating
     // its expensive multi-octave noise. The merged scene also contains foliage, cabins,
     // rocks and props; those pixels should not pay the terrain-material cost.
@@ -210,17 +220,25 @@ float4 PSMain(PSInput input) : SV_TARGET
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
     if ((materialFlags & 4U) != 0U)
     {
-        float roughnessSample = modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r;
+        float4 roughnessChannels = submittedMaterial
+            ? submittedRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a))
+            : modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a));
+        float roughnessSample = roughnessChannels.r;
         if ((materialFlags & 32U) != 0U)
-            roughnessSample = modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).g;
+            roughnessSample = roughnessChannels.g;
         roughness = saturate(roughness * roughnessSample);
     }
     if ((materialFlags & 8U) != 0U)
-        metallic = saturate(metallic * modelMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r);
+        metallic = saturate(metallic * (submittedMaterial
+            ? submittedMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r
+            : modelMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r));
     if ((materialFlags & 32U) != 0U)
         metallic = saturate(metallic * modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b);
     float ambientOcclusion = (materialFlags & 16U) != 0U
-        ? modelOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r : 1.0;
+        ? (submittedMaterial
+            ? submittedOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r
+            : modelOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r)
+        : 1.0;
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);
@@ -290,20 +308,25 @@ bool D3D12Renderer::CreatePipeline()
         return false;
     }
 
-    D3D12_DESCRIPTOR_RANGE srvRange{};
-    srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    srvRange.NumDescriptors = 12;
-    srvRange.BaseShaderRegister = 0;
-    srvRange.RegisterSpace = 0;
-    srvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    D3D12_DESCRIPTOR_RANGE srvRanges[2]{};
+    srvRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    srvRanges[0].NumDescriptors = 12;
+    srvRanges[0].BaseShaderRegister = 0;
+    srvRanges[0].RegisterSpace = 0;
+    srvRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    srvRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    srvRanges[1].NumDescriptors = D3D12Renderer::kSubmittedMaterialSrvCount;
+    srvRanges[1].BaseShaderRegister = 12;
+    srvRanges[1].RegisterSpace = 0;
+    srvRanges[1].OffsetInDescriptorsFromTableStart = D3D12Renderer::kSubmittedMaterialBaseSrvIndex;
     D3D12_ROOT_PARAMETER rootParameters[3]{};
     rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[0].Descriptor.ShaderRegister = 0;
     rootParameters[0].Descriptor.RegisterSpace = 0;
     rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
-    rootParameters[1].DescriptorTable.pDescriptorRanges = &srvRange;
+    rootParameters[1].DescriptorTable.NumDescriptorRanges = 2;
+    rootParameters[1].DescriptorTable.pDescriptorRanges = srvRanges;
     rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     rootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[2].Descriptor.ShaderRegister = 1;

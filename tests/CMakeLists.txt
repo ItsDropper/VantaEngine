@@ -114,3 +114,10 @@ add_executable(VantaEngineSceneSubmissionTests
 )
 vanta_configure_test(VantaEngineSceneSubmissionTests)
 add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissionTests)
+
+add_executable(VantaEngineTextureProcessingTests
+    texture_processing_tests.cpp
+    ../engine/src/assets/TextureProcessing.cpp
+)
+vanta_configure_test(VantaEngineTextureProcessingTests)
+add_test(NAME VantaEngine.TextureProcessingTests COMMAND VantaEngineTextureProcessingTests)

@@ -18,6 +18,7 @@ set(VANTA_RUNTIME_SOURCES
     src/assets/ModelAssetStore.cpp
     src/assets/GltfLoader.cpp
     src/assets/WicTextureLoader.cpp
+    src/assets/TextureProcessing.cpp
 )
 
 add_library(VantaEngineRuntime STATIC ${VANTA_RUNTIME_SOURCES})

@@ -1786,7 +1786,11 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const auto normalizedUp = forward.Cross(cameraRight).Normalized();
     const Vec3 cameraUp = normalizedUp.value_or(Vec3{0.0F, 1.0F, 0.0F});
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const float tanHalfVerticalFov = std::tan(math::DegreesToRadians(34.0F));
+    const float projectionScaleY = projection.At(1, 1);
+    const float tanHalfVerticalFov = std::isfinite(projectionScaleY) &&
+        std::abs(projectionScaleY) > 1.0e-6F
+        ? 1.0F / std::abs(projectionScaleY)
+        : std::tan(math::DegreesToRadians(34.0F));
     const auto submitGpuCull = [this](UINT stream, const GpuCullConstants& cull, bool shadowPass) {
         auto* streamConstants = static_cast<unsigned char*>(m_mappedGpuCullConstants[m_frameIndex]) +
             static_cast<std::size_t>(stream) * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;

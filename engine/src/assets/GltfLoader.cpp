@@ -61,78 +61,133 @@ bool DecodeUriPath(const std::string& uri, std::string& decoded)
     return !decoded.empty();
 }
 
-bool DecodeBase64Image(std::string_view uri, CpuEmbeddedImage& image, std::string& error)
+bool DecodeDataUriImage(std::string_view uri, CpuEmbeddedImage& image, std::string& error)
 {
     const std::size_t comma = uri.find(',');
     if (comma == std::string_view::npos)
     {
-        error = "Embedded glTF data URI must use an explicit MIME type and base64 encoding.";
+        error = "Embedded glTF data URI is missing its comma separator.";
         return false;
     }
     const std::string_view metadata = uri.substr(5U, comma - 5U);
     const std::size_t semicolon = metadata.find(';');
-    if (semicolon == std::string_view::npos || semicolon == 0U ||
-        metadata.substr(semicolon) != ";base64")
-    {
-        error = "Embedded glTF data URI is missing its image MIME type or has unsupported parameters.";
-        return false;
-    }
-    image.mimeType = std::string(metadata.substr(0U, semicolon));
+    image.mimeType = std::string(semicolon == std::string_view::npos
+        ? metadata : metadata.substr(0U, semicolon));
     if (!image.mimeType.starts_with("image/"))
     {
         error = "Embedded glTF data URI MIME type must be an image type.";
         return false;
     }
-
-    const std::string_view payload = uri.substr(comma + 1U);
-    constexpr std::size_t maximumEncodedBytes = 256U * 1024U * 1024U;
-    if (payload.empty() || payload.size() > maximumEncodedBytes + maximumEncodedBytes / 2U ||
-        payload.size() % 4U != 0U)
+    const bool base64 = semicolon != std::string_view::npos;
+    if (base64 && metadata.substr(semicolon) != ";base64")
     {
-        error = "Embedded glTF image payload is empty, oversized, or has invalid base64 length.";
+        error = "Embedded glTF data URI contains unsupported media type parameters.";
         return false;
     }
-    const auto decode = [](char value) -> int
-    {
-        if (value >= 'A' && value <= 'Z') return value - 'A';
-        if (value >= 'a' && value <= 'z') return value - 'a' + 26;
-        if (value >= '0' && value <= '9') return value - '0' + 52;
-        if (value == '+') return 62;
-        if (value == '/') return 63;
-        return -1;
-    };
 
-    image.encodedBytes.clear();
-    image.encodedBytes.reserve(payload.size() / 4U * 3U);
-    for (std::size_t offset = 0; offset < payload.size(); offset += 4U)
+    const std::string_view payload = uri.substr(comma + 1U);
+    constexpr std::size_t maximumDecodedBytes = 256U * 1024U * 1024U;
+    if (payload.empty())
     {
-        const bool finalBlock = offset + 4U == payload.size();
-        const int a = decode(payload[offset]);
-        const int b = decode(payload[offset + 1U]);
-        const bool padC = payload[offset + 2U] == '=';
-        const bool padD = payload[offset + 3U] == '=';
-        const int c = padC ? 0 : decode(payload[offset + 2U]);
-        const int d = padD ? 0 : decode(payload[offset + 3U]);
-        if (a < 0 || b < 0 || c < 0 || d < 0 ||
-            (padC && (!padD || !finalBlock)) || (padD && !finalBlock) ||
-            (!finalBlock && (padC || padD)))
+        error = "Embedded glTF image payload is empty.";
+        return false;
+    }
+    image.encodedBytes.clear();
+    if (base64)
+    {
+        if (payload.size() % 4U != 0U ||
+            payload.size() > maximumDecodedBytes + maximumDecodedBytes / 2U)
         {
-            error = "Embedded glTF image contains invalid base64 characters or padding.";
+            error = "Embedded glTF image payload has invalid base64 length or exceeds the input limit.";
             return false;
         }
-        const std::uint32_t packed = (static_cast<std::uint32_t>(a) << 18U) |
-                                     (static_cast<std::uint32_t>(b) << 12U) |
-                                     (static_cast<std::uint32_t>(c) << 6U) |
-                                     static_cast<std::uint32_t>(d);
-        image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 16U) & 0xffU));
-        if (!padC)
-            image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 8U) & 0xffU));
-        if (!padD)
-            image.encodedBytes.push_back(static_cast<std::uint8_t>(packed & 0xffU));
-        if (image.encodedBytes.size() > maximumEncodedBytes)
+        const auto decode = [](char value) -> int
+        {
+            if (value >= 'A' && value <= 'Z') return value - 'A';
+            if (value >= 'a' && value <= 'z') return value - 'a' + 26;
+            if (value >= '0' && value <= '9') return value - '0' + 52;
+            if (value == '+') return 62;
+            if (value == '/') return 63;
+            return -1;
+        };
+        const std::size_t padding = payload.back() == '='
+            ? (payload.size() >= 2U && payload[payload.size() - 2U] == '=' ? 2U : 1U)
+            : 0U;
+        const std::size_t decodedSize = payload.size() / 4U * 3U - padding;
+        if (decodedSize == 0U || decodedSize > maximumDecodedBytes)
         {
             error = "Embedded glTF image exceeds the 256 MiB decoded payload limit.";
             return false;
+        }
+        image.encodedBytes.reserve(decodedSize);
+        for (std::size_t offset = 0; offset < payload.size(); offset += 4U)
+        {
+            const bool finalBlock = offset + 4U == payload.size();
+            const int a = decode(payload[offset]);
+            const int b = decode(payload[offset + 1U]);
+            const bool padC = payload[offset + 2U] == '=';
+            const bool padD = payload[offset + 3U] == '=';
+            const int c = padC ? 0 : decode(payload[offset + 2U]);
+            const int d = padD ? 0 : decode(payload[offset + 3U]);
+            if (a < 0 || b < 0 || c < 0 || d < 0 ||
+                (padC && (!padD || !finalBlock)) || (padD && !finalBlock) ||
+                (!finalBlock && (padC || padD)))
+            {
+                error = "Embedded glTF image contains invalid base64 characters or padding.";
+                return false;
+            }
+            const std::uint32_t packed = (static_cast<std::uint32_t>(a) << 18U) |
+                                         (static_cast<std::uint32_t>(b) << 12U) |
+                                         (static_cast<std::uint32_t>(c) << 6U) |
+                                         static_cast<std::uint32_t>(d);
+            image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 16U) & 0xffU));
+            if (!padC)
+                image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 8U) & 0xffU));
+            if (!padD)
+                image.encodedBytes.push_back(static_cast<std::uint8_t>(packed & 0xffU));
+        }
+    }
+    else
+    {
+        const auto hexValue = [](char value) -> int
+        {
+            if (value >= '0' && value <= '9') return value - '0';
+            if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+            if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+            return -1;
+        };
+        image.encodedBytes.reserve(std::min(payload.size(), maximumDecodedBytes));
+        for (std::size_t offset = 0; offset < payload.size(); ++offset)
+        {
+            unsigned char value = static_cast<unsigned char>(payload[offset]);
+            if (value == '%')
+            {
+                if (offset + 2U >= payload.size())
+                {
+                    error = "Embedded glTF data URI contains a truncated percent escape.";
+                    return false;
+                }
+                const int high = hexValue(payload[offset + 1U]);
+                const int low = hexValue(payload[offset + 2U]);
+                if (high < 0 || low < 0)
+                {
+                    error = "Embedded glTF data URI contains invalid percent encoding.";
+                    return false;
+                }
+                value = static_cast<unsigned char>((high << 4U) | low);
+                offset += 2U;
+            }
+            else if (value > 0x7fU)
+            {
+                error = "Non-ASCII embedded data URI bytes must be percent-encoded.";
+                return false;
+            }
+            image.encodedBytes.push_back(value);
+            if (image.encodedBytes.size() > maximumDecodedBytes)
+            {
+                error = "Embedded glTF image exceeds the 256 MiB decoded payload limit.";
+                return false;
+            }
         }
     }
     return !image.encodedBytes.empty();
@@ -152,7 +207,7 @@ bool ResolveTexture(const cgltf_texture_view& view, const std::filesystem::path&
         if (uri.rfind("data:", 0) == 0)
         {
             auto decoded = std::make_shared<CpuEmbeddedImage>();
-            if (!DecodeBase64Image(uri, *decoded, error))
+            if (!DecodeDataUriImage(uri, *decoded, error))
             {
                 error = std::string("Embedded image for ") + label + ": " + error;
                 return false;

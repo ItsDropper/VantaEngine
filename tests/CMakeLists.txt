@@ -83,3 +83,12 @@ add_executable(VantaEngineSceneTests
 )
 vanta_configure_test(VantaEngineSceneTests)
 add_test(NAME VantaEngine.SceneTests COMMAND VantaEngineSceneTests)
+
+add_executable(VantaEngineAssetStoreTests
+    asset_store_tests.cpp
+    ../engine/src/renderer/ObjLoader.cpp
+    ../engine/src/renderer/GltfLoader.cpp
+    ../engine/src/renderer/ModelAssetStore.cpp
+)
+vanta_configure_test(VantaEngineAssetStoreTests)
+add_test(NAME VantaEngine.AssetStoreTests COMMAND VantaEngineAssetStoreTests)

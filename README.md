@@ -66,7 +66,7 @@ Camera movement and look input are applied by a fixed 60 Hz simulation clock, in
 - math: Vec3, Vec4, Quaternion, Mat4
 - platform: Win32 window/event lifecycle, edge-triggered keyboard and mouse input, focus-loss recovery
 - core: hierarchical scene entities, validated transforms, stable generation handles and immutable scene snapshots\n- physics: generic AABB collider lifecycle, filtered overlap queries and nearest-hit raycasts
-- renderer: Direct3D 12 scene pipeline (default) plus Direct3D 11 compatibility renderer; shaders, buffers, depth and temporal-history targets
+- assets: canonical-path CPU model cache for OBJ, glTF and GLB with validated indexed geometry and generation-safe handles\n- renderer: Direct3D 12 scene pipeline (default) plus Direct3D 11 compatibility renderer; shaders, buffers, depth and temporal-history targets
 - tests: GPU-independent runtime and math tests
 
 ## Math conventions
@@ -110,7 +110,7 @@ The clean option removes only generated output in build/.
 
 ## Tests, performance diagnostics, and CI
 
-CTest runs without creating a window or requiring a GPU. It covers frame-time clamping, fixed-step simulation accumulation and overload handling, keyboard/mouse input transitions and focus-loss recovery, collider lifecycle, filtered overlap and raycast edge cases, scene hierarchy/reparenting and transform propagation, camera movement, math, model import, deterministic procedural-world invariants, and the adaptive world-detail controller. The adaptive controller has deterministic timing-input tests for overload response, recovery, invalid samples, and its quality bounds.
+CTest runs without creating a window or requiring a GPU. It covers frame-time clamping, fixed-step simulation accumulation and overload handling, keyboard/mouse input transitions and focus-loss recovery, collider lifecycle, filtered overlap and raycast edge cases, scene hierarchy/reparenting and transform propagation, camera movement, math, model import and asset-cache lifecycle/validation, deterministic procedural-world invariants, and the adaptive world-detail controller. The adaptive controller has deterministic timing-input tests for overload response, recovery, invalid samples, and its quality bounds.
 
 GitHub Actions builds and tests Debug and Release on Windows. The manual **Performance Baseline** workflow repeats the Release build/tests and uploads a small build-metadata artifact (compiler configuration, executable size, commit, and test result). This catches build/test regressions; it is deliberately **not** presented as an FPS benchmark because hosted CI does not run the same GPU, driver, resolution, or scene as a player's PC.
 

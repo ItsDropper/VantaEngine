@@ -11,6 +11,7 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
     src/renderer/ObjLoader.cpp
+    src/renderer/ModelAssetStore.cpp
     src/renderer/GltfLoader.cpp
     src/renderer/WicTextureLoader.cpp
 )

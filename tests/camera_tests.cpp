@@ -108,6 +108,19 @@ bool interpolationUsesShortestYawPath()
     return std::abs(std::abs(halfway.Yaw()) - vanta::math::kPi) < kTolerance;
 }
 
+bool interpolationAvoidsFloatOverflowForFiniteEndpoints()
+{
+    const float maximum = std::numeric_limits<float>::max();
+    Camera previous({-maximum, maximum, -maximum});
+    Camera current({maximum, -maximum, maximum});
+    const Camera blended = Camera::Interpolate(previous, current, 0.25F);
+    return std::isfinite(blended.Position().x) && std::isfinite(blended.Position().y) &&
+           std::isfinite(blended.Position().z) &&
+           std::abs(blended.Position().x + maximum * 0.5F) < maximum * 1.0e-5F &&
+           std::abs(blended.Position().y - maximum * 0.5F) < maximum * 1.0e-5F &&
+           std::abs(blended.Position().z + maximum * 0.5F) < maximum * 1.0e-5F;
+}
+
 bool interpolationClampsAlphaAndRejectsNan()
 {
     Camera previous({1.0F, 2.0F, 3.0F});
@@ -132,6 +145,7 @@ constexpr std::array kCases{
     TestCase{"camera interpolation blends position and pitch", interpolationBlendsPositionAndPitch},
     TestCase{"camera interpolation takes shortest yaw path", interpolationUsesShortestYawPath},
     TestCase{"camera interpolation clamps invalid alpha", interpolationClampsAlphaAndRejectsNan},
+    TestCase{"camera interpolation handles extreme finite positions", interpolationAvoidsFloatOverflowForFiniteEndpoints},
 };
 } // namespace
 

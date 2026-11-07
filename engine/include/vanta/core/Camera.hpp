@@ -66,8 +66,16 @@ public:
             alpha = 1.0F;
         alpha = std::clamp(alpha, 0.0F, 1.0F);
         Camera result;
-        result.SetPosition(previous.m_position +
-                           (current.m_position - previous.m_position) * alpha);
+        const auto interpolateComponent = [alpha](const float start, const float finish) {
+            return static_cast<float>(static_cast<double>(start) +
+                (static_cast<double>(finish) - static_cast<double>(start)) *
+                static_cast<double>(alpha));
+        };
+        result.SetPosition({
+            interpolateComponent(previous.m_position.x, current.m_position.x),
+            interpolateComponent(previous.m_position.y, current.m_position.y),
+            interpolateComponent(previous.m_position.z, current.m_position.z)
+        });
         const float yawDelta = std::remainder(
             current.m_yaw - previous.m_yaw, 2.0F * math::kPi);
         result.SetOrientation(

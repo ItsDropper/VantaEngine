@@ -39,9 +39,13 @@ bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
         UINT width = 0;
         UINT height = 0;
         if (FAILED(frame->GetSize(&width, &height)) || width == 0 || height == 0) break;
-        const unsigned long long byteCount = static_cast<unsigned long long>(width) * height * 4ULL;
-        if (byteCount > std::numeric_limits<UINT>::max() ||
-            byteCount > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) break;
+        const unsigned long long rowBytes = static_cast<unsigned long long>(width) * 4ULL;
+        if (rowBytes > std::numeric_limits<UINT>::max() ||
+            static_cast<unsigned long long>(height) >
+                static_cast<unsigned long long>(std::numeric_limits<UINT>::max()) / rowBytes)
+            break;
+        const unsigned long long byteCount = rowBytes * height;
+        if (byteCount > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) break;
 
         if (FAILED(factory->CreateFormatConverter(converter.GetAddressOf()))) break;
         if (FAILED(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppRGBA,
@@ -51,7 +55,7 @@ bool LoadWicTexture(const std::filesystem::path& path, CpuTexture& output)
         texture.width = width;
         texture.height = height;
         texture.rgba.resize(static_cast<std::size_t>(byteCount));
-        if (FAILED(converter->CopyPixels(nullptr, width * 4U, static_cast<UINT>(byteCount),
+        if (FAILED(converter->CopyPixels(nullptr, static_cast<UINT>(rowBytes), static_cast<UINT>(byteCount),
                 texture.rgba.data()))) break;
         output = std::move(texture);
         success = true;

@@ -7,7 +7,7 @@
 
 int main()
 {
-    std::vector<vanta::renderer::WorldVertex> vertices;
+    std::vector<vanta::world::WorldVertex> vertices;
     std::vector<unsigned int> indices;
     vanta::world::BuildDetailedWorld(vertices, indices);
 

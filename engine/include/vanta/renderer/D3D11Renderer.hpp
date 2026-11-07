@@ -3,6 +3,7 @@
 #include "vanta/math/Math.hpp"
 
 #include "vanta/renderer/AdaptiveWorldBudget.hpp"
+#include "vanta/renderer/SceneSubmission.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -25,7 +26,9 @@ public:
 
     [[nodiscard]] bool Initialize(HWND window, int width, int height);
     [[nodiscard]] bool Resize(int width, int height);
-    void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ, float cameraYaw, float cameraPitch);
+    void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ, float cameraYaw, float cameraPitch,
+                const renderer::SceneFrame* submittedScene = nullptr);
+    void Render(const renderer::SceneFrame& submittedScene);
 
 private:
     struct GpuModelMaterial
@@ -113,6 +116,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_woodAlbedoTexture;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_textureSampler;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_submittedVertexBuffer;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_submittedIndexBuffer;
     UINT m_modelIndexCount = 0;
     std::vector<GpuModelMaterial> m_modelMaterials;
     std::vector<GpuSubmesh> m_modelSubmeshes;

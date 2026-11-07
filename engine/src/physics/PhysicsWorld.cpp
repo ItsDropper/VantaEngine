@@ -161,7 +161,7 @@ bool PhysicsWorld::Raycast(
     };
 
     bool found = false;
-    float closestDistance = maximumDistance;
+    double closestDistance = static_cast<double>(maximumDistance);
     RaycastHit closestHit{};
     for (std::size_t index = 0; index < m_slots.size(); ++index)
     {
@@ -173,20 +173,26 @@ bool PhysicsWorld::Raycast(
         const bool inside = origin.x >= bounds.minimum.x && origin.x <= bounds.maximum.x &&
                             origin.y >= bounds.minimum.y && origin.y <= bounds.maximum.y &&
                             origin.z >= bounds.minimum.z && origin.z <= bounds.maximum.z;
-        float nearDistance = 0.0F;
-        float farDistance = closestDistance;
+        double nearDistance = 0.0;
+        double farDistance = closestDistance;
         math::Vec3 nearNormal{};
 
-        const float origins[] = {origin.x, origin.y, origin.z};
-        const float directions[] = {normalizedDirection.x, normalizedDirection.y, normalizedDirection.z};
-        const float minimums[] = {bounds.minimum.x, bounds.minimum.y, bounds.minimum.z};
-        const float maximums[] = {bounds.maximum.x, bounds.maximum.y, bounds.maximum.z};
+        const double origins[] = {origin.x, origin.y, origin.z};
+        const double directions[] = {
+            normalizedDirection.x, normalizedDirection.y, normalizedDirection.z
+        };
+        const double minimums[] = {
+            bounds.minimum.x, bounds.minimum.y, bounds.minimum.z
+        };
+        const double maximums[] = {
+            bounds.maximum.x, bounds.maximum.y, bounds.maximum.z
+        };
 
         bool intersects = true;
         for (int axis = 0; axis < 3; ++axis)
         {
-            const float component = directions[axis];
-            if (component == 0.0F)
+            const double component = directions[axis];
+            if (component == 0.0)
             {
                 if (origins[axis] < minimums[axis] || origins[axis] > maximums[axis])
                 {
@@ -196,9 +202,9 @@ bool PhysicsWorld::Raycast(
                 continue;
             }
 
-            const float inverse = 1.0F / component;
-            float first = (minimums[axis] - origins[axis]) * inverse;
-            float second = (maximums[axis] - origins[axis]) * inverse;
+            const double inverse = 1.0 / component;
+            double first = (minimums[axis] - origins[axis]) * inverse;
+            double second = (maximums[axis] - origins[axis]) * inverse;
             float normalSign = -1.0F;
             if (first > second)
             {
@@ -221,15 +227,15 @@ bool PhysicsWorld::Raycast(
             }
         }
 
-        if (!intersects || farDistance < 0.0F || nearDistance > closestDistance)
+        if (!intersects || farDistance < 0.0 || nearDistance > closestDistance)
             continue;
-        const float distance = inside ? 0.0F : nearDistance;
+        const double distance = inside ? 0.0 : nearDistance;
         if (distance > closestDistance)
             continue;
         closestDistance = distance;
         closestHit.collider = {static_cast<std::uint32_t>(index), slot.generation};
-        closestHit.distance = distance;
-        closestHit.position = origin + normalizedDirection * distance;
+        closestHit.distance = static_cast<float>(distance);
+        closestHit.position = origin + normalizedDirection * closestHit.distance;
         closestHit.startedInside = inside;
         closestHit.normal = inside ? -normalizedDirection : nearNormal;
         found = true;

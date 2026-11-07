@@ -72,6 +72,18 @@ bool raycastHandlesParallelAxesAndInsideOrigins()
            hit.distance == 0.0F && hit.startedInside && hit.normal.z == -1.0F;
 }
 
+bool raycastUsesDoublePrecisionForLargeFiniteBounds()
+{
+    PhysicsWorld world;
+    const auto handle = world.AddCollider(Box(1.0e38F,-1.0F,-1.0F,1.5e38F,1.0F,1.0F));
+    RaycastHit hit{};
+    if (!handle.IsValid() || !world.Raycast({-1.0e38F,0,0},{1,0,0},2.1e38F,hit))
+        return false;
+    return hit.collider == handle && std::isfinite(hit.distance) &&
+           std::abs(hit.distance - 2.0e38F) < 1.0e32F &&
+           hit.normal.x == -1.0F && std::isfinite(hit.position.x);
+}
+
 bool raycastHonorsDistanceAndLayerMask()
 {
     PhysicsWorld world;
@@ -181,6 +193,7 @@ constexpr std::array kCases{
     TestCase{"raycast returns nearest hit and surface normal",raycastFindsNearestAndCorrectNormal},
     TestCase{"raycast handles parallel axes and inside origins",raycastHandlesParallelAxesAndInsideOrigins},
     TestCase{"raycast respects distance and layers",raycastHonorsDistanceAndLayerMask},
+    TestCase{"raycast uses double precision for large finite bounds",raycastUsesDoublePrecisionForLargeFiniteBounds},
     TestCase{"trigger filtering applies to queries",triggerFilteringIsConsistent},
     TestCase{"sphere overlap uses closest point",sphereOverlapUsesClosestPoint},
     TestCase{"invalid overlap queries clear output",invalidQueriesClearResults},

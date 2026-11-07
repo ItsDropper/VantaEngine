@@ -1,4 +1,5 @@
 #include "vanta/renderer/SceneSubmission.hpp"
+#include "vanta/renderer/SceneGeometry.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -49,6 +50,19 @@ int main()
     assert(frame.draws[0].material->description.roughness == 0.8F);
     assert(frame.draws[0].world.At(0, 3) == 3.0F);
 
+    SubmittedSceneGeometry submitted;
+    std::string geometryError;
+    assert(BuildSubmittedSceneGeometry(frame, submitted, geometryError));
+    assert(geometryError.empty());
+    assert(submitted.vertices.size() == 3U && submitted.indices.size() == 3U);
+    assert(submitted.draws.size() == 1U);
+    assert(submitted.vertices[0].position[0] == 1.0F);
+    assert(submitted.vertices[0].position[1] == 2.0F);
+    assert(submitted.vertices[0].position[2] == 1.0F);
+    assert(submitted.vertices[0].normal[1] == 1.0F);
+    assert(submitted.vertices[0].color[0] == 1.0F);
+    assert(submitted.vertices[0].material[0] == 0.8F);
+
     assert(!scene.DestroyMesh(mesh));
     assert(!scene.DestroyMaterial(material));
     const MaterialHandle replacementMaterial = scene.CreateMaterial(
@@ -84,6 +98,10 @@ int main()
     assert(replacement.index == mesh.index);
     assert(replacement.generation != mesh.generation);
     assert(!scene.Contains(mesh));
+
+    const MaterialHandle invalidTextureMaterial = scene.CreateMaterial(
+        MaterialDescription{{1.0F, 1.0F, 1.0F}, 0.5F, 0.0F, "albedo.png"});
+    assert(!invalidTextureMaterial.IsValid());
 
     const MaterialHandle invalidMaterial = scene.CreateMaterial(
         MaterialDescription{{1.0F, 1.0F, 1.0F}, 2.0F, 0.0F});

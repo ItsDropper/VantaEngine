@@ -1348,48 +1348,77 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             LogError(geometryError.c_str());
             return;
         }
-        m_submittedVertexBuffer.Reset();
-        m_submittedIndexBuffer.Reset();
         if (!submittedGeometry.vertices.empty()) {
-            if (submittedGeometry.vertices.size() > std::numeric_limits<UINT>::max() / sizeof(renderer::SubmittedSceneVertex) ||
-                submittedGeometry.indices.size() > std::numeric_limits<UINT>::max() / sizeof(std::uint32_t)) {
+            const std::size_t vertexBytes = submittedGeometry.vertices.size() *
+                sizeof(renderer::SubmittedSceneVertex);
+            const std::size_t indexBytes = submittedGeometry.indices.size() * sizeof(std::uint32_t);
+            if (vertexBytes > std::numeric_limits<UINT>::max() ||
+                indexBytes > std::numeric_limits<UINT>::max()) {
                 LogError("Direct3D 11: submitted scene exceeds buffer size limits.");
                 return;
             }
-            D3D11_BUFFER_DESC vertexDescription{};
-            vertexDescription.ByteWidth = static_cast<UINT>(
-                submittedGeometry.vertices.size() * sizeof(renderer::SubmittedSceneVertex));
-            vertexDescription.Usage = D3D11_USAGE_DYNAMIC;
-            vertexDescription.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-            vertexDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-            if (FAILED(m_device->CreateBuffer(&vertexDescription, nullptr, m_submittedVertexBuffer.GetAddressOf()))) {
-                LogError("Direct3D 11: submitted scene vertex buffer creation failed.");
-                return;
+
+            const auto growCapacity = [](const UINT current, const UINT required) {
+                UINT capacity = current == 0U ? 4096U : current;
+                while (capacity < required) {
+                    if (capacity > std::numeric_limits<UINT>::max() / 2U)
+                        return required;
+                    capacity *= 2U;
+                }
+                return capacity;
+            };
+            const UINT requiredVertexBytes = static_cast<UINT>(vertexBytes);
+            if (m_submittedVertexBuffer.Get() == nullptr ||
+                m_submittedVertexBufferCapacity < requiredVertexBytes) {
+                m_submittedVertexBuffer.Reset();
+                D3D11_BUFFER_DESC description{};
+                description.ByteWidth = growCapacity(m_submittedVertexBufferCapacity, requiredVertexBytes);
+                description.Usage = D3D11_USAGE_DYNAMIC;
+                description.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+                description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+                if (FAILED(m_device->CreateBuffer(&description, nullptr,
+                    m_submittedVertexBuffer.GetAddressOf()))) {
+                    m_submittedVertexBufferCapacity = 0U;
+                    LogError("Direct3D 11: submitted scene vertex buffer creation failed.");
+                    return;
+                }
+                m_submittedVertexBufferCapacity = description.ByteWidth;
             }
+
             D3D11_MAPPED_SUBRESOURCE vertexMapped{};
-            if (FAILED(m_context->Map(m_submittedVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &vertexMapped))) {
+            if (FAILED(m_context->Map(m_submittedVertexBuffer.Get(), 0,
+                D3D11_MAP_WRITE_DISCARD, 0, &vertexMapped))) {
                 LogError("Direct3D 11: submitted scene vertex buffer mapping failed.");
                 return;
             }
-            std::memcpy(vertexMapped.pData, submittedGeometry.vertices.data(), vertexDescription.ByteWidth);
+            std::memcpy(vertexMapped.pData, submittedGeometry.vertices.data(), vertexBytes);
             m_context->Unmap(m_submittedVertexBuffer.Get(), 0);
 
-            D3D11_BUFFER_DESC indexDescription{};
-            indexDescription.ByteWidth = static_cast<UINT>(
-                submittedGeometry.indices.size() * sizeof(std::uint32_t));
-            indexDescription.Usage = D3D11_USAGE_DYNAMIC;
-            indexDescription.BindFlags = D3D11_BIND_INDEX_BUFFER;
-            indexDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-            if (FAILED(m_device->CreateBuffer(&indexDescription, nullptr, m_submittedIndexBuffer.GetAddressOf()))) {
-                LogError("Direct3D 11: submitted scene index buffer creation failed.");
-                return;
+            const UINT requiredIndexBytes = static_cast<UINT>(indexBytes);
+            if (m_submittedIndexBuffer.Get() == nullptr ||
+                m_submittedIndexBufferCapacity < requiredIndexBytes) {
+                m_submittedIndexBuffer.Reset();
+                D3D11_BUFFER_DESC description{};
+                description.ByteWidth = growCapacity(m_submittedIndexBufferCapacity, requiredIndexBytes);
+                description.Usage = D3D11_USAGE_DYNAMIC;
+                description.BindFlags = D3D11_BIND_INDEX_BUFFER;
+                description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+                if (FAILED(m_device->CreateBuffer(&description, nullptr,
+                    m_submittedIndexBuffer.GetAddressOf()))) {
+                    m_submittedIndexBufferCapacity = 0U;
+                    LogError("Direct3D 11: submitted scene index buffer creation failed.");
+                    return;
+                }
+                m_submittedIndexBufferCapacity = description.ByteWidth;
             }
+
             D3D11_MAPPED_SUBRESOURCE indexMapped{};
-            if (FAILED(m_context->Map(m_submittedIndexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &indexMapped))) {
+            if (FAILED(m_context->Map(m_submittedIndexBuffer.Get(), 0,
+                D3D11_MAP_WRITE_DISCARD, 0, &indexMapped))) {
                 LogError("Direct3D 11: submitted scene index buffer mapping failed.");
                 return;
             }
-            std::memcpy(indexMapped.pData, submittedGeometry.indices.data(), indexDescription.ByteWidth);
+            std::memcpy(indexMapped.pData, submittedGeometry.indices.data(), indexBytes);
             m_context->Unmap(m_submittedIndexBuffer.Get(), 0);
         }
     }

@@ -110,6 +110,10 @@ int RunCameraLoop(Window& window, Renderer& renderer)
             const math::Vec3& position = renderCamera.Position();
             renderer.Render(elapsedSeconds, position.x, position.y, position.z,
                             renderCamera.Yaw(), renderCamera.Pitch());
+            if (renderer.IsDeviceLost()) {
+                LogError("Graphics device was removed. Recreate the renderer and its window resources before resuming.");
+                return 1;
+            }
         }
     }
     return 0;

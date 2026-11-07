@@ -1787,7 +1787,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.baseColorFactor[1] = 1.0F;
             constants.baseColorFactor[2] = 1.0F;
             constants.baseColorFactor[3] = 1.0F;
-            for (std::size_t flag = 0; flag < material.textureFlags->size(); ++flag)
+            for (std::size_t flag = 0; flag < std::size(material.textureFlags); ++flag)
                 constants.textureFlags[flag] = material.textureFlags[flag];
             for (std::size_t cascade = 0; cascade < 3; ++cascade)
                 constants.lightViewProjection[cascade] = lightViewProjections[cascade];

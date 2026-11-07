@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -81,13 +82,39 @@ math::Vec3 TransformPoint(const float matrix[16], const math::Vec3& p)
     };
 }
 
-math::Vec3 TransformNormal(const float matrix[16], const math::Vec3& n)
+std::optional<math::Vec3> TransformNormal(const float matrix[16], const math::Vec3& normal)
 {
-    return math::Vec3{
-        matrix[0] * n.x + matrix[4] * n.y + matrix[8] * n.z,
-        matrix[1] * n.x + matrix[5] * n.y + matrix[9] * n.z,
-        matrix[2] * n.x + matrix[6] * n.y + matrix[10] * n.z
-    }.Normalized().value_or(math::Vec3{0.0F, 1.0F, 0.0F});
+    // glTF node matrices are column-major. Normals must use inverse-transpose of
+    // the linear transform; multiplying by the model matrix is only correct for
+    // rigid transforms and uniform scale.
+    const double a00 = matrix[0], a01 = matrix[4], a02 = matrix[8];
+    const double a10 = matrix[1], a11 = matrix[5], a12 = matrix[9];
+    const double a20 = matrix[2], a21 = matrix[6], a22 = matrix[10];
+
+    const double c00 = a11 * a22 - a12 * a21;
+    const double c01 = a12 * a20 - a10 * a22;
+    const double c02 = a10 * a21 - a11 * a20;
+    const double c10 = a02 * a21 - a01 * a22;
+    const double c11 = a00 * a22 - a02 * a20;
+    const double c12 = a01 * a20 - a00 * a21;
+    const double c20 = a01 * a12 - a02 * a11;
+    const double c21 = a02 * a10 - a00 * a12;
+    const double c22 = a00 * a11 - a01 * a10;
+    const double determinant = a00 * c00 + a01 * c01 + a02 * c02;
+    if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-12)
+        return std::nullopt;
+
+    const double inverseDeterminant = 1.0 / determinant;
+    const double x = (c00 * normal.x + c01 * normal.y + c02 * normal.z) * inverseDeterminant;
+    const double y = (c10 * normal.x + c11 * normal.y + c12 * normal.z) * inverseDeterminant;
+    const double z = (c20 * normal.x + c21 * normal.y + c22 * normal.z) * inverseDeterminant;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+        std::abs(x) > std::numeric_limits<float>::max() ||
+        std::abs(y) > std::numeric_limits<float>::max() ||
+        std::abs(z) > std::numeric_limits<float>::max())
+        return std::nullopt;
+    return math::Vec3{static_cast<float>(x), static_cast<float>(y),
+                      static_cast<float>(z)}.Normalized();
 }
 
 struct ImportContext
@@ -144,7 +171,14 @@ bool AppendMesh(const cgltf_mesh& mesh, const float world[16], ImportContext& co
                     context.error = "Could not read a glTF normal accessor.";
                     return false;
                 }
-                vertex.normal = TransformNormal(world, {normalData[0], normalData[1], normalData[2]});
+                const auto transformedNormal = TransformNormal(
+                    world, {normalData[0], normalData[1], normalData[2]});
+                if (!transformedNormal)
+                {
+                    context.error = "glTF node transform is singular or produces an invalid normal matrix.";
+                    return false;
+                }
+                vertex.normal = *transformedNormal;
                 context.generatedNormals.push_back(false);
             }
             else

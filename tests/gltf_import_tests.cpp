@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 
 namespace
@@ -25,12 +26,12 @@ int main()
   "asset":{"version":"2.0","generator":"VantaEngine importer test"},
   "scene":0,
   "scenes":[{"nodes":[0]}],
-  "nodes":[{"mesh":0,"translation":[2,0,0]}],
+  "nodes":[{"mesh":0,"translation":[2,0,0],"scale":[2,1,0.5]}],
   "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3,"material":0}]}],
   "materials":[{"pbrMetallicRoughness":{"baseColorFactor":[0.8,0.7,0.6,1.0],"baseColorTexture":{"index":0},"metallicFactor":0.25,"roughnessFactor":0.45,"metallicRoughnessTexture":{"index":1}}}],
   "textures":[{"source":0},{"source":1}],
   "images":[{"uri":"albedo.png"},{"uri":"packed_mr.png"}],
-  "buffers":[{"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAABAAIAAAA=","byteLength":104}],
+  "buffers":[{"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AAABAAIA","byteLength":102}],
   "bufferViews":[
     {"buffer":0,"byteOffset":0,"byteLength":36},
     {"buffer":0,"byteOffset":36,"byteLength":36},
@@ -68,8 +69,25 @@ int main()
         "resolves external PBR textures and packed metallic-roughness channels");
     Check(std::abs(model.vertices[0].position.x - 2.0F) < 0.001F,
         "applies node translation transforms");
-    Check(std::abs(model.vertices[0].normal.z - 1.0F) < 0.001F,
-        "preserves imported normals");
+    Check(std::abs(model.vertices[0].normal.x - 0.4472136F) < 0.001F &&
+          std::abs(model.vertices[0].normal.y - 0.8944272F) < 0.001F,
+        "transforms normals with the inverse-transpose under non-uniform scale");
+
+
+    const auto singularPath = std::filesystem::temp_directory_path() / "vanta_gltf_import_singular.gltf";
+    {
+        std::ifstream input(path, std::ios::binary);
+        std::string document((std::istreambuf_iterator<char>(input)), {});
+        const std::string scale = "\\"scale\\":[2,1,0.5]";
+        const auto scalePosition = document.find(scale);
+        if (scalePosition != std::string::npos)
+            document.replace(scalePosition, scale.size(), "\\"scale\\":[0,1,1]");
+        std::ofstream output(singularPath, std::ios::binary);
+        output << document;
+    }
+    Check(!vanta::renderer::LoadGltf(singularPath, model, error),
+        "rejects singular node transforms when imported normals cannot be transformed");
+    std::filesystem::remove(singularPath);
 
     std::filesystem::remove(path);
     std::cout << (7 - failures) << "/7 glTF import tests passed.\\n";

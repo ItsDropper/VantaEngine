@@ -15,6 +15,8 @@
 
 namespace vanta
 {
+[[nodiscard]] bool ValidateD3D11SceneShader(std::string& error);
+
 class D3D11Renderer final
 {
 public:

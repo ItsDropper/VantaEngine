@@ -510,7 +510,8 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
             continue;
         std::vector<assets::CpuTexture> materialMaps;
         materialMaps.reserve(geometry.draws.size());
-        UINT textureResolution = 1U;
+        UINT textureWidth = 1U;
+        UINT textureHeight = 1U;
         for (const renderer::SubmittedDrawRange& draw : geometry.draws) {
             const std::array<std::filesystem::path, 5> paths = {
                 draw.material.baseColorTexture,
@@ -531,22 +532,23 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
                     error = "Could not decode submitted material texture: " + paths[slot].string();
                     return false;
                 }
-                textureResolution = std::max(textureResolution,
-                    std::max(texture.width, texture.height));
+                textureWidth = std::max(textureWidth, texture.width);
+                textureHeight = std::max(textureHeight, texture.height);
             }
             materialMaps.push_back(std::move(texture));
         }
-        textureResolution = std::clamp(textureResolution, 1U, 2048U);
-        const std::size_t layerBytes = static_cast<std::size_t>(textureResolution) *
-            textureResolution * 4U;
+        textureWidth = std::clamp(textureWidth, 1U, 2048U);
+        textureHeight = std::clamp(textureHeight, 1U, 2048U);
+        const std::size_t layerBytes = static_cast<std::size_t>(textureWidth) *
+            textureHeight * 4U;
         std::vector<std::uint8_t> textureLayers;
         textureLayers.reserve(layerBytes * materialMaps.size());
         for (const assets::CpuTexture& texture : materialMaps) {
-            const auto pixels = ResampleTexture(texture, textureResolution,
-                textureResolution, slot == 0U);
+            const auto pixels = ResampleTexture(texture, textureWidth,
+                textureHeight, slot == 0U);
             textureLayers.insert(textureLayers.end(), pixels.begin(), pixels.end());
         }
-        if (!CreateModelTextureArray(textureResolution, textureResolution,
+        if (!CreateModelTextureArray(textureWidth, textureHeight,
                 static_cast<UINT>(materialMaps.size()), textureLayers,
                 kSubmittedMaterialBaseSrvIndex + slot, slot == 0U)) {
             error = "Could not upload a submitted material texture array to Direct3D 12.";

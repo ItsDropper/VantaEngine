@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace vanta
@@ -37,6 +38,8 @@ private:
     static constexpr UINT kHiZMipCapacity = 16;
     static constexpr UINT kHiZBaseSrvIndex = 12;
     static constexpr UINT kHiZBaseUavIndex = 14;
+    static constexpr UINT kSubmittedMaterialBaseSrvIndex = 46;
+    static constexpr UINT kSubmittedMaterialSrvCount = 5;
     struct DrawChunk
     {
         std::array<UINT, 5> startIndex{};
@@ -54,6 +57,7 @@ private:
     [[nodiscard]] bool CreateTemporalTargets();
     [[nodiscard]] bool CreateTemporalPipeline();
     [[nodiscard]] bool CreateModelTextureArray(UINT width, UINT height, UINT layers, const std::vector<std::uint8_t>& rgbaLayers, UINT descriptorIndex, bool srgb);
+    [[nodiscard]] bool PrepareSubmittedMaterialTextures(const renderer::SubmittedSceneGeometry& geometry, std::string& error);
     [[nodiscard]] bool CreatePostProcessPipeline();
     [[nodiscard]] bool CreateSceneGeometry();
     [[nodiscard]] bool CreateIndirectDrawResources();
@@ -107,6 +111,10 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_modelMaterialTextures;
     std::array<UINT, 5> m_modelMaterialMipLevels{};
     UINT m_modelMaterialLayerCount = 1;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_submittedMaterialTextures;
+    std::array<UINT, 5> m_submittedMaterialMipLevels{};
+    UINT m_submittedMaterialLayerCount = 0;
+    std::string m_submittedMaterialCacheKey;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_indexBuffer;
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_drawCommandSignature;

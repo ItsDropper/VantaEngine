@@ -53,6 +53,18 @@ int main()
     Check(first == second, "serializes byte-identical output on repeated processing");
     Check(first.size() > 32U && std::string(first.begin(), first.begin() + 8) == "TVTTEX01",
           "writes the versioned deterministic TVTTEX01 container");
+    vanta::assets::ProcessedTexture loaded;
+    Check(vanta::assets::LoadProcessedTexture(destination, loaded, error),
+          "reads the processed texture container back");
+    Check(loaded.colorSpace == vanta::assets::TextureColorSpace::Srgb &&
+          loaded.mipChain.size() == mips.size() && loaded.mipChain.back().rgba == mips.back().rgba,
+          "round-trip preserves colour-space metadata and all mip pixels");
+    std::vector<std::uint8_t> malformed(first.begin(), first.end());
+    malformed.push_back(0U);
+    loaded.colorSpace = vanta::assets::TextureColorSpace::Linear;
+    Check(!vanta::assets::ReadProcessedTexture(malformed, loaded, error) &&
+          loaded.colorSpace == vanta::assets::TextureColorSpace::Linear,
+          "rejects trailing bytes without publishing partial output");
 
     std::vector<vanta::assets::TextureMip> invalid{{2U,2U,std::vector<std::uint8_t>(16U,0U)}};
     Check(!vanta::assets::WriteProcessedTexture(directory / "invalid.ttex", invalid,
@@ -60,6 +72,6 @@ int main()
           "rejects incomplete mip chains");
     std::error_code ignored;
     std::filesystem::remove_all(directory, ignored);
-    std::cout << (failures == 0 ? "5/5" : "Some") << " texture processing checks passed.\n";
+    std::cout << (failures == 0 ? "11/11" : "Some") << " texture processing checks passed.\n";
     return failures == 0 ? 0 : 1;
 }

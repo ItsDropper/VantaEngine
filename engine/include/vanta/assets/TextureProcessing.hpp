@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <vector>
 
 namespace vanta::assets
@@ -21,12 +22,26 @@ struct TextureMip final
     std::vector<std::uint8_t> rgba;
 };
 
+struct ProcessedTexture final
+{
+    TextureColorSpace colorSpace = TextureColorSpace::Srgb;
+    std::vector<TextureMip> mipChain;
+};
+
 // Builds a complete box-filtered mip chain. sRGB RGB is averaged in linear
 // light; alpha and linear data maps are averaged without gamma conversion.
 [[nodiscard]] bool BuildTextureMipChain(const CpuTexture& source,
                                         TextureColorSpace colorSpace,
                                         std::vector<TextureMip>& output,
                                         std::string& error);
+
+// Reads and validates the complete TVTTEX01 container. Output is unchanged on failure.
+[[nodiscard]] bool ReadProcessedTexture(std::span<const std::uint8_t> source,
+                                         ProcessedTexture& output,
+                                         std::string& error);
+[[nodiscard]] bool LoadProcessedTexture(const std::filesystem::path& path,
+                                         ProcessedTexture& output,
+                                         std::string& error);
 
 // Writes a deterministic little-endian TVTTEX01 container without timestamps,
 // absolute paths, or host-endian metadata. Replacement is staged before publish.

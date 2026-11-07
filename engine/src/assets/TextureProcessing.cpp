@@ -13,6 +13,7 @@ namespace vanta::assets
 namespace
 {
 constexpr std::uint64_t MaximumMipBytes = 768ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t MaximumContainerBytes = MaximumMipBytes + 32ULL + 12ULL * 32ULL;
 constexpr std::array<std::uint16_t, 256> SrgbToLinear16 = { 0, 20, 40, 60, 80, 99, 119, 139, 159, 179, 199, 219, 241, 264, 288, 313, 340, 367, 396, 427, 458, 491, 526, 562, 599, 637, 677, 718, 761, 805, 851, 898, 947, 997, 1048, 1101, 1156, 1212, 1270, 1330, 1391, 1453, 1517, 1583, 1651, 1720, 1790, 1863, 1937, 2013, 2090, 2170, 2250, 2333, 2418, 2504, 2592, 2681, 2773, 2866, 2961, 3058, 3157, 3258, 3360, 3464, 3570, 3678, 3788, 3900, 4014, 4129, 4247, 4366, 4488, 4611, 4736, 4864, 4993, 5124, 5257, 5392, 5530, 5669, 5810, 5953, 6099, 6246, 6395, 6547, 6700, 6856, 7014, 7174, 7335, 7500, 7666, 7834, 8004, 8177, 8352, 8528, 8708, 8889, 9072, 9258, 9445, 9635, 9828, 10022, 10219, 10417, 10619, 10822, 11028, 11235, 11446, 11658, 11873, 12090, 12309, 12530, 12754, 12980, 13209, 13440, 13673, 13909, 14146, 14387, 14629, 14874, 15122, 15371, 15623, 15878, 16135, 16394, 16656, 16920, 17187, 17456, 17727, 18001, 18277, 18556, 18837, 19121, 19407, 19696, 19987, 20281, 20577, 20876, 21177, 21481, 21787, 22096, 22407, 22721, 23038, 23357, 23678, 24002, 24329, 24658, 24990, 25325, 25662, 26001, 26344, 26688, 27036, 27386, 27739, 28094, 28452, 28813, 29176, 29542, 29911, 30282, 30656, 31033, 31412, 31794, 32179, 32567, 32957, 33350, 33745, 34143, 34544, 34948, 35355, 35764, 36176, 36591, 37008, 37429, 37852, 38278, 38706, 39138, 39572, 40009, 40449, 40891, 41337, 41785, 42236, 42690, 43147, 43606, 44069, 44534, 45002, 45473, 45947, 46423, 46903, 47385, 47871, 48359, 48850, 49344, 49841, 50341, 50844, 51349, 51858, 52369, 52884, 53401, 53921, 54445, 54971, 55500, 56032, 56567, 57105, 57646, 58190, 58737, 59287, 59840, 60396, 60955, 61517, 62082, 62650, 63221, 63795, 64372, 64952, 65535 };
 
 [[nodiscard]] std::uint8_t Linear16ToSrgb(const std::uint32_t value) noexcept
@@ -27,6 +28,14 @@ constexpr std::array<std::uint16_t, 256> SrgbToLinear16 = { 0, 20, 40, 60, 80, 9
     return static_cast<std::uint8_t>(upperDistance < lowerDistance
         ? std::distance(SrgbToLinear16.begin(), found)
         : std::distance(SrgbToLinear16.begin(), found - 1));
+}
+
+[[nodiscard]] std::uint32_t ReadU32(std::span<const std::uint8_t> bytes, const std::size_t offset) noexcept
+{
+    return static_cast<std::uint32_t>(bytes[offset]) |
+           (static_cast<std::uint32_t>(bytes[offset + 1U]) << 8U) |
+           (static_cast<std::uint32_t>(bytes[offset + 2U]) << 16U) |
+           (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
 }
 
 void AppendU32(std::vector<std::uint8_t>& bytes, const std::uint32_t value)
@@ -108,6 +117,117 @@ bool BuildTextureMipChain(const CpuTexture& source, const TextureColorSpace colo
     }
     output = std::move(candidate);
     return true;
+}
+
+
+bool ReadProcessedTexture(std::span<const std::uint8_t> source,
+                          ProcessedTexture& output, std::string& error)
+{
+    error.clear();
+    constexpr std::array<std::uint8_t, 8> magic = {'T','V','T','T','E','X','0','1'};
+    if (source.size() < 32U || source.size() > MaximumContainerBytes ||
+        !std::equal(magic.begin(), magic.end(), source.begin()))
+    {
+        error = "Processed texture has an invalid signature, truncated header, or exceeds the container size limit.";
+        return false;
+    }
+    std::size_t cursor = 8U;
+    const auto readHeader = [&source, &cursor]() -> std::uint32_t
+    {
+        const std::uint32_t value = ReadU32(source, cursor);
+        cursor += 4U;
+        return value;
+    };
+    const std::uint32_t version = readHeader();
+    const std::uint32_t baseWidth = readHeader();
+    const std::uint32_t baseHeight = readHeader();
+    const std::uint32_t pixelFormat = readHeader();
+    const std::uint32_t colorSpaceValue = readHeader();
+    const std::uint32_t mipCount = readHeader();
+    if (version != 1U || baseWidth == 0U || baseHeight == 0U || pixelFormat != 1U ||
+        colorSpaceValue > static_cast<std::uint32_t>(TextureColorSpace::Srgb) ||
+        mipCount == 0U || mipCount > 32U)
+    {
+        error = "Processed texture header contains an unsupported version, dimension, pixel format, colour space, or mip count.";
+        return false;
+    }
+
+    ProcessedTexture candidate;
+    candidate.colorSpace = static_cast<TextureColorSpace>(colorSpaceValue);
+    candidate.mipChain.reserve(mipCount);
+    std::uint32_t expectedWidth = baseWidth;
+    std::uint32_t expectedHeight = baseHeight;
+    std::uint64_t totalBytes = 0U;
+    for (std::uint32_t level = 0U; level < mipCount; ++level)
+    {
+        if (source.size() - cursor < 12U)
+        {
+            error = "Processed texture mip header is truncated.";
+            return false;
+        }
+        const std::uint32_t width = readHeader();
+        const std::uint32_t height = readHeader();
+        const std::uint32_t byteCount = readHeader();
+        if (width != expectedWidth || height != expectedHeight || width == 0U || height == 0U ||
+            static_cast<std::uint64_t>(width) > MaximumMipBytes / 4ULL / height)
+        {
+            error = "Processed texture mip dimensions are inconsistent or exceed the pixel safety limit.";
+            return false;
+        }
+        const std::uint64_t expectedBytes = static_cast<std::uint64_t>(width) * height * 4ULL;
+        if (byteCount != expectedBytes || expectedBytes > MaximumMipBytes - totalBytes ||
+            expectedBytes > source.size() - cursor)
+        {
+            error = "Processed texture mip byte count is invalid or pixel data is truncated.";
+            return false;
+        }
+        TextureMip mip;
+        mip.width = width;
+        mip.height = height;
+        mip.rgba.assign(source.begin() + static_cast<std::ptrdiff_t>(cursor),
+                        source.begin() + static_cast<std::ptrdiff_t>(cursor + expectedBytes));
+        candidate.mipChain.push_back(std::move(mip));
+        cursor += static_cast<std::size_t>(expectedBytes);
+        totalBytes += expectedBytes;
+        expectedWidth = std::max(1U, (expectedWidth + 1U) / 2U);
+        expectedHeight = std::max(1U, (expectedHeight + 1U) / 2U);
+    }
+    if (candidate.mipChain.back().width != 1U || candidate.mipChain.back().height != 1U ||
+        cursor != source.size())
+    {
+        error = "Processed texture mip chain is incomplete or contains trailing bytes.";
+        return false;
+    }
+    output = std::move(candidate);
+    return true;
+}
+
+bool LoadProcessedTexture(const std::filesystem::path& path,
+                          ProcessedTexture& output, std::string& error)
+{
+    error.clear();
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream)
+    {
+        error = "Could not open processed texture container.";
+        return false;
+    }
+    const std::streamoff end = static_cast<std::streamoff>(stream.tellg());
+    if (end < 0 || static_cast<std::uint64_t>(end) > MaximumContainerBytes)
+    {
+        error = "Processed texture container is unreadable or exceeds the file size limit.";
+        return false;
+    }
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));
+    stream.seekg(0, std::ios::beg);
+    if (!bytes.empty())
+        stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!stream || static_cast<std::size_t>(stream.gcount()) != bytes.size())
+    {
+        error = "Could not read the complete processed texture container.";
+        return false;
+    }
+    return ReadProcessedTexture(bytes, output, error);
 }
 
 bool WriteProcessedTexture(const std::filesystem::path& destination,

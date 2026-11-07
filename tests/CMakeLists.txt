@@ -92,3 +92,10 @@ add_executable(VantaEngineAssetStoreTests
 )
 vanta_configure_test(VantaEngineAssetStoreTests)
 add_test(NAME VantaEngine.AssetStoreTests COMMAND VantaEngineAssetStoreTests)
+
+add_executable(VantaEnginePhysicsEventTests
+    physics_event_tests.cpp
+    ../engine/src/physics/PhysicsEventTracker.cpp
+)
+vanta_configure_test(VantaEnginePhysicsEventTests)
+add_test(NAME VantaEngine.PhysicsEventTests COMMAND VantaEnginePhysicsEventTests)

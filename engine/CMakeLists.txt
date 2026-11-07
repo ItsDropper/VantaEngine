@@ -2,6 +2,7 @@ set(VANTA_RUNTIME_SOURCES
     src/core/Engine.cpp
     src/core/Scene.cpp
     src/physics/PhysicsWorld.cpp
+    src/physics/PhysicsEventTracker.cpp
     src/platform/Window.cpp
     src/renderer/D3D11Renderer.cpp
     src/renderer/D3D11Resources.cpp

@@ -22,6 +22,8 @@ struct SubmittedSceneGeometry;
 
 namespace vanta
 {
+[[nodiscard]] bool ValidateD3D12SceneShader(std::string& error);
+
 class D3D12Renderer final
 {
 public:

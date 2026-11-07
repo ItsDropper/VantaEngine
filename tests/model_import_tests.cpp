@@ -86,17 +86,27 @@ int main()
     const auto malformedIndexPath = std::filesystem::temp_directory_path() / "vanta_obj_import_malformed_index.obj";
     {
         std::ofstream file(malformedIndexPath);
-        file << "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1junk 2 3\\n";
+        file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1junk 2 3\n";
     }
     Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
         "rejects partially numeric face indices");
     {
         std::ofstream file(malformedIndexPath, std::ios::trunc);
-        file << "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1/1/1/1 2 3\\n";
+        file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1/1/1/1 2 3\n";
     }
     Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
         "rejects face indices with excess slash components");
     std::filesystem::remove(malformedIndexPath);
-    std::cout << (13 - failures) << "/13 model import tests passed.\\n";
+
+    const auto negativeIndexPath = std::filesystem::temp_directory_path() / "vanta_obj_import_negative_index.obj";
+    {
+        std::ofstream file(negativeIndexPath);
+        file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf -3//1 -2//1 -1//1\n";
+    }
+    Check(vanta::renderer::LoadWavefrontObj(negativeIndexPath, model, error) &&
+          model.indices.size() == 3 && std::abs(model.vertices[0].normal.z - 1.0F) < 0.001F,
+        "supports negative OBJ indices and omitted texture-coordinate fields");
+    std::filesystem::remove(negativeIndexPath);
+    std::cout << (14 - failures) << "/14 model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

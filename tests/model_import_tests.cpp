@@ -161,6 +161,6 @@ int main()
           error.find("Could not open referenced MTL") != std::string::npos,
         "fails when a declared MTL sidecar is missing");
     std::filesystem::remove(missingMtlPath);
-    std::cout << (16 - failures) << "/16 model import tests passed.\n";
+    std::cout << (checks - failures) << "/" << checks << " model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

@@ -90,6 +90,6 @@ int main()
     std::filesystem::remove(singularPath);
 
     std::filesystem::remove(path);
-    std::cout << (7 - failures) << "/7 glTF import tests passed.\\n";
+    std::cout << (8 - failures) << "/8 glTF import tests passed.\\n";
     return failures == 0 ? 0 : 1;
 }

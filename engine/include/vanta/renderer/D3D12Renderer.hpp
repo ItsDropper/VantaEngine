@@ -3,6 +3,7 @@
 #include "vanta/math/Math.hpp"
 
 #include "vanta/renderer/AdaptiveWorldBudget.hpp"
+#include "vanta/renderer/SceneSubmission.hpp"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -28,6 +29,7 @@ public:
     [[nodiscard]] bool Resize(int width, int height);
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                 float cameraYaw, float cameraPitch);
+    void Render(const renderer::SceneFrame& submittedScene);
 private:
     static constexpr UINT kFrameCount = 2;
     static constexpr UINT kIndirectStreamCount = 4;
@@ -63,6 +65,8 @@ private:
     [[nodiscard]] bool WaitForFrame(UINT frameIndex);
     void ConsumeGpuProfile(UINT frameIndex) noexcept;
     [[nodiscard]] bool InitializeGpuProfiler() noexcept;
+    void RenderInternal(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
+        float cameraYaw, float cameraPitch, const renderer::SceneFrame* submittedScene);
 
     Microsoft::WRL::ComPtr<IDXGIFactory4> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
@@ -88,6 +92,8 @@ private:
     std::array<std::uint64_t, 3> m_shadowTrianglesAccumulated{};
     UINT m_profileSampleCount = 0;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedVertexBuffers;
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndexBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyDepthTextures;
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> m_historyColorRtvs{};

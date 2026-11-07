@@ -1266,6 +1266,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const float cameraZ, const float cameraYaw, const float cameraPitch,
     const renderer::SceneFrame* submittedScene)
 {
+    if (m_deviceLost || m_context.Get() == nullptr)
+        return;
     const float adaptiveDetailScale = m_worldBudget.Update();
     constexpr float clearColor[] = {0.018F, 0.025F, 0.055F, 1.0F};
     ID3D11RenderTargetView* target = m_hdrRenderTarget.Get();

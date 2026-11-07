@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -124,11 +125,12 @@ int main()
     SceneSubmission texturedScene;
     const MeshHandle texturedMesh = texturedScene.CreateMesh(Triangle());
     MaterialDescription texturedDescription;
-    texturedDescription.baseColorTexture = "albedo.png";
-    texturedDescription.normalTexture = "normal.png";
-    texturedDescription.roughnessTexture = "roughness.png";
-    texturedDescription.metallicTexture = "metallic.png";
-    texturedDescription.ambientOcclusionTexture = "ao.png";
+    const std::filesystem::path textureRoot = std::filesystem::temp_directory_path();
+    texturedDescription.baseColorTexture = textureRoot / "albedo.png";
+    texturedDescription.normalTexture = textureRoot / "normal.png";
+    texturedDescription.roughnessTexture = textureRoot / "roughness.png";
+    texturedDescription.metallicTexture = textureRoot / "metallic.png";
+    texturedDescription.ambientOcclusionTexture = textureRoot / "ao.png";
     const MaterialHandle texturedMaterial = texturedScene.CreateMaterial(texturedDescription);
     Require(texturedMaterial.IsValid());
     Require(texturedScene.CreateInstance(texturedMesh, texturedMaterial, math::Mat4::Identity()).IsValid());
@@ -139,6 +141,10 @@ int main()
     Require(texturedGeometry.draws[0].material.normalTexture == "normal.png");
     Require(texturedGeometry.vertices[0].color[3] == 0.0F);
     Require(texturedGeometry.vertices[0].material[3] == 159.0F);
+
+    MaterialDescription unresolvedTextureDescription;
+    unresolvedTextureDescription.normalTexture = "textures/normal.png";
+    Require(!texturedScene.CreateMaterial(unresolvedTextureDescription).IsValid());
 
     const MaterialHandle invalidMaterial = scene.CreateMaterial(
         MaterialDescription{{1.0F, 1.0F, 1.0F}, 2.0F, 0.0F});

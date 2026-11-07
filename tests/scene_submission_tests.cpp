@@ -51,6 +51,14 @@ int main()
 
     assert(!scene.DestroyMesh(mesh));
     assert(!scene.DestroyMaterial(material));
+    const MaterialHandle replacementMaterial = scene.CreateMaterial(
+        MaterialDescription{{0.8F, 0.9F, 1.0F}, 0.35F, 0.0F});
+    assert(replacementMaterial.IsValid());
+    assert(scene.SetResources(instance, mesh, replacementMaterial));
+    assert(!scene.DestroyMaterial(replacementMaterial));
+    assert(scene.SetResources(instance, mesh, material));
+    assert(scene.DestroyMaterial(replacementMaterial));
+
     assert(scene.SetVisible(instance, false));
     assert(scene.BuildFrame(view).draws.empty());
     assert(scene.SetVisible(instance, true));

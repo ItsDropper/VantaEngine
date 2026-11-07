@@ -493,7 +493,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         }
     }
     if (cacheKey == m_submittedMaterialCacheKey &&
-        m_submittedMaterialLayerCount == geometry.draws.size()) {
+        static_cast<std::size_t>(m_submittedMaterialLayerCount) == geometry.draws.size()) {
         error.clear();
         return true;
     }

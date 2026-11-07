@@ -4,6 +4,7 @@ set(VANTA_RUNTIME_SOURCES
     src/physics/PhysicsWorld.cpp
     src/physics/PhysicsEventTracker.cpp
     src/platform/Window.cpp
+    src/platform/InputActionMap.cpp
     src/renderer/D3D11Renderer.cpp
     src/renderer/D3D11Resources.cpp
     src/renderer/D3D12Renderer.cpp

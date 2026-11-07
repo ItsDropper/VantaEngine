@@ -64,7 +64,7 @@ Camera movement and look input are applied by a fixed 60 Hz simulation clock, in
 
 - core: runtime entry point, logging, fixed-step simulation clock, camera controller, hierarchical scene, validated transforms, generation-safe entities and immutable snapshots
 - math: Vec3, Vec4, Quaternion, Mat4
-- platform: Win32 window/event lifecycle, edge-triggered keyboard and mouse input, focus-loss recovery
+- platform: Win32 window/event lifecycle, edge-triggered keyboard and mouse input, focus-loss recovery, and configurable action bindings
 - physics: generation-safe AABB collider lifecycle, filtered shape-overlap queries, deterministic sweep-and-prune broadphase pairs with trigger tagging, enter/stay/exit event tracking, and nearest-hit raycasts
 - assets: canonical-path CPU model cache for OBJ, glTF and GLB with validated indexed geometry and generation-safe handles
 - renderer: Direct3D 12 scene pipeline (default) plus Direct3D 11 compatibility renderer; shaders, buffers, depth and temporal-history targets

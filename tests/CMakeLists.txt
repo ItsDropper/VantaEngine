@@ -99,3 +99,9 @@ add_executable(VantaEnginePhysicsEventTests
 )
 vanta_configure_test(VantaEnginePhysicsEventTests)
 add_test(NAME VantaEngine.PhysicsEventTests COMMAND VantaEnginePhysicsEventTests)
+
+add_executable(VantaEngineInputActionTests
+    input_action_tests.cpp
+)
+vanta_configure_test(VantaEngineInputActionTests)
+add_test(NAME VantaEngine.InputActionTests COMMAND VantaEngineInputActionTests)

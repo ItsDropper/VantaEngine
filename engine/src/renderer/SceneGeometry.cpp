@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace vanta::renderer
 {
@@ -67,7 +68,7 @@ bool BuildSubmittedSceneGeometry(
             error = "Scene frame contains invalid indexed triangle geometry.";
             return false;
         }
-        if (draw.mesh->vertices.size() > std::numeric_limits<std::uint32_t>::max() - totalVertices ||
+        if (draw.mesh->vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) - totalVertices ||
             draw.mesh->indices.size() > std::numeric_limits<std::uint32_t>::max() - totalIndices)
         {
             error = "Submitted scene exceeds the 32-bit draw range limits.";

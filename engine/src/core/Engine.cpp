@@ -271,7 +271,10 @@ int RunSceneSubmissionLoop(Window& window, Renderer& renderBackend)
         view.elapsedSeconds = elapsedSeconds;
         view.frameNumber = frameNumber++;
         const renderer::SceneFrame frame = scene.BuildFrame(view);
-        renderBackend.Render(frame);
+        if (!renderBackend.Render(frame)) {
+            LogError("Scene-submission sample failed to render its game-owned frame.");
+            return 1;
+        }
         if (renderBackend.IsDeviceLost()) {
             LogError("Graphics device was removed. Recreate the renderer and its window resources before resuming.");
             return 1;

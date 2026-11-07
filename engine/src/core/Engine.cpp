@@ -10,6 +10,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 
 #include <chrono>
+#include <utility>
 
 namespace vanta
 {
@@ -114,7 +115,7 @@ int RunCameraLoop(Window& window, Renderer& renderer)
     return 0;
 }
 template <typename Renderer>
-int RunSceneSubmissionLoop(Window& window, Renderer& renderer)
+int RunSceneSubmissionLoop(Window& window, Renderer& renderBackend)
 {
     renderer::SceneSubmission scene;
     renderer::MeshDescription cube;
@@ -241,7 +242,7 @@ int RunSceneSubmissionLoop(Window& window, Renderer& renderer)
         const int height = window.Height();
         if (width <= 0 || height <= 0)
             continue;
-        if (!renderer.Resize(width, height)) {
+        if (!renderBackend.Resize(width, height)) {
             LogError("Scene-submission sample renderer resize failed.");
             return 1;
         }
@@ -266,8 +267,8 @@ int RunSceneSubmissionLoop(Window& window, Renderer& renderer)
         view.elapsedSeconds = elapsedSeconds;
         view.frameNumber = frameNumber++;
         const renderer::SceneFrame frame = scene.BuildFrame(view);
-        renderer.Render(frame);
-        if (renderer.IsDeviceLost()) {
+        renderBackend.Render(frame);
+        if (renderBackend.IsDeviceLost()) {
             LogError("Graphics device was removed. Recreate the renderer and its window resources before resuming.");
             return 1;
         }

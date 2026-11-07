@@ -72,6 +72,8 @@ if (actions.State("move_forward").down)
 }
 ```
 
+Use `ActionNames()` and `Bindings(name)` to populate a controls/rebinding screen; both return owning copies, so UI code does not retain references into mutable binding storage. `Unbind()` and `ClearBindings()` take effect on the next `Evaluate()`, which emits a release edge if the action had been held.
+
 `InputState` also exposes per-frame vertical and horizontal mouse-wheel deltas in native Windows wheel units (120 per detent). `BeginFrame()` clears transient edges, motion, and wheel deltas while preserving held keys/buttons. Focus loss releases held inputs and clears motion deltas.
 
 ## Camera controls

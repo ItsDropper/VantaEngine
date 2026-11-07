@@ -88,6 +88,9 @@ int main()
     const MaterialHandle invalidMaterial = scene.CreateMaterial(
         MaterialDescription{{1.0F, 1.0F, 1.0F}, 2.0F, 0.0F});
     assert(!invalidMaterial.IsValid());
+    const MaterialHandle negativeColor = scene.CreateMaterial(
+        MaterialDescription{{-0.1F, 0.5F, 0.5F}, 0.5F, 0.0F});
+    assert(!negativeColor.IsValid());
 
     MeshDescription badMesh = Triangle();
     badMesh.indices[2] = 99U;

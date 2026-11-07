@@ -1250,7 +1250,7 @@ bool D3D11Renderer::Resize(const int width, const int height)
     return CreateRenderTarget() && CreateDepthTarget() && CreateTemporalTargets();
 }
 
-void D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
+bool D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
 {
     const float forwardX = submittedScene.view.view.At(2, 0);
     const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
@@ -1260,12 +1260,14 @@ void D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
     Render(submittedScene.view.elapsedSeconds, submittedScene.view.cameraPosition.x,
         submittedScene.view.cameraPosition.y, submittedScene.view.cameraPosition.z, yaw, pitch,
         &submittedScene);
+    return m_lastFrameSucceeded;
 }
 
 void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY,
     const float cameraZ, const float cameraYaw, const float cameraPitch,
     const renderer::SceneFrame* submittedScene)
 {
+    m_lastFrameSucceeded = false;
     if (m_deviceLost || m_context.Get() == nullptr)
         return;
     const float adaptiveDetailScale = m_worldBudget.Update();
@@ -1787,6 +1789,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         LogError(message);
     } else if (FAILED(presentResult)) {
         LogError("Direct3D 11: swap-chain presentation failed.");
+    } else {
+        m_lastFrameSucceeded = true;
     }
 }
 } // namespace vanta

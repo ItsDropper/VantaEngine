@@ -44,8 +44,13 @@ struct SceneConstants
     float lighting[4];
     Mat4 lightViewProjection[3];
     float cascadeSplits[4];
+    float environmentSunColor[4];
+    float environmentAmbient[4];
+    float environmentFog[4];
+    float environmentFogParameters[4];
+    float environmentWind[4];
 };
-static_assert(sizeof(SceneConstants) == 304);
+static_assert(sizeof(SceneConstants) == 384);
 
 struct TemporalConstants
 {
@@ -1801,9 +1806,14 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     // every cascade's light camera, so the visible sun and cast shadows stay in sync.
     constexpr float kDayCycleRadiansPerSecond = 0.012F;
     const float sunAngle = 0.95F + elapsedSeconds * kDayCycleRadiansPerSecond;
-    const Vec3 lightDirection = Vec3{0.72F * std::cos(sunAngle), std::sin(sunAngle), -0.35F}
+    const renderer::EnvironmentSettings& environment = submittedScene != nullptr
+        ? submittedScene->view.environment : renderer::EnvironmentSettings{};
+    const Vec3 defaultLightDirection = Vec3{0.72F * std::cos(sunAngle), std::sin(sunAngle), -0.35F}
         .Normalized().value_or(Vec3{0.0F, 1.0F, 0.0F});
-    const float sunIntensity = std::clamp((lightDirection.y + 0.10F) / 0.38F, 0.0F, 1.0F);
+    const Vec3 lightDirection = environment.enabled
+        ? environment.sunDirection.Normalized().value_or(defaultLightDirection) : defaultLightDirection;
+    const float sunIntensity = environment.enabled ? environment.sunIntensity
+        : std::clamp((lightDirection.y + 0.10F) / 0.38F, 0.0F, 1.0F);
     constexpr float cascadeSplits[] = {28.0F, 80.0F, 220.0F};
     float previousSplit = 0.08F;
     for (UINT cascade = 0; cascade < 3; ++cascade) {
@@ -1841,6 +1851,24 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.lighting[1] = lightDirection.y;
     constants.lighting[2] = lightDirection.z;
     constants.lighting[3] = sunIntensity;
+    constants.environmentSunColor[0] = environment.enabled ? environment.sunColor.x : 0.0F;
+    constants.environmentSunColor[1] = environment.enabled ? environment.sunColor.y : 0.0F;
+    constants.environmentSunColor[2] = environment.enabled ? environment.sunColor.z : 0.0F;
+    constants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
+    constants.environmentAmbient[0] = environment.ambientColor.x;
+    constants.environmentAmbient[1] = environment.ambientColor.y;
+    constants.environmentAmbient[2] = environment.ambientColor.z;
+    constants.environmentAmbient[3] = environment.ambientIntensity;
+    constants.environmentFog[0] = environment.fogColor.x;
+    constants.environmentFog[1] = environment.fogColor.y;
+    constants.environmentFog[2] = environment.fogColor.z;
+    constants.environmentFog[3] = environment.fogDensity;
+    constants.environmentFogParameters[0] = environment.fogStart;
+    constants.environmentFogParameters[1] = environment.enabled ? 1.0F : 0.0F;
+    constants.environmentWind[0] = environment.windDirectionX;
+    constants.environmentWind[1] = environment.windDirectionZ;
+    constants.environmentWind[2] = environment.windStrength;
+    constants.environmentWind[3] = environment.enabled ? 1.0F : 0.0F;
     const float cameraDeltaX = cameraX - m_previousCameraX;
     const float cameraDeltaY = cameraY - m_previousCameraY;
     const float cameraDeltaZ = cameraZ - m_previousCameraZ;

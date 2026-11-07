@@ -52,6 +52,22 @@ struct MaterialDescription
     bool packedMetallicRoughness = false;
 };
 
+struct EnvironmentSettings
+{
+    bool enabled = false;
+    math::Vec3 sunDirection{-0.45F, 0.28F, -0.85F};
+    math::Vec3 sunColor{1.0F, 0.88F, 0.72F};
+    float sunIntensity = 2.4F;
+    math::Vec3 ambientColor{0.32F, 0.42F, 0.56F};
+    float ambientIntensity = 0.9F;
+    math::Vec3 fogColor{0.55F, 0.66F, 0.78F};
+    float fogDensity = 0.0035F;
+    float fogStart = 40.0F;
+    float windDirectionX = 0.914F;
+    float windDirectionZ = 0.406F;
+    float windStrength = 0.06F;
+};
+
 struct FrameView
 {
     math::Mat4 view = math::Mat4::Identity();
@@ -59,6 +75,7 @@ struct FrameView
     math::Vec3 cameraPosition{};
     float elapsedSeconds = 0.0F;
     std::uint64_t frameNumber = 0;
+    EnvironmentSettings environment{};
 };
 
 struct MeshResource

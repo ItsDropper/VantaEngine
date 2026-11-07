@@ -18,6 +18,11 @@ cbuffer SceneConstants : register(b0)
     float4 lighting;
     float4x4 lightViewProjection[3];
     float4 cascadeSplits;
+    float4 environmentSunColor;
+    float4 environmentAmbient;
+    float4 environmentFog;
+    float4 environmentFogParameters;
+    float4 environmentWind;
 };
 Texture2DArray<float> shadowMap : register(t2);
 Texture2DArray modelAlbedoTexture : register(t7);
@@ -49,8 +54,11 @@ PSInput VSMain(VSInput input)
     float phaseB = cameraPosition.w * 0.83 + worldPosition.z * 0.29 - worldPosition.x * 0.23;
     float waveA = 1.0 - 4.0 * abs(frac(phaseA * 0.15915494) - 0.5);
     float waveB = 1.0 - 4.0 * abs(frac(phaseB * 0.15915494) - 0.5);
-    worldPosition.x += waveA * 0.085 * foliageMask * heightWeight;
-    worldPosition.z += waveB * 0.045 * foliageMask * heightWeight;
+    float2 windDirection = environmentWind.w > 0.5
+        ? normalize(environmentWind.xy) : normalize(float2(1.0, 0.529));
+    float windStrength = environmentWind.w > 0.5 ? environmentWind.z : 0.085;
+    worldPosition.x += waveA * windStrength * windDirection.x * foliageMask * heightWeight;
+    worldPosition.z += waveB * windStrength * windDirection.y * foliageMask * heightWeight;
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
     o.normal = normalize(input.normal);
@@ -289,15 +297,27 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 specular = d * g * f / max(4.0 * ndv * max(ndl, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
-    float3 daylightColor = lerp(float3(1.9, 0.62, 0.28), float3(4.2, 3.85, 3.45), smoothstep(0.02, 0.48, lighting.y));
+    float3 daylightColor = environmentSunColor.w > 0.5
+        ? environmentSunColor.rgb
+        : lerp(float3(1.9, 0.62, 0.28), float3(4.2, 3.85, 3.45), smoothstep(0.02, 0.48, lighting.y));
     float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
-    float3 sky = lerp(float3(0.025, 0.032, 0.055), float3(0.20, 0.30, 0.43), saturate(n.y * 0.5 + 0.5));
-    float3 ambient = sky * albedo * (1.0 - metallic) * 1.05 * ambientOcclusion;
-    float3 reflectedSky = lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25), saturate(reflect(-v, n).y * 0.5 + 0.5));
+    float3 sky = environmentSunColor.w > 0.5
+        ? lerp(environmentAmbient.rgb * 0.18, environmentAmbient.rgb, saturate(n.y * 0.5 + 0.5))
+        : lerp(float3(0.025, 0.032, 0.055), float3(0.20, 0.30, 0.43), saturate(n.y * 0.5 + 0.5));
+    float ambientIntensity = environmentSunColor.w > 0.5 ? environmentAmbient.w : 1.05;
+    float3 ambient = sky * albedo * (1.0 - metallic) * ambientIntensity * ambientOcclusion;
+    float3 reflectedSky = environmentSunColor.w > 0.5
+        ? lerp(environmentAmbient.rgb * 0.35, environmentAmbient.rgb * 1.2,
+            saturate(reflect(-v, n).y * 0.5 + 0.5))
+        : lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25),
+            saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
     float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
-    float fog = saturate(1.0 - exp(-max(distanceToCamera - 18.0, 0.0) * 0.018));
-    float3 fogColor = lerp(float3(0.025, 0.032, 0.055), float3(0.56, 0.66, 0.76), saturate(lighting.w * 0.85));
+    float fogStart = environmentFogParameters.y > 0.5 ? environmentFogParameters.x : 18.0;
+    float fogDensity = environmentFogParameters.y > 0.5 ? environmentFog.w : 0.018;
+    float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
+    float3 fogColor = environmentFogParameters.y > 0.5 ? environmentFog.rgb
+        : lerp(float3(0.025, 0.032, 0.055), float3(0.56, 0.66, 0.76), saturate(lighting.w * 0.85));
     // Preserve material colors. Channel-biased grading tints every surface.
     float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
     return float4(litColor, 1.0);

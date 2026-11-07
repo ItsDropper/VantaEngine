@@ -1783,9 +1783,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.fogStart = 5.0F;
             constants.materialProperties[0] = draw.material.roughness;
             constants.materialProperties[1] = draw.material.metallic;
-            constants.baseColorFactor[0] = 1.0F;
-            constants.baseColorFactor[1] = 1.0F;
-            constants.baseColorFactor[2] = 1.0F;
+            constants.baseColorFactor[0] = material.diffuse ? draw.material.baseColor.x : 1.0F;
+            constants.baseColorFactor[1] = material.diffuse ? draw.material.baseColor.y : 1.0F;
+            constants.baseColorFactor[2] = material.diffuse ? draw.material.baseColor.z : 1.0F;
             constants.baseColorFactor[3] = 1.0F;
             for (std::size_t flag = 0; flag < std::size(material.textureFlags); ++flag)
                 constants.textureFlags[flag] = material.textureFlags[flag];

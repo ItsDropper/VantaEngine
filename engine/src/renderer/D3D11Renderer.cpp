@@ -42,6 +42,15 @@ struct TemporalConstants
     float padding[3]{};
 };
 
+struct SkyConstants
+{
+    float horizonColor[4];
+    float zenithColor[4];
+    float sunColor[4];
+    float sunParameters[4];
+};
+static_assert(sizeof(SkyConstants) == 64);
+
 struct SceneConstants
 {
     Mat4 worldViewProjection;
@@ -518,6 +527,13 @@ float4 VSMain(VertexInput input) : SV_POSITION
 )";
 
 constexpr char kSkyShaderSource[] = R"(
+cbuffer SkyConstants : register(b0)
+{
+    float4 horizonColor;
+    float4 zenithColor;
+    float4 sunColor;
+    float4 sunParameters;
+};
 struct SkyVertexOutput
 {
     float4 position : SV_POSITION;
@@ -534,17 +550,26 @@ SkyVertexOutput VSMain(uint vertexId : SV_VertexID)
 float4 PSMain(SkyVertexOutput input) : SV_TARGET
 {
     float t = saturate(input.uv.y);
-    float3 zenith = float3(0.018, 0.035, 0.085);
-    float3 upperSky = float3(0.055, 0.12, 0.22);
-    float3 horizon = float3(0.92, 0.43, 0.22);
-    float3 lowerHorizon = float3(0.36, 0.40, 0.46);
-    float3 sky = lerp(zenith, upperSky, smoothstep(0.0, 0.55, t));
-    sky = lerp(sky, horizon, smoothstep(0.48, 0.78, t) * 0.72);
-    sky = lerp(sky, lowerHorizon, smoothstep(0.74, 1.0, t) * 0.65);
-    float2 sunDelta = (input.uv - float2(0.72, 0.66)) * float2(1.0, 1.7);
+    float customEnvironment = step(0.5, sunParameters.w);
+    float3 defaultZenith = float3(0.018, 0.035, 0.085);
+    float3 defaultUpperSky = float3(0.055, 0.12, 0.22);
+    float3 defaultHorizon = float3(0.92, 0.43, 0.22);
+    float3 defaultLowerHorizon = float3(0.36, 0.40, 0.46);
+    float3 skyZenith = lerp(defaultZenith, zenithColor.rgb, customEnvironment);
+    float3 skyUpper = lerp(defaultUpperSky, zenithColor.rgb * 0.82, customEnvironment);
+    float3 skyHorizon = lerp(defaultHorizon, horizonColor.rgb, customEnvironment);
+    float3 skyLower = lerp(defaultLowerHorizon, horizonColor.rgb * 0.72, customEnvironment);
+    float3 sky = lerp(skyZenith, skyUpper, smoothstep(0.0, 0.55, t));
+    sky = lerp(sky, skyHorizon, smoothstep(0.48, 0.78, t) * 0.72);
+    sky = lerp(sky, skyLower, smoothstep(0.74, 1.0, t) * 0.65);
+    float2 sunDelta = (input.uv - sunParameters.xy) * float2(1.0, 1.7);
     float sun = exp(-dot(sunDelta, sunDelta) * 120.0);
     float glow = exp(-dot(sunDelta, sunDelta) * 10.0);
-    sky += float3(1.0, 0.45, 0.18) * (sun * 2.0 + glow * 0.22);
+    float3 solarDisc = lerp(float3(1.0, 0.45, 0.18), sunColor.rgb, customEnvironment);
+    float daylight = sunParameters.z;
+    sky += solarDisc * (sun * 2.0 * daylight + glow * 0.22 * saturate(daylight + 0.18));
+    float horizonScatter = exp(-abs(t - 0.58) * 8.0);
+    sky += skyHorizon * horizonScatter * 0.035;
     return float4(sky, 1.0);
 }
 )";
@@ -743,6 +768,15 @@ bool D3D11Renderer::CreatePipeline()
     if (FAILED(m_device->CreateVertexShader(skyVertexBytecode->GetBufferPointer(), skyVertexBytecode->GetBufferSize(), nullptr, m_skyVertexShader.GetAddressOf())) ||
         FAILED(m_device->CreatePixelShader(skyPixelBytecode->GetBufferPointer(), skyPixelBytecode->GetBufferSize(), nullptr, m_skyPixelShader.GetAddressOf()))) {
         LogError("Could not create the sky shader objects.");
+        return false;
+    }
+    D3D11_BUFFER_DESC skyBufferDescription{};
+    skyBufferDescription.ByteWidth = sizeof(SkyConstants);
+    skyBufferDescription.Usage = D3D11_USAGE_DYNAMIC;
+    skyBufferDescription.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    skyBufferDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(m_device->CreateBuffer(&skyBufferDescription, nullptr, m_skyConstantsBuffer.GetAddressOf()))) {
+        LogError("Could not create world sky constants.");
         return false;
     }
 
@@ -1336,7 +1370,62 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_context->RSSetViewports(1, &viewport);
     m_context->RSSetState(m_rasterizerState.Get());
 
-    // Full-screen atmospheric sky pass: a gradient and solar glow, rendered without depth writes.
+    // Full-screen atmospheric sky pass uses the same world-authored sun and sky palette
+    // as the surface shader, keeping the winter horizon and solar disc coherent.
+    SkyConstants skyConstants{};
+    skyConstants.horizonColor[0] = 0.36F;
+    skyConstants.horizonColor[1] = 0.40F;
+    skyConstants.horizonColor[2] = 0.46F;
+    skyConstants.zenithColor[0] = 0.055F;
+    skyConstants.zenithColor[1] = 0.12F;
+    skyConstants.zenithColor[2] = 0.22F;
+    skyConstants.sunColor[0] = 1.0F;
+    skyConstants.sunColor[1] = 0.45F;
+    skyConstants.sunColor[2] = 0.18F;
+    skyConstants.sunParameters[0] = 0.72F;
+    skyConstants.sunParameters[1] = 0.66F;
+    skyConstants.sunParameters[2] = 1.0F;
+    const auto& skyEnvironment = submittedScene->view.environment;
+    if (submittedScene != nullptr && skyEnvironment.enabled) {
+        const Vec3 sunDirection = skyEnvironment.sunDirection.Normalized()
+            .value_or(Vec3{0.0F, 0.3F, -0.95F});
+        const float skyCosPitch = std::cos(cameraPitch);
+        const Vec3 skyForward{std::sin(cameraYaw) * skyCosPitch, std::sin(cameraPitch),
+            std::cos(cameraYaw) * skyCosPitch};
+        const Vec3 skyRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
+        const Vec3 skyUp = skyForward.Cross(skyRight).Normalized().value_or(Vec3{0.0F, 1.0F, 0.0F});
+        const float sunForward = sunDirection.Dot(skyForward);
+        const float denominator = std::max(sunForward, 0.05F);
+        const float tanHalfFov = submittedScene->view.projection.At(1, 1) > 0.0F
+            ? 1.0F / submittedScene->view.projection.At(1, 1)
+            : std::tan(math::DegreesToRadians(30.0F));
+        const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+        const float sunNdcX = sunDirection.Dot(skyRight) / (denominator * tanHalfFov * aspect);
+        const float sunNdcY = sunDirection.Dot(skyUp) / (denominator * tanHalfFov);
+        skyConstants.horizonColor[0] = skyEnvironment.fogColor.x;
+        skyConstants.horizonColor[1] = skyEnvironment.fogColor.y;
+        skyConstants.horizonColor[2] = skyEnvironment.fogColor.z;
+        skyConstants.zenithColor[0] = skyEnvironment.ambientColor.x;
+        skyConstants.zenithColor[1] = skyEnvironment.ambientColor.y;
+        skyConstants.zenithColor[2] = skyEnvironment.ambientColor.z;
+        skyConstants.sunColor[0] = skyEnvironment.sunColor.x;
+        skyConstants.sunColor[1] = skyEnvironment.sunColor.y;
+        skyConstants.sunColor[2] = skyEnvironment.sunColor.z;
+        skyConstants.sunParameters[0] = sunForward > 0.0F ? 0.5F + 0.5F * sunNdcX : 2.0F;
+        skyConstants.sunParameters[1] = 0.5F - 0.5F * sunNdcY;
+        skyConstants.sunParameters[2] = std::clamp((sunDirection.y + 0.04F) / 0.42F, 0.0F, 1.0F);
+        skyConstants.sunParameters[3] = 1.0F;
+    }
+    D3D11_MAPPED_SUBRESOURCE skyMapped{};
+    if (FAILED(m_context->Map(m_skyConstantsBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &skyMapped))) {
+        LogError("Could not map world sky constants.");
+        m_lastFrameSucceeded = false;
+        return;
+    }
+    std::memcpy(skyMapped.pData, &skyConstants, sizeof(skyConstants));
+    m_context->Unmap(m_skyConstantsBuffer.Get(), 0);
+    ID3D11Buffer* skyConstantBuffer = m_skyConstantsBuffer.Get();
+    m_context->PSSetConstantBuffers(0, 1, &skyConstantBuffer);
     m_context->OMSetDepthStencilState(m_skyDepthState.Get(), 0);
     m_context->IASetInputLayout(nullptr);
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

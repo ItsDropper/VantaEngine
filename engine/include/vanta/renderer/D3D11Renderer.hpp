@@ -105,6 +105,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_skyVertexShader;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_skyPixelShader;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> m_skyConstantsBuffer;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_skyDepthState;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_vertexBuffer;

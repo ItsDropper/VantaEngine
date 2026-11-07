@@ -95,6 +95,30 @@ bool ModelAssetStore::NormalizeAndValidate(CpuModel& model, std::string& error)
             error = "Imported model contains non-finite material properties.";
             return false;
         }
+        const auto validEmbedded = [](const std::shared_ptr<const CpuEmbeddedImage>& image)
+        {
+            return !image || (!image->encodedBytes.empty() &&
+                image->encodedBytes.size() <= 256U * 1024U * 1024U &&
+                image->mimeType.starts_with("image/"));
+        };
+        if (!validEmbedded(material.embeddedDiffuseTexture) ||
+            !validEmbedded(material.embeddedNormalTexture) ||
+            !validEmbedded(material.embeddedRoughnessTexture) ||
+            !validEmbedded(material.embeddedMetallicTexture) ||
+            !validEmbedded(material.embeddedAmbientOcclusionTexture))
+        {
+            error = "Imported model contains an invalid or oversized embedded image payload.";
+            return false;
+        }
+        if ((!material.embeddedDiffuseTexture || material.diffuseTexture.empty()) == false ||
+            (!material.embeddedNormalTexture || material.normalTexture.empty()) == false ||
+            (!material.embeddedRoughnessTexture || material.roughnessTexture.empty()) == false ||
+            (!material.embeddedMetallicTexture || material.metallicTexture.empty()) == false ||
+            (!material.embeddedAmbientOcclusionTexture || material.ambientOcclusionTexture.empty()) == false)
+        {
+            error = "Imported material texture slots may not be both external and embedded.";
+            return false;
+        }
     }
     for (const CpuSubmesh& submesh : model.submeshes)
     {

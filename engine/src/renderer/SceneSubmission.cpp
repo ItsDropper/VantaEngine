@@ -232,6 +232,17 @@ bool SceneSubmission::DestroyInstance(const InstanceHandle handle) noexcept
     return true;
 }
 
+bool SceneSubmission::SetResources(
+    const InstanceHandle handle, const MeshHandle mesh, const MaterialHandle material) noexcept
+{
+    InstanceSlot* slot = Find(handle);
+    if (slot == nullptr || Find(mesh) == nullptr || Find(material) == nullptr)
+        return false;
+    slot->mesh = mesh;
+    slot->material = material;
+    return true;
+}
+
 bool SceneSubmission::SetTransform(
     const InstanceHandle handle, const math::Mat4& world) noexcept
 {

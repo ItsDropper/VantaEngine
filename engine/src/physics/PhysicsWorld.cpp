@@ -128,12 +128,19 @@ bool PhysicsWorld::Raycast(
     const std::uint32_t layerMask,
     const bool includeTriggers) const noexcept
 {
+    hit = {};
     if (!IsFinite(origin) || !IsFinite(direction) || !std::isfinite(maximumDistance) ||
         maximumDistance < 0.0F || layerMask == 0U)
         return false;
-    const auto normalizedDirection = direction.Normalized();
-    if (!normalizedDirection)
+
+    const double directionLengthSquared =
+        static_cast<double>(direction.x) * direction.x +
+        static_cast<double>(direction.y) * direction.y +
+        static_cast<double>(direction.z) * direction.z;
+    if (!std::isfinite(directionLengthSquared) || directionLengthSquared <= 1.0e-16)
         return false;
+    const float inverseDirectionLength = static_cast<float>(1.0 / std::sqrt(directionLengthSquared));
+    const math::Vec3 normalizedDirection = direction * inverseDirectionLength;
 
     bool found = false;
     float closestDistance = maximumDistance;
@@ -153,7 +160,7 @@ bool PhysicsWorld::Raycast(
         math::Vec3 nearNormal{};
 
         const float origins[] = {origin.x, origin.y, origin.z};
-        const float directions[] = {normalizedDirection->x, normalizedDirection->y, normalizedDirection->z};
+        const float directions[] = {normalizedDirection.x, normalizedDirection.y, normalizedDirection.z};
         const float minimums[] = {bounds.minimum.x, bounds.minimum.y, bounds.minimum.z};
         const float maximums[] = {bounds.maximum.x, bounds.maximum.y, bounds.maximum.z};
 
@@ -204,9 +211,9 @@ bool PhysicsWorld::Raycast(
         closestDistance = distance;
         closestHit.collider = {static_cast<std::uint32_t>(index), slot.generation};
         closestHit.distance = distance;
-        closestHit.position = origin + *normalizedDirection * distance;
+        closestHit.position = origin + normalizedDirection * distance;
         closestHit.startedInside = inside;
-        closestHit.normal = inside ? -*normalizedDirection : nearNormal;
+        closestHit.normal = inside ? -normalizedDirection : nearNormal;
         found = true;
     }
 

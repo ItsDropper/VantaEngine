@@ -2,6 +2,7 @@
 
 #include "vanta/math/Math.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>

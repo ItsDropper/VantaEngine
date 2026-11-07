@@ -558,6 +558,29 @@ bool CreateDepthResources(
 }
 }
 
+bool ValidateD3D11SceneShader(std::string& error)
+{
+    const auto compile = [&error](const char* entryPoint, const char* profile)
+    {
+        Microsoft::WRL::ComPtr<ID3DBlob> bytecode;
+        Microsoft::WRL::ComPtr<ID3DBlob> errors;
+        const HRESULT result = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1U,
+            nullptr, nullptr, nullptr, entryPoint, profile, D3DCOMPILE_ENABLE_STRICTNESS,
+            0U, bytecode.GetAddressOf(), errors.GetAddressOf());
+        if (SUCCEEDED(result))
+            return true;
+        error = errors
+            ? std::string(static_cast<const char*>(errors->GetBufferPointer()),
+                errors->GetBufferSize())
+            : std::string("D3D11 scene shader compilation failed without diagnostics.");
+        return false;
+    };
+    if (!compile("VSMain", "vs_5_0") || !compile("PSMain", "ps_5_0"))
+        return false;
+    error.clear();
+    return true;
+}
+
 bool D3D11Renderer::Initialize(const HWND window, const int width, const int height)
 {
     DXGI_SWAP_CHAIN_DESC swapChainDescription{};

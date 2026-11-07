@@ -1429,9 +1429,14 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
                 !loadSubmittedTexture(draw.material.metallicTexture, false, material.metallic) ||
                 !loadSubmittedTexture(draw.material.ambientOcclusionTexture, false, material.ambientOcclusion))
                 return;
+            if (draw.material.packedMetallicRoughness && material.roughness) {
+                material.metallic = material.roughness;
+            }
             material.textureFlags[0] = material.normal ? 1U : 0U;
-            material.textureFlags[1] = material.roughness ? 1U : 0U;
-            material.textureFlags[2] = material.metallic ? 1U : 0U;
+            material.textureFlags[1] = material.roughness
+                ? (draw.material.packedMetallicRoughness ? 2U : 1U) : 0U;
+            material.textureFlags[2] = material.metallic
+                ? (draw.material.packedMetallicRoughness ? 2U : 1U) : 0U;
             material.textureFlags[3] = material.ambientOcclusion ? 1U : 0U;
             submittedMaterials.push_back(std::move(material));
         }

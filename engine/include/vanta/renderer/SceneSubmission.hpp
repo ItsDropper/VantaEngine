@@ -49,6 +49,7 @@ struct MaterialDescription
     std::filesystem::path roughnessTexture;
     std::filesystem::path metallicTexture;
     std::filesystem::path ambientOcclusionTexture;
+    bool packedMetallicRoughness = false;
 };
 
 struct FrameView

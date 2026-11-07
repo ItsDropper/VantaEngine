@@ -142,6 +142,21 @@ int main()
     Require(texturedGeometry.vertices[0].color[3] == 0.0F);
     Require(texturedGeometry.vertices[0].material[3] == 159.0F);
 
+    MaterialDescription packedOrmDescription;
+    packedOrmDescription.roughnessTexture = textureRoot / "snow-orm.png";
+    packedOrmDescription.ambientOcclusionTexture = textureRoot / "snow-orm.png";
+    packedOrmDescription.packedMetallicRoughness = true;
+    const MaterialHandle packedOrmMaterial = texturedScene.CreateMaterial(packedOrmDescription);
+    Require(packedOrmMaterial.IsValid());
+    Require(texturedScene.CreateInstance(texturedMesh, packedOrmMaterial,
+        math::Mat4::Identity()).IsValid());
+    const SceneFrame packedOrmFrame = texturedScene.BuildFrame(view);
+    SubmittedSceneGeometry packedOrmGeometry;
+    Require(BuildSubmittedSceneGeometry(packedOrmFrame, packedOrmGeometry, geometryError));
+    Require(packedOrmGeometry.draws.size() == 2U);
+    Require(packedOrmGeometry.vertices[3].material[3] == 176.0F);
+    Require(packedOrmGeometry.draws[1].material.packedMetallicRoughness);
+
     MaterialDescription unresolvedTextureDescription;
     unresolvedTextureDescription.normalTexture = "textures/normal.png";
     Require(!texturedScene.CreateMaterial(unresolvedTextureDescription).IsValid());

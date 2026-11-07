@@ -269,7 +269,12 @@ float4 PSMain(PSInput input) : SV_TARGET
             ? submittedMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r
             : modelMetallicTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r));
     if ((materialFlags & 32U) != 0U)
-        metallic = saturate(metallic * modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b);
+    {
+        const float packedMetallic = submittedMaterial
+            ? submittedRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b
+            : modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b;
+        metallic = saturate(metallic * packedMetallic);
+    }
     float ambientOcclusion = (materialFlags & 16U) != 0U
         ? (submittedMaterial
             ? submittedOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r

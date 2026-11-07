@@ -19,6 +19,7 @@ struct ModelVertex
 
 struct CpuMaterial
 {
+    std::string name;
     std::filesystem::path diffuseTexture;
     std::filesystem::path normalTexture;
     std::filesystem::path roughnessTexture;

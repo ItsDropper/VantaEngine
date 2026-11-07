@@ -299,6 +299,12 @@ bool PhysicsWorld::ComputeOverlaps(
         }
     }
 
+    std::sort(pairs.begin(), pairs.end(),
+        [](const ColliderPair& left, const ColliderPair& right) {
+            if (left.first.index != right.first.index)
+                return left.first.index < right.first.index;
+            return left.second.index < right.second.index;
+        });
     results.swap(pairs);
     return true;
 }

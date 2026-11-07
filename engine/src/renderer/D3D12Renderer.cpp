@@ -1368,7 +1368,7 @@ bool D3D12Renderer::WaitForFrame(UINT frameIndex)
     }
     const DWORD waitResult = WaitForSingleObject(m_fenceEvent, INFINITE);
     if (waitResult != WAIT_OBJECT_0) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
     return true;
@@ -1379,15 +1379,15 @@ bool D3D12Renderer::WaitForGpu()
     if (!m_commandQueue || !m_fence || m_fenceEvent == nullptr) return true;
     const UINT64 value = m_nextFenceValue++;
     if (FAILED(m_commandQueue->Signal(m_fence.Get(), value))) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
     if (FAILED(m_fence->SetEventOnCompletion(value, m_fenceEvent))) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
     if (WaitForSingleObject(m_fenceEvent, INFINITE) != WAIT_OBJECT_0) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
     m_fenceValues.fill(value);
@@ -1400,7 +1400,7 @@ bool D3D12Renderer::Resize(int width, int height)
     if (width <= 0 || height <= 0 ||
         (m_width == static_cast<UINT>(width) && m_height == static_cast<UINT>(height))) return true;
     if (!WaitForGpu()) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: GPU wait failed before resize.");
         return false;
     }
@@ -1413,7 +1413,7 @@ bool D3D12Renderer::Resize(int width, int height)
             static_cast<UINT>(height), DXGI_FORMAT_R8G8B8A8_UNORM, 0);
     if (FAILED(resizeResult)) {
         m_deviceLost = resizeResult == DXGI_ERROR_DEVICE_REMOVED || resizeResult == DXGI_ERROR_DEVICE_RESET ||
-            (m_device && FAILED(m_device->GetDeviceRemovedReason()));
+            (m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason()));
         char message[160]{};
         std::snprintf(message, sizeof(message), "Direct3D 12: swap-chain resize failed (HRESULT 0x%08lX).",
             static_cast<unsigned long>(resizeResult));
@@ -1578,7 +1578,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_lastFrameSucceeded = false;
     if (m_failed || m_deviceLost) return;
     if (!WaitForFrame(m_frameIndex)) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         m_failed = true;
         return;
@@ -2147,7 +2147,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {
-        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: frame fence signal failed.");
         m_failed = true;
         return;
@@ -2175,5 +2175,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_previousCameraPitch = cameraPitch;
     ++m_renderFrameNumber;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+    m_lastFrameSucceeded = true;
 }
 } // namespace vanta

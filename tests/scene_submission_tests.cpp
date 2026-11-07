@@ -51,8 +51,15 @@ int main()
     FrameView view;
     view.cameraPosition = {0.0F, 1.0F, -5.0F};
     view.frameNumber = 42U;
+    view.environment.enabled = true;
+    view.environment.sunDirection = {0.0F, 0.35F, -0.93675F};
+    view.environment.sunIntensity = 2.4F;
+    view.environment.fogDensity = 0.0035F;
     const SceneFrame frame = scene.BuildFrame(view);
     Require(frame.view.frameNumber == 42U);
+    Require(frame.view.environment.enabled);
+    Require(std::abs(frame.view.environment.sunIntensity - 2.4F) < 0.0001F);
+    Require(std::abs(frame.view.environment.fogDensity - 0.0035F) < 0.00001F);
     Require(frame.draws.size() == 1U);
     Require(frame.draws[0].mesh->indices.size() == 3U);
     Require(frame.draws[0].material->description.roughness == 0.8F);

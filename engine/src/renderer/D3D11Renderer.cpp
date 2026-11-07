@@ -57,6 +57,10 @@ struct SceneConstants
     UINT textureFlags[4];
     Mat4 lightViewProjection[3];
     float cascadeSplits[4];
+    float environmentSunColor[4];
+    float environmentAmbient[4];
+    float environmentFogColor[4];
+    float environmentWind[4];
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -114,6 +118,10 @@ cbuffer SceneConstants : register(b0)
     uint4 textureFlags;
     float4x4 lightViewProjection[3];
     float4 cascadeSplits;
+    float4 environmentSunColor;
+    float4 environmentAmbient;
+    float4 environmentFogColor;
+    float4 environmentWind;
 };
 Texture2D diffuseTexture : register(t0);
 Texture2DArray<float> shadowMap : register(t1);
@@ -148,9 +156,22 @@ struct PixelInput
 PixelInput VSMain(VertexInput input)
 {
     PixelInput output;
-    output.position = mul(worldViewProjection, float4(input.position, 1.0));
+    float3 localPosition = input.position;
+    float foliageMask = step(input.color.r * 1.28, input.color.g) *
+                        step(input.color.b * 1.20, input.color.g) *
+                        step(0.105, input.color.g) * step(0.9, input.color.a);
+    if (environmentFogColor.w > 0.5 && foliageMask > 0.5) {
+        float heightWeight = saturate((localPosition.y + 0.35) * 0.13);
+        float phaseA = environmentWind.w * 1.25 + localPosition.x * 0.31 + localPosition.z * 0.47;
+        float phaseB = environmentWind.w * 0.83 + localPosition.z * 0.29 - localPosition.x * 0.23;
+        float waveA = 1.0 - 4.0 * abs(frac(phaseA * 0.15915494) - 0.5);
+        float waveB = 1.0 - 4.0 * abs(frac(phaseB * 0.15915494) - 0.5);
+        localPosition.x += waveA * environmentWind.z * environmentWind.x * heightWeight;
+        localPosition.z += waveB * environmentWind.z * environmentWind.y * heightWeight;
+    }
+    output.position = mul(worldViewProjection, float4(localPosition, 1.0));
     output.normal = normalize(mul((float3x3)world, input.normal));
-    output.worldPosition = mul(world, float4(input.position, 1.0)).xyz;
+    output.worldPosition = mul(world, float4(localPosition, 1.0)).xyz;
     output.shadowPosition = mul(lightViewProjection[0], float4(output.worldPosition, 1.0));
     output.color = input.color;
     output.uv = input.uv;
@@ -313,13 +334,17 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float geometry = GeometrySmith(n, v, l, roughness);
     float3 specular = (ndf * geometry * f) / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
-    float3 radiance = float3(4.2, 3.45, 2.55);
+    float3 radiance = environmentFogColor.w > 0.5
+        ? environmentSunColor.rgb * environmentSunColor.w
+        : float3(4.2, 3.45, 2.55);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
     // Analytic environment lighting approximates a prefiltered sky environment:
     // diffuse irradiance follows the normal hemisphere; roughness broadens reflections.
-    float3 skyZenith = float3(0.18, 0.29, 0.43);
-    float3 skyGround = float3(0.055, 0.052, 0.045);
+    float3 skyZenith = environmentFogColor.w > 0.5
+        ? environmentAmbient.rgb : float3(0.18, 0.29, 0.43);
+    float3 skyGround = environmentFogColor.w > 0.5
+        ? environmentAmbient.rgb * 0.20 : float3(0.055, 0.052, 0.045);
     float3 diffuseIrradiance = lerp(skyGround, skyZenith, saturate(n.y * 0.5 + 0.5));
     float3 reflectionDirection = reflect(-v, n);
     float environmentHorizon = pow(saturate(1.0 - abs(reflectionDirection.y)), 1.6);
@@ -331,13 +356,15 @@ float4 PSMain(PixelInput input) : SV_TARGET
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
     float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * ambientOcclusion;
     float3 specularAmbient = environmentReflection * f * (1.0 - roughness * 0.72) * ambientOcclusion;
-    float3 ambient = diffuseAmbient * 0.72 + specularAmbient * 0.85;
+    float ambientIntensity = environmentFogColor.w > 0.5 ? environmentAmbient.w : 1.0;
+    float3 ambient = (diffuseAmbient * 0.72 + specularAmbient * 0.85) * ambientIntensity;
     // Keep scene shading in linear HDR. Tone mapping and display transfer happen once
     // after the full scene has been composited, so bright highlights can bloom correctly.
     float3 color = direct + ambient;
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
-    float3 fogColor = float3(0.42, 0.48, 0.55);
+    float3 fogColor = environmentFogColor.w > 0.5
+        ? environmentFogColor.rgb : float3(0.42, 0.48, 0.55);
     return float4(lerp(color, fogColor, fog), sampled.a * baseColorFactor.a);
 }
 )";
@@ -1352,7 +1379,11 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     Mat4 lightViewProjections[3]{};
     for (int cascade = 0; cascade < 3; ++cascade) {
         const Vec3 center = cameraPosition + cameraForward * cascadeCenters[cascade];
-        const Vec3 lightOffset{30.0F, 65.0F, -40.0F};
+        const auto environmentSun = submittedScene != nullptr && submittedScene->view.environment.enabled
+            ? submittedScene->view.environment.sunDirection.Normalized()
+            : std::optional<Vec3>{};
+        const Vec3 lightOffset = environmentSun
+            ? *environmentSun * 100.0F : Vec3{30.0F, 65.0F, -40.0F};
         const Mat4 lightView = Mat4::LookAtLH(center + lightOffset, center, {0.0F, 1.0F, 0.0F})
             .value_or(Mat4::Identity());
         Mat4 lightProjection{};
@@ -1804,11 +1835,30 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.cameraPosition[0] = cameraX;
             constants.cameraPosition[1] = cameraY;
             constants.cameraPosition[2] = cameraZ;
-            constants.fogDensity = 0.018F;
-            constants.lightDirection[0] = -0.45F;
-            constants.lightDirection[1] = -0.8F;
-            constants.lightDirection[2] = 0.55F;
-            constants.fogStart = 5.0F;
+            const auto& environment = submittedScene->view.environment;
+            constants.fogDensity = environment.enabled ? environment.fogDensity : 0.018F;
+            constants.lightDirection[0] = environment.enabled ? -environment.sunDirection.x : -0.45F;
+            constants.lightDirection[1] = environment.enabled ? -environment.sunDirection.y : -0.8F;
+            constants.lightDirection[2] = environment.enabled ? -environment.sunDirection.z : 0.55F;
+            constants.fogStart = environment.enabled ? environment.fogStart : 5.0F;
+            if (environment.enabled) {
+                constants.environmentSunColor[0] = environment.sunColor.x;
+                constants.environmentSunColor[1] = environment.sunColor.y;
+                constants.environmentSunColor[2] = environment.sunColor.z;
+                constants.environmentSunColor[3] = environment.sunIntensity;
+                constants.environmentAmbient[0] = environment.ambientColor.x;
+                constants.environmentAmbient[1] = environment.ambientColor.y;
+                constants.environmentAmbient[2] = environment.ambientColor.z;
+                constants.environmentAmbient[3] = environment.ambientIntensity;
+                constants.environmentFogColor[0] = environment.fogColor.x;
+                constants.environmentFogColor[1] = environment.fogColor.y;
+                constants.environmentFogColor[2] = environment.fogColor.z;
+                constants.environmentFogColor[3] = 1.0F;
+                constants.environmentWind[0] = environment.windDirectionX;
+                constants.environmentWind[1] = environment.windDirectionZ;
+                constants.environmentWind[2] = environment.windStrength;
+                constants.environmentWind[3] = submittedScene->view.elapsedSeconds;
+            }
             constants.materialProperties[0] = draw.material.roughness;
             constants.materialProperties[1] = draw.material.metallic;
             // Submitted vertex colors already carry the material base color.

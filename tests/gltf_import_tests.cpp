@@ -108,7 +108,22 @@ int main()
         "preserves front-face winding and inverse-transpose normals for mirrored nodes");
     std::filesystem::remove(mirroredPath);
 
+    const auto malformedUriPath = std::filesystem::temp_directory_path() / "vanta_gltf_import_bad_uri.gltf";
+    {
+        std::ifstream input(path, std::ios::binary);
+        std::string document((std::istreambuf_iterator<char>(input)), {});
+        const std::string encoded = "albedo%20map.png";
+        const auto uriPosition = document.find(encoded);
+        if (uriPosition != std::string::npos)
+            document.replace(uriPosition, encoded.size(), "albedo%2Gmap.png");
+        std::ofstream output(malformedUriPath, std::ios::binary);
+        output << document;
+    }
+    Check(!vanta::renderer::LoadGltf(malformedUriPath, model, error),
+        "rejects malformed percent-encoded external texture URIs");
+    std::filesystem::remove(malformedUriPath);
+
     std::filesystem::remove(path);
-    std::cout << (9 - failures) << "/9 glTF import tests passed.\\n";
+    std::cout << (10 - failures) << "/10 glTF import tests passed.\\n";
     return failures == 0 ? 0 : 1;
 }

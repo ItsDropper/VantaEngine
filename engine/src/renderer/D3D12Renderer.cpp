@@ -679,7 +679,7 @@ bool D3D12Renderer::CreateSceneGeometry()
 
     if (modelLoaded) {
         if (model.materials.empty()) {
-            renderer::CpuMaterial material;
+            assets::CpuMaterial material;
             material.diffuseTexture = model.diffuseTexture;
             material.normalTexture = model.normalTexture;
             material.roughnessTexture = model.roughnessTexture;
@@ -718,7 +718,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         materialMapPresent[slot].resize(materialCount, false);
     }
     for (std::size_t materialIndex = 0; materialIndex < materialCount && modelLoaded; ++materialIndex) {
-        const renderer::CpuMaterial& material = model.materials[materialIndex];
+        const assets::CpuMaterial& material = model.materials[materialIndex];
         materialPaths[materialIndex][0] = material.diffuseTexture;
         materialPaths[materialIndex][1] = material.normalTexture;
         materialPaths[materialIndex][2] = material.roughnessTexture;
@@ -785,13 +785,13 @@ bool D3D12Renderer::CreateSceneGeometry()
             }
         }
         if (validModel) {
-            for (const renderer::CpuSubmesh& submesh : model.submeshes) {
-                const renderer::CpuMaterial& material = model.materials[submesh.materialIndex];
+            for (const assets::CpuSubmesh& submesh : model.submeshes) {
+                const assets::CpuMaterial& material = model.materials[submesh.materialIndex];
                 const UINT flags = materialTextureFlags[submesh.materialIndex];
                 for (UINT offset = 0; offset < submesh.indexCount; ++offset) {
                     const unsigned int sourceIndex = model.indices[submesh.firstIndex + offset];
                     if (sourceIndex >= model.vertices.size()) { validModel = false; break; }
-                    const renderer::ModelVertex& source = model.vertices[sourceIndex];
+                    const assets::ModelVertex& source = model.vertices[sourceIndex];
                     const unsigned int destinationIndex = static_cast<unsigned int>(vertices.size());
                     vertices.push_back({
                         {source.position.x * modelScale + modelX, source.position.y * modelScale + modelY,

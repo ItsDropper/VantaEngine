@@ -138,7 +138,7 @@ int main()
     SubmittedSceneGeometry texturedGeometry;
     Require(BuildSubmittedSceneGeometry(texturedFrame, texturedGeometry, geometryError));
     Require(texturedGeometry.draws.size() == 1U);
-    Require(texturedGeometry.draws[0].material.normalTexture == "normal.png");
+    Require(texturedGeometry.draws[0].material.normalTexture == textureRoot / "normal.png");
     Require(texturedGeometry.vertices[0].color[3] == 0.0F);
     Require(texturedGeometry.vertices[0].material[3] == 159.0F);
 

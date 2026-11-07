@@ -1231,9 +1231,10 @@ bool D3D11Renderer::Resize(const int width, const int height)
         static_cast<UINT>(height), DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(resizeResult))
     {
-        if (resizeResult == DXGI_ERROR_DEVICE_REMOVED || resizeResult == DXGI_ERROR_DEVICE_RESET) {
+        const HRESULT reason = m_device->GetDeviceRemovedReason();
+        if (resizeResult == DXGI_ERROR_DEVICE_REMOVED || resizeResult == DXGI_ERROR_DEVICE_RESET ||
+            FAILED(reason)) {
             m_deviceLost = true;
-            const HRESULT reason = m_device->GetDeviceRemovedReason();
             char message[192]{};
             std::snprintf(message, sizeof(message),
                 "Direct3D 11: swap-chain resize lost the device (0x%08lX).",
@@ -1818,6 +1819,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             static_cast<unsigned long>(reason));
         LogError(message);
     } else if (FAILED(presentResult)) {
+        const HRESULT reason = m_device->GetDeviceRemovedReason();
+        if (FAILED(reason))
+            m_deviceLost = true;
         LogError("Direct3D 11: swap-chain presentation failed.");
     } else {
         m_lastFrameSucceeded = true;

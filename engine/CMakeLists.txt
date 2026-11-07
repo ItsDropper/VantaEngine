@@ -22,12 +22,14 @@ target_include_directories(VantaEngineRuntime
     PUBLIC include
 )
 
+get_filename_component(VANTA_ENGINE_ASSET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../assets" ABSOLUTE)
+
 target_compile_definitions(VantaEngineRuntime PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     UNICODE
     _UNICODE
-    VANTA_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
+    VANTA_ASSET_DIR="${VANTA_ENGINE_ASSET_DIR}"
 )
 
 target_link_libraries(VantaEngineRuntime PUBLIC

@@ -30,7 +30,7 @@ int main()
   "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3,"material":0}]}],
   "materials":[{"pbrMetallicRoughness":{"baseColorFactor":[0.8,0.7,0.6,1.0],"baseColorTexture":{"index":0},"metallicFactor":0.25,"roughnessFactor":0.45,"metallicRoughnessTexture":{"index":1}}}],
   "textures":[{"source":0},{"source":1}],
-  "images":[{"uri":"albedo.png"},{"uri":"packed_mr.png"}],
+  "images":[{"uri":"albedo%20map.png"},{"uri":"packed_mr.png"}],
   "buffers":[{"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAIA/AAABAAIA","byteLength":102}],
   "bufferViews":[
     {"buffer":0,"byteOffset":0,"byteLength":36},
@@ -62,7 +62,7 @@ int main()
           std::abs(model.materials[1].roughness - 0.45F) < 0.001F &&
           std::abs(model.materials[1].metallic - 0.25F) < 0.001F,
         "imports glTF metallic-roughness factors and base color");
-    Check(model.materials[1].diffuseTexture.filename() == "albedo.png" &&
+    Check(model.materials[1].diffuseTexture.filename() == "albedo map.png" &&
           model.materials[1].packedMetallicRoughness &&
           model.materials[1].roughnessTexture.filename() == "packed_mr.png" &&
           model.materials[1].metallicTexture.filename() == "packed_mr.png",

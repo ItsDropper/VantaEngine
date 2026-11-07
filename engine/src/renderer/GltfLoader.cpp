@@ -23,6 +23,41 @@ const cgltf_accessor* FindAttribute(const cgltf_primitive& primitive, cgltf_attr
     return nullptr;
 }
 
+bool DecodeUriPath(const std::string& uri, std::string& decoded)
+{
+    decoded.clear();
+    const std::size_t suffix = uri.find_first_of("?#");
+    const std::string_view path(uri.data(),
+        suffix == std::string::npos ? uri.size() : suffix);
+    const auto hexValue = [](const char value) -> int {
+        if (value >= '0' && value <= '9') return value - '0';
+        if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+        if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+        return -1;
+    };
+    decoded.reserve(path.size());
+    for (std::size_t index = 0; index < path.size(); ++index)
+    {
+        if (path[index] != '%')
+        {
+            decoded.push_back(path[index]);
+            continue;
+        }
+        if (index + 2U >= path.size())
+            return false;
+        const int high = hexValue(path[index + 1U]);
+        const int low = hexValue(path[index + 2U]);
+        if (high < 0 || low < 0)
+            return false;
+        const char value = static_cast<char>((high << 4) | low);
+        if (value == '\0')
+            return false;
+        decoded.push_back(value);
+        index += 2U;
+    }
+    return !decoded.empty();
+}
+
 bool ExternalTexturePath(const cgltf_texture_view& view, const std::filesystem::path& modelPath,
                          std::filesystem::path& output, std::string& error, const char* label)
 {
@@ -37,7 +72,14 @@ bool ExternalTexturePath(const cgltf_texture_view& view, const std::filesystem::
                     " is not supported yet; export the texture as an external image.";
             return false;
         }
-        output = modelPath.parent_path() / std::filesystem::u8path(uri);
+        std::string decodedUri;
+        if (!DecodeUriPath(uri, decodedUri))
+        {
+            error = std::string("Texture URI for ") + label +
+                    " contains invalid percent-encoding or an empty path.";
+            return false;
+        }
+        output = modelPath.parent_path() / std::filesystem::u8path(decodedUri);
         return true;
     }
     if (image.buffer_view)

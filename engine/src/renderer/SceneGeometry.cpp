@@ -123,7 +123,7 @@ bool BuildSubmittedSceneGeometry(
             vertex.color[0] = range.material.baseColor.x;
             vertex.color[1] = range.material.baseColor.y;
             vertex.color[2] = range.material.baseColor.z;
-            vertex.color[3] = 1.0F;
+            vertex.color[3] = 0.0F;
             vertex.uv[0] = source.u;
             vertex.uv[1] = source.v;
             vertex.material[0] = range.material.roughness;

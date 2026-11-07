@@ -119,5 +119,6 @@ add_executable(VantaEngineTextureProcessingTests
     texture_processing_tests.cpp
     ../engine/src/assets/TextureProcessing.cpp
 )
+target_compile_definitions(VantaEngineTextureProcessingTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 vanta_configure_test(VantaEngineTextureProcessingTests)
 add_test(NAME VantaEngine.TextureProcessingTests COMMAND VantaEngineTextureProcessingTests)

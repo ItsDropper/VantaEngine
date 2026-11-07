@@ -106,3 +106,10 @@ add_executable(VantaEngineInputActionTests
 )
 vanta_configure_test(VantaEngineInputActionTests)
 add_test(NAME VantaEngine.InputActionTests COMMAND VantaEngineInputActionTests)
+
+add_executable(VantaEngineSceneSubmissionTests
+    scene_submission_tests.cpp
+    ../engine/src/renderer/SceneSubmission.cpp
+)
+vanta_configure_test(VantaEngineSceneSubmissionTests)
+add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissionTests)

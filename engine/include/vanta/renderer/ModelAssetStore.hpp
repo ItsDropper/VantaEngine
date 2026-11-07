@@ -2,6 +2,7 @@
 
 #include "vanta/renderer/ObjLoader.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <filesystem>

@@ -114,12 +114,34 @@ bool malformedModelDoesNotEnterCache()
     return rejected;
 }
 
+
+bool modelPointersRemainStableWhenStoreGrows()
+{
+    if(!WriteValidModel())return false;
+    const auto secondPath=kDirectory/"second.obj";
+    {
+        std::ofstream file(secondPath);
+        file<<"v 0 0 0\\nv 0 0 1\\nv 1 0 0\\nf 1 2 3\\n";
+    }
+    ModelAssetStore store;
+    ModelHandle first{},second{};
+    std::string error;
+    if(!store.LoadModel(kModelPath,first,error))return false;
+    const CpuModel* firstModel=store.GetModel(first);
+    if(firstModel==nullptr||!store.LoadModel(secondPath,second,error))return false;
+    const bool stable=store.GetModel(first)==firstModel&&firstModel->vertices.size()==3;
+    std::error_code ignored;
+    std::filesystem::remove_all(kDirectory,ignored);
+    return stable&&store.LoadedCount()==2;
+}
+
 constexpr std::array kCases{
     TestCase{"loads and caches OBJ by canonical path",loadsAndCachesObjByCanonicalPath},
     TestCase{"unload invalidates handles and supports reload",unloadInvalidatesHandleAndAllowsReload},
     TestCase{"clear invalidates every loaded handle",clearInvalidatesAllHandles},
     TestCase{"unsupported and missing paths report errors",unsupportedAndMissingPathsReportErrors},
-    TestCase{"malformed model never enters the cache",malformedModelDoesNotEnterCache}
+    TestCase{"malformed model never enters the cache",malformedModelDoesNotEnterCache},
+    TestCase{"model pointers remain stable when the store grows",modelPointersRemainStableWhenStoreGrows}
 };
 }
 

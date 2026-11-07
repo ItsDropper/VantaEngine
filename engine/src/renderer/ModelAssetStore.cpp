@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cwctype>
 #include <system_error>
+#include <limits>
 #include <utility>
 
 namespace vanta::renderer
@@ -44,9 +45,10 @@ ModelAssetStore::Slot* ModelAssetStore::Find(const ModelHandle handle) noexcept
 
 bool ModelAssetStore::NormalizeAndValidate(CpuModel& model, std::string& error)
 {
-    if (model.vertices.empty() || model.indices.empty() || model.indices.size() % 3U != 0U)
+    if (model.vertices.empty() || model.indices.empty() || model.indices.size() % 3U != 0U ||
+        model.indices.size() > std::numeric_limits<std::uint32_t>::max())
     {
-        error = "Imported model has no indexed triangle geometry.";
+        error = "Imported model has no indexed triangle geometry or exceeds the supported index range.";
         return false;
     }
     for (const ModelVertex& vertex : model.vertices)

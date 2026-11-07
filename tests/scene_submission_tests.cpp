@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 using namespace vanta;
 using namespace vanta::renderer;

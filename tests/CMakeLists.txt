@@ -122,3 +122,10 @@ add_executable(VantaEngineTextureProcessingTests
 target_compile_definitions(VantaEngineTextureProcessingTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 vanta_configure_test(VantaEngineTextureProcessingTests)
 add_test(NAME VantaEngine.TextureProcessingTests COMMAND VantaEngineTextureProcessingTests)
+
+add_executable(VantaEngineShaderValidationTests
+    renderer_shader_validation_tests.cpp
+)
+vanta_configure_test(VantaEngineShaderValidationTests)
+target_link_libraries(VantaEngineShaderValidationTests PRIVATE VantaEngine::Runtime)
+add_test(NAME VantaEngine.ShaderValidationTests COMMAND VantaEngineShaderValidationTests)

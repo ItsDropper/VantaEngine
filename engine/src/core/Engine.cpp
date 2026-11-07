@@ -21,6 +21,7 @@ int RunCameraLoop(Window& window, Renderer& renderer)
     auto previousFrame = Clock::now();
     float elapsedSeconds = 0.0F;
     Camera camera({3.4F, 2.6F, -5.5F}, -0.554F, -0.360F);
+    Camera previousCamera = camera;
     FixedStepClock simulationClock;
     double pendingMouseYaw = 0.0;
     double pendingMousePitch = 0.0;
@@ -73,6 +74,7 @@ int RunCameraLoop(Window& window, Renderer& renderer)
         const FixedStepResult simulation = simulationClock.Advance(
             frameSeconds, [&](const double stepSeconds) {
                 const float deltaSeconds = static_cast<float>(stepSeconds);
+                previousCamera = camera;
                 camera.Rotate(yawInput * deltaSeconds, pitchInput * deltaSeconds);
                 if (!pendingMouseApplied)
                 {
@@ -101,9 +103,11 @@ int RunCameraLoop(Window& window, Renderer& renderer)
                 LogError("Renderer resize failed; stopping the engine loop.");
                 return 1;
             }
-            const math::Vec3& position = camera.Position();
+            const Camera renderCamera = Camera::Interpolate(
+                previousCamera, camera, static_cast<float>(simulation.interpolationAlpha));
+            const math::Vec3& position = renderCamera.Position();
             renderer.Render(elapsedSeconds, position.x, position.y, position.z,
-                            camera.Yaw(), camera.Pitch());
+                            renderCamera.Yaw(), renderCamera.Pitch());
         }
     }
     return 0;

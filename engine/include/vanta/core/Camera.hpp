@@ -59,6 +59,23 @@ public:
         return Forward().Cross(Right()).Normalized().value_or(math::Vec3{0.0F, 1.0F, 0.0F});
     }
 
+    [[nodiscard]] static Camera Interpolate(
+        const Camera& previous, const Camera& current, float alpha) noexcept
+    {
+        if (!std::isfinite(alpha))
+            alpha = 1.0F;
+        alpha = std::clamp(alpha, 0.0F, 1.0F);
+        Camera result;
+        result.SetPosition(previous.m_position +
+                           (current.m_position - previous.m_position) * alpha);
+        const float yawDelta = std::remainder(
+            current.m_yaw - previous.m_yaw, 2.0F * math::kPi);
+        result.SetOrientation(
+            previous.m_yaw + yawDelta * alpha,
+            previous.m_pitch + (current.m_pitch - previous.m_pitch) * alpha);
+        return result;
+    }
+
     [[nodiscard]] math::Mat4 ViewMatrix() const noexcept
     {
         return math::Mat4::LookAtLH(m_position, m_position + Forward(),

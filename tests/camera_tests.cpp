@@ -89,6 +89,37 @@ bool viewMatrixTracksPose()
     return Near(eye.x, 0.0F) && Near(eye.y, 0.0F) && Near(eye.z, 0.0F);
 }
 
+
+bool interpolationBlendsPositionAndPitch()
+{
+    Camera previous({0.0F, 0.0F, 0.0F}, 0.0F, -0.5F);
+    Camera current({10.0F, 4.0F, -2.0F}, 1.0F, 0.5F);
+    const Camera blended = Camera::Interpolate(previous, current, 0.25F);
+    return Near(blended.Position().x, 2.5F) && Near(blended.Position().y, 1.0F) &&
+           Near(blended.Position().z, -0.5F) && Near(blended.Yaw(), 0.25F) &&
+           Near(blended.Pitch(), -0.25F);
+}
+
+bool interpolationUsesShortestYawPath()
+{
+    Camera previous({}, math::kPi - 0.1F, 0.0F);
+    Camera current({}, -math::kPi + 0.1F, 0.0F);
+    const Camera halfway = Camera::Interpolate(previous, current, 0.5F);
+    return std::abs(std::abs(halfway.Yaw()) - math::kPi) < kTolerance;
+}
+
+bool interpolationClampsAlphaAndRejectsNan()
+{
+    Camera previous({1.0F, 2.0F, 3.0F});
+    Camera current({4.0F, 5.0F, 6.0F});
+    const Camera below = Camera::Interpolate(previous, current, -1.0F);
+    const Camera above = Camera::Interpolate(previous, current, 2.0F);
+    const Camera invalid = Camera::Interpolate(
+        previous, current, std::numeric_limits<float>::quiet_NaN());
+    return Near(below.Position().x, 1.0F) && Near(above.Position().x, 4.0F) &&
+           Near(invalid.Position().x, 4.0F);
+}
+
 constexpr std::array kCases{
     TestCase{"initial camera pose", initialPose},
     TestCase{"yaw rotates forward direction", yawRotation},
@@ -98,6 +129,9 @@ constexpr std::array kCases{
     TestCase{"invalid movement inputs are ignored", invalidMovementIsIgnored},
     TestCase{"invalid pose inputs are ignored", invalidPoseIsIgnored},
     TestCase{"view matrix follows camera position", viewMatrixTracksPose},
+    TestCase{"camera interpolation blends position and pitch", interpolationBlendsPositionAndPitch},
+    TestCase{"camera interpolation takes shortest yaw path", interpolationUsesShortestYawPath},
+    TestCase{"camera interpolation clamps invalid alpha", interpolationClampsAlphaAndRejectsNan},
 };
 } // namespace
 

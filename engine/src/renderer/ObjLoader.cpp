@@ -1,6 +1,9 @@
 #include "vanta/renderer/ObjLoader.hpp"
 
 #include <fstream>
+#include <charconv>
+#include <string_view>
+#include <system_error>
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -21,17 +24,41 @@ struct FaceIndex
 
 bool ParseIndex(const std::string& token, FaceIndex& result)
 {
-    std::stringstream stream(token);
-    std::string part;
-    if (!std::getline(stream, part, '/') || part.empty()) return false;
-    try { result.position = std::stoi(part); } catch (...) { return false; }
-    if (std::getline(stream, part, '/')) {
-        if (!part.empty()) { try { result.texcoord = std::stoi(part); } catch (...) { return false; } }
-        if (std::getline(stream, part, '/')) {
-            if (!part.empty()) { try { result.normal = std::stoi(part); } catch (...) { return false; } }
-        }
+    const auto parseComponent = [](const std::string_view value, int& output) {
+        if (value.empty())
+            return false;
+        const char* const begin = value.data();
+        const char* const end = begin + value.size();
+        const auto parsed = std::from_chars(begin, end, output);
+        return parsed.ec == std::errc{} && parsed.ptr == end && output != 0;
+    };
+
+    const std::size_t firstSlash = token.find('/');
+    const std::string_view position(token.data(),
+        firstSlash == std::string::npos ? token.size() : firstSlash);
+    if (!parseComponent(position, result.position))
+        return false;
+    if (firstSlash == std::string::npos)
+        return true;
+
+    const std::size_t secondSlash = token.find('/', firstSlash + 1U);
+    if (secondSlash == std::string::npos)
+    {
+        const std::string_view texcoord(token.data() + firstSlash + 1U,
+                                        token.size() - firstSlash - 1U);
+        return parseComponent(texcoord, result.texcoord);
     }
-    return result.position != 0;
+
+    if (token.find('/', secondSlash + 1U) != std::string::npos)
+        return false;
+
+    const std::string_view texcoord(token.data() + firstSlash + 1U,
+                                    secondSlash - firstSlash - 1U);
+    const std::string_view normal(token.data() + secondSlash + 1U,
+                                  token.size() - secondSlash - 1U);
+    if (!texcoord.empty() && !parseComponent(texcoord, result.texcoord))
+        return false;
+    return parseComponent(normal, result.normal);
 }
 
 template <typename T>

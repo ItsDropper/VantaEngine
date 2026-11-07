@@ -82,5 +82,21 @@ int main()
     std::filesystem::remove(invalidPath);
 
     std::cout << (11 - failures) << "/11 model import tests passed.\n";
+
+    const auto malformedIndexPath = std::filesystem::temp_directory_path() / "vanta_obj_import_malformed_index.obj";
+    {
+        std::ofstream file(malformedIndexPath);
+        file << "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1junk 2 3\\n";
+    }
+    Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
+        "rejects partially numeric face indices");
+    {
+        std::ofstream file(malformedIndexPath, std::ios::trunc);
+        file << "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1/1/1/1 2 3\\n";
+    }
+    Check(!vanta::renderer::LoadWavefrontObj(malformedIndexPath, model, error),
+        "rejects face indices with excess slash components");
+    std::filesystem::remove(malformedIndexPath);
+    std::cout << (13 - failures) << "/13 model import tests passed.\\n";
     return failures == 0 ? 0 : 1;
 }

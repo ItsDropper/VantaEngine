@@ -49,6 +49,7 @@ struct CpuModel
     math::Vec3 baseColor{1.0F, 1.0F, 1.0F};
     float roughness = 0.8F;
     float metallic = 0.0F;
+    std::vector<std::filesystem::path> materialLibraries;
     std::vector<CpuMaterial> materials;
     std::vector<CpuSubmesh> submeshes;
 };

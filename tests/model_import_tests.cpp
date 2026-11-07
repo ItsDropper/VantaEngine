@@ -56,6 +56,8 @@ int main()
         "generates a face normal when OBJ normals are absent");
     Check(model.vertices.size() >= 3 && std::abs(model.vertices[1].u - 1.0F) < 0.001F,
         "preserves texture coordinates");
+    Check(model.materialLibraries.size() == 1 && model.materialLibraries.front().filename() == "vanta_obj_import_test.mtl",
+        "records the referenced MTL source dependency");
     Check(model.diffuseTexture.filename() == "sample_diffuse.bmp",
         "resolves the MTL diffuse texture relative to the material file");
     Check(std::abs(model.baseColor.x - 0.8F) < 0.001F && std::abs(model.baseColor.y - 0.7F) < 0.001F,
@@ -106,6 +108,15 @@ int main()
           model.indices.size() == 3 && std::abs(model.vertices[0].normal.z - 1.0F) < 0.001F,
         "supports negative OBJ indices and omitted texture-coordinate fields");
     std::filesystem::remove(negativeIndexPath);
-    std::cout << (14 - failures) << "/14 model import tests passed.\n";
+    const auto missingMtlPath = std::filesystem::temp_directory_path() / "vanta_obj_import_missing_mtl.obj";
+    {
+        std::ofstream file(missingMtlPath);
+        file << "mtllib absent_materials.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    }
+    Check(!vanta::assets::LoadWavefrontObj(missingMtlPath, model, error) &&
+          error.find("Could not open referenced MTL") != std::string::npos,
+        "fails when a declared MTL sidecar is missing");
+    std::filesystem::remove(missingMtlPath);
+    std::cout << (16 - failures) << "/16 model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

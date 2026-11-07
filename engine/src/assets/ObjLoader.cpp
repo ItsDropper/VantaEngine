@@ -114,7 +114,16 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
             texcoords.push_back(value);
         } else if (tag == "mtllib") {
             std::string name;
-            if (row >> name) materialLibrary = path.parent_path() / std::filesystem::path(name);
+            if (!(row >> name)) {
+                error = "MTL library declaration is empty at line " + std::to_string(lineNumber);
+                return false;
+            }
+            if (!materialLibrary.empty()) {
+                error = "Multiple mtllib declarations are not supported at line " + std::to_string(lineNumber);
+                return false;
+            }
+            materialLibrary = path.parent_path() / std::filesystem::path(name);
+            model.materialLibraries.push_back(materialLibrary);
         } else if (tag == "f") {
             std::vector<FaceIndex> face;
             std::string token;
@@ -173,6 +182,10 @@ bool LoadWavefrontObj(const std::filesystem::path& path, CpuModel& output, std::
 
     if (!materialLibrary.empty()) {
         std::ifstream materialFile(materialLibrary);
+        if (!materialFile) {
+            error = "Could not open referenced MTL library: " + materialLibrary.string();
+            return false;
+        }
         std::string materialLine;
         while (std::getline(materialFile, materialLine)) {
             std::istringstream row(materialLine);

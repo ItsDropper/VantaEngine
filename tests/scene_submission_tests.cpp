@@ -1,7 +1,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 
-#include <cassert>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -12,6 +12,13 @@ using namespace vanta::renderer;
 
 namespace
 {
+
+void Require(const bool condition)
+{
+    if (!condition)
+        std::abort();
+}
+
 MeshDescription Triangle()
 {
     MeshDescription mesh;
@@ -30,7 +37,7 @@ int main()
     SceneSubmission scene;
     const MeshHandle mesh = scene.CreateMesh(Triangle());
     const MaterialHandle material = scene.CreateMaterial({});
-    assert(mesh.IsValid() && scene.Contains(mesh));
+    Require(mesh.IsValid() && scene.Contains(mesh));
     assert(material.IsValid() && scene.Contains(material));
 
     const math::Mat4 world = math::Mat4::Translation({3.0F, 2.0F, 1.0F}) *

@@ -89,7 +89,26 @@ int main()
         "rejects singular node transforms when imported normals cannot be transformed");
     std::filesystem::remove(singularPath);
 
+    const auto mirroredPath = std::filesystem::temp_directory_path() / "vanta_gltf_import_mirrored.gltf";
+    {
+        std::ifstream input(path, std::ios::binary);
+        std::string document((std::istreambuf_iterator<char>(input)), {});
+        const std::string scale = "\\"scale\\":[2,1,0.5]";
+        const auto scalePosition = document.find(scale);
+        if (scalePosition != std::string::npos)
+            document.replace(scalePosition, scale.size(), "\\"scale\\":[-2,1,0.5]");
+        std::ofstream output(mirroredPath, std::ios::binary);
+        output << document;
+    }
+    Check(vanta::renderer::LoadGltf(mirroredPath, model, error) &&
+          model.indices.size() == 3 && model.indices[0] == 0 &&
+          model.indices[1] == 2 && model.indices[2] == 1 &&
+          std::abs(model.vertices[0].normal.x + 0.4472136F) < 0.001F &&
+          std::abs(model.vertices[0].normal.y - 0.8944272F) < 0.001F,
+        "preserves front-face winding and inverse-transpose normals for mirrored nodes");
+    std::filesystem::remove(mirroredPath);
+
     std::filesystem::remove(path);
-    std::cout << (8 - failures) << "/8 glTF import tests passed.\\n";
+    std::cout << (9 - failures) << "/9 glTF import tests passed.\\n";
     return failures == 0 ? 0 : 1;
 }

@@ -63,3 +63,9 @@ add_executable(VantaEngineFixedStepTests
 )
 vanta_configure_test(VantaEngineFixedStepTests)
 add_test(NAME VantaEngine.FixedStepTests COMMAND VantaEngineFixedStepTests)
+
+add_executable(VantaEngineInputTests
+    input_tests.cpp
+)
+vanta_configure_test(VantaEngineInputTests)
+add_test(NAME VantaEngine.InputTests COMMAND VantaEngineInputTests)

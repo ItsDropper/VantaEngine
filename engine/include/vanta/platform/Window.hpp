@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vanta/platform/InputState.hpp"
+
 #include <Windows.h>
 
 #include <string_view>
@@ -22,10 +24,7 @@ public:
     [[nodiscard]] HWND NativeHandle() const noexcept { return m_handle; }
     [[nodiscard]] int Width() const noexcept { return m_width; }
     [[nodiscard]] int Height() const noexcept { return m_height; }
-    [[nodiscard]] bool IsKeyDown(int virtualKey) const noexcept
-    {
-        return GetForegroundWindow() == m_handle && (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
-    }
+    [[nodiscard]] const InputState& Input() const noexcept { return m_input; }
 
 private:
     static LRESULT CALLBACK WindowProcedure(HWND handle, UINT message, WPARAM wParam, LPARAM lParam);
@@ -35,5 +34,9 @@ private:
     int m_width = 1280;
     int m_height = 720;
     bool m_isOpen = false;
+    bool m_hasMousePosition = false;
+    int m_lastMouseX = 0;
+    int m_lastMouseY = 0;
+    InputState m_input;
 };
 } // namespace vanta

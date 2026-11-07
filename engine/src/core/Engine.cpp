@@ -22,8 +22,10 @@ int RunCameraLoop(Window& window, Renderer& renderer)
     float elapsedSeconds = 0.0F;
     Camera camera({3.4F, 2.6F, -5.5F}, -0.554F, -0.360F);
     FixedStepClock simulationClock;
+    double pendingMouseYaw = 0.0;
+    double pendingMousePitch = 0.0;
 
-    LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
+    LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, hold right mouse to look, Escape exits.");
 
     while (window.IsOpen())
     {
@@ -35,32 +37,57 @@ int RunCameraLoop(Window& window, Renderer& renderer)
         const double frameSeconds = std::chrono::duration<double>(now - previousFrame).count();
         previousFrame = now;
 
+        const InputState& input = window.Input();
         constexpr float moveSpeed = 4.5F;
         constexpr float lookSpeed = 1.65F;
+        constexpr double mouseSensitivity = 0.0025;
         float forward = 0.0F;
         float right = 0.0F;
         float vertical = 0.0F;
-        if (window.IsKeyDown('W')) forward += 1.0F;
-        if (window.IsKeyDown('S')) forward -= 1.0F;
-        if (window.IsKeyDown('D')) right += 1.0F;
-        if (window.IsKeyDown('A')) right -= 1.0F;
-        if (window.IsKeyDown('E')) vertical += 1.0F;
-        if (window.IsKeyDown('Q')) vertical -= 1.0F;
+        if (input.IsKeyDown('W')) forward += 1.0F;
+        if (input.IsKeyDown('S')) forward -= 1.0F;
+        if (input.IsKeyDown('D')) right += 1.0F;
+        if (input.IsKeyDown('A')) right -= 1.0F;
+        if (input.IsKeyDown('E')) vertical += 1.0F;
+        if (input.IsKeyDown('Q')) vertical -= 1.0F;
 
         float yawInput = 0.0F;
         float pitchInput = 0.0F;
-        if (window.IsKeyDown(VK_LEFT)) yawInput -= lookSpeed;
-        if (window.IsKeyDown(VK_RIGHT)) yawInput += lookSpeed;
-        if (window.IsKeyDown(VK_UP)) pitchInput += lookSpeed;
-        if (window.IsKeyDown(VK_DOWN)) pitchInput -= lookSpeed;
+        if (input.IsKeyDown(VK_LEFT)) yawInput -= lookSpeed;
+        if (input.IsKeyDown(VK_RIGHT)) yawInput += lookSpeed;
+        if (input.IsKeyDown(VK_UP)) pitchInput += lookSpeed;
+        if (input.IsKeyDown(VK_DOWN)) pitchInput -= lookSpeed;
 
+        if (input.IsMouseButtonDown(1))
+        {
+            pendingMouseYaw += static_cast<double>(input.MouseDeltaX()) * mouseSensitivity;
+            pendingMousePitch -= static_cast<double>(input.MouseDeltaY()) * mouseSensitivity;
+        }
+        else
+        {
+            pendingMouseYaw = 0.0;
+            pendingMousePitch = 0.0;
+        }
+
+        bool pendingMouseApplied = false;
         const FixedStepResult simulation = simulationClock.Advance(
             frameSeconds, [&](const double stepSeconds) {
                 const float deltaSeconds = static_cast<float>(stepSeconds);
                 camera.Rotate(yawInput * deltaSeconds, pitchInput * deltaSeconds);
+                if (!pendingMouseApplied)
+                {
+                    camera.Rotate(static_cast<float>(pendingMouseYaw),
+                                  static_cast<float>(pendingMousePitch));
+                    pendingMouseApplied = true;
+                }
                 camera.MoveLocal(forward, right, vertical, moveSpeed, deltaSeconds);
                 elapsedSeconds += deltaSeconds;
             });
+        if (pendingMouseApplied)
+        {
+            pendingMouseYaw = 0.0;
+            pendingMousePitch = 0.0;
+        }
 
         if (simulation.droppedSeconds > 0.0)
             LogInfo("Simulation fell behind; excess whole steps were dropped to preserve frame responsiveness.");

@@ -37,7 +37,7 @@ PSInput VSMain(VSInput input)
     // remain rigid. The height weight keeps grass motion subtle and tree crowns flexible.
     float foliageMask = step(input.color.r * 1.28, input.color.g) *
                         step(input.color.b * 1.20, input.color.g) *
-                        step(0.105, input.color.g);
+                        step(0.105, input.color.g) * step(0.9, input.color.a);
     float heightWeight = saturate((worldPosition.y + 0.35) * 0.13);
     // Triangle-wave wind avoids per-vertex sin/cos, which is costly on dense foliage.
     float phaseA = cameraPosition.w * 1.25 + worldPosition.x * 0.31 + worldPosition.z * 0.47;

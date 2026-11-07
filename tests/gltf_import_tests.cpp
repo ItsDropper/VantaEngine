@@ -191,6 +191,32 @@ int main()
         "imports data-URI images as owned encoded payloads without sidecar extraction");
     std::filesystem::remove(embeddedPath);
 
+    const auto percentEncodedPath = std::filesystem::temp_directory_path() / "vanta_gltf_percent_image.gltf";
+    const auto pngBytes = DecodeBase64(pngBase64);
+    std::string percentUri = "data:image/png,";
+    constexpr char hexDigits[] = "0123456789ABCDEF";
+    for (const std::uint8_t byte : pngBytes)
+    {
+        percentUri.push_back('%');
+        percentUri.push_back(hexDigits[byte >> 4U]);
+        percentUri.push_back(hexDigits[byte & 0x0fU]);
+    }
+    {
+        std::ifstream input(path, std::ios::binary);
+        std::string document((std::istreambuf_iterator<char>(input)), {});
+        const std::string externalUri = "albedo%20map.png";
+        const auto position = document.find(externalUri);
+        if (position != std::string::npos)
+            document.replace(position, externalUri.size(), percentUri);
+        std::ofstream output(percentEncodedPath, std::ios::binary);
+        output << document;
+    }
+    Check(vanta::assets::LoadGltf(percentEncodedPath, model, error) &&
+          model.materials[1].embeddedDiffuseTexture != nullptr &&
+          model.materials[1].embeddedDiffuseTexture->encodedBytes == pngBytes,
+        "imports percent-encoded glTF image data URIs");
+    std::filesystem::remove(percentEncodedPath);
+
     const auto malformedDataUriPath = std::filesystem::temp_directory_path() / "vanta_gltf_embedded_bad_image.gltf";
     {
         std::ifstream input(path, std::ios::binary);

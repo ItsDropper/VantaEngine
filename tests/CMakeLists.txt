@@ -76,3 +76,10 @@ add_executable(VantaEnginePhysicsTests
 )
 vanta_configure_test(VantaEnginePhysicsTests)
 add_test(NAME VantaEngine.PhysicsTests COMMAND VantaEnginePhysicsTests)
+
+add_executable(VantaEngineSceneTests
+    scene_tests.cpp
+    ../engine/src/core/Scene.cpp
+)
+vanta_configure_test(VantaEngineSceneTests)
+add_test(NAME VantaEngine.SceneTests COMMAND VantaEngineSceneTests)

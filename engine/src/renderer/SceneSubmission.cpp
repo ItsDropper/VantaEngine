@@ -41,6 +41,15 @@ bool SceneSubmission::IsFinite(const math::Mat4& matrix) noexcept
     return true;
 }
 
+bool SceneSubmission::IsValidWorldTransform(const math::Mat4& matrix) noexcept
+{
+    const float a = matrix.At(0, 0), b = matrix.At(0, 1), c = matrix.At(0, 2);
+    const float d = matrix.At(1, 0), e = matrix.At(1, 1), f = matrix.At(1, 2);
+    const float g = matrix.At(2, 0), h = matrix.At(2, 1), i = matrix.At(2, 2);
+    const float determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    return std::isfinite(determinant) && std::abs(determinant) > 1.0e-8F;
+}
+
 bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
 {
     return description.baseColorTexture.empty() && description.normalTexture.empty() &&
@@ -100,7 +109,8 @@ MeshHandle SceneSubmission::CreateMesh(MeshDescription description)
         if (!std::isfinite(vertex.position.x) || !std::isfinite(vertex.position.y) ||
             !std::isfinite(vertex.position.z) || !std::isfinite(vertex.normal.x) ||
             !std::isfinite(vertex.normal.y) || !std::isfinite(vertex.normal.z) ||
-            !std::isfinite(vertex.u) || !std::isfinite(vertex.v))
+            !std::isfinite(vertex.u) || !std::isfinite(vertex.v) ||
+            vertex.normal.LengthSquared() <= 1.0e-12F)
             return {};
     }
     for (const std::uint32_t index : description.indices)
@@ -197,7 +207,8 @@ bool SceneSubmission::Contains(const MaterialHandle handle) const noexcept
 InstanceHandle SceneSubmission::CreateInstance(
     const MeshHandle mesh, const MaterialHandle material, const math::Mat4& world)
 {
-    if (Find(mesh) == nullptr || Find(material) == nullptr || !IsFinite(world))
+    if (Find(mesh) == nullptr || Find(material) == nullptr || !IsFinite(world) ||
+        !IsValidWorldTransform(world))
         return {};
 
     std::size_t index = 0;
@@ -251,7 +262,7 @@ bool SceneSubmission::SetTransform(
     const InstanceHandle handle, const math::Mat4& world) noexcept
 {
     InstanceSlot* slot = Find(handle);
-    if (slot == nullptr || !IsFinite(world))
+    if (slot == nullptr || !IsFinite(world) || !IsValidWorldTransform(world))
         return false;
     slot->world = world;
     return true;

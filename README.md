@@ -105,13 +105,32 @@ The current renderer still constructs and renders the built-in sample scene duri
 
 `vanta/renderer/SceneSubmission.hpp` defines the game-facing CPU contract for immutable mesh and material resources, generation-checked handles, visible instances, per-instance world matrices, and frame snapshots. It has no Direct3D types, window handles, or backend dependencies.
 
-- Create meshes from validated indexed triangle data and materials from finite PBR factors and texture paths.
+- Create meshes from validated indexed triangle data and scalar PBR materials (base colour, roughness, metallic). Texture paths are rejected until texture-backed game materials are implemented.
 - Create instances that reference live mesh/material handles; update transforms, visibility, or resource assignments without exposing backend objects.
 - Destroying a referenced mesh or material is rejected until its instances are removed.
 - A built `SceneFrame` owns shared references to the immutable CPU resources, so destroying a handle cannot invalidate a frame already handed to a renderer.
 - Scene mutation and frame construction are single-threaded. A completed frame snapshot may be retained by a renderer while the game builds a later frame.
 
-This is the CPU submission contract only. D3D11/D3D12 GPU upload, draw submission, shadow submission, fence-based retirement, and device-loss integration remain the next M2 implementation work. Do not treat this API's existence as proof that external scenes render yet.
+Both renderer classes expose `Render(const renderer::SceneFrame&)`. This path renders the submitted game-owned scene instead of the built-in procedural valley, while retaining the backend's sky and post-processing. Mesh vertices are validated and transformed to world space with inverse-transpose normal handling, then submitted in both the visible pass and every cascaded shadow pass.
+
+- D3D11 uploads a frame's flattened vertex/index data into dynamic write-discard buffers and uses the immediate-context resource lifetime rules.
+- D3D12 uploads into per-frame upload-heap buffers. A frame slot is not reused or released until its fence has completed.
+- The frame supplies view/projection matrices, camera position, elapsed time, and a monotonically increasing frame number.
+- `Render(SceneFrame)` returns success/failure. `IsDeviceLost()` distinguishes device removal; callers should destroy and recreate the renderer and its window resources before resuming.
+- Resize does not invalidate submitted CPU resources or the per-frame upload buffers.
+
+This first public path intentionally supports scalar base colour, roughness, and metallic values. Non-empty material texture paths are rejected rather than silently ignored. Geometry is currently flattened and uploaded each frame; persistent per-mesh GPU caches and texture-backed game materials remain future work. Scene mutation and frame construction are single-threaded.
+
+### External-scene sample
+
+The executable includes a separate sample that uses only the public submission API. It creates a game-owned cube and ground mesh, owns their materials and transforms, and calls `Render(SceneFrame)`:
+
+```powershell
+.\build\bin\VantaEngine.exe --scene-submission-sample
+.\build\bin\VantaEngine.exe --scene-submission-sample --backend=d3d11
+```
+
+The normal launch continues to run the engine's procedural valley sample. The scene-submission sample deliberately suppresses that valley so an external game can own the rendered scene.
 
 ## Math conventions
 

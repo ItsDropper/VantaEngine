@@ -95,14 +95,14 @@ int main()
     const auto secondMtl = multiObj.parent_path() / "vanta_obj_bark.mtl";
     {
         std::ofstream first(firstMtl);
-        first << "newmtl snow\\nKd 0.9 0.95 1.0\\nPr 0.92\\n";
+        first << "newmtl snow\nKd 0.9 0.95 1.0\nPr 0.92\n";
         std::ofstream second(secondMtl);
-        second << "newmtl bark\\nKd 0.3 0.18 0.08\\nPm 0.05\\n";
+        second << "newmtl bark\nKd 0.3 0.18 0.08\nPm 0.05\n";
         std::ofstream object(multiObj);
-        object << "mtllib vanta_obj_snow.mtl vanta_obj_bark.mtl\\n"
-                  "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nv 1 1 0\\n"
-                  "usemtl snow\\nf 1 2 3\\n"
-                  "usemtl bark\\nf 2 4 3\\n";
+        object << "mtllib vanta_obj_snow.mtl vanta_obj_bark.mtl\n"
+                  "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\n"
+                  "usemtl snow\nf 1 2 3\n"
+                  "usemtl bark\nf 2 4 3\n";
     }
     Check(vanta::assets::LoadWavefrontObj(multiObj, model, error),
         "loads multiple OBJ material libraries");
@@ -117,8 +117,8 @@ int main()
         "keeps material properties isolated across MTL libraries");
     {
         std::ofstream object(multiObj, std::ios::trunc);
-        object << "mtllib vanta_obj_snow.mtl\\nv 0 0 0\\nv 1 0 0\\nv 0 1 0\\n"
-                  "usemtl missing\\nf 1 2 3\\n";
+        object << "mtllib vanta_obj_snow.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\n"
+                  "usemtl missing\nf 1 2 3\n";
     }
     Check(!vanta::assets::LoadWavefrontObj(multiObj, model, error) &&
           error.find("unknown material") != std::string::npos,

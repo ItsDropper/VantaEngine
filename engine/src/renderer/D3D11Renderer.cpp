@@ -9,6 +9,7 @@
 #include "vanta/assets/WicTextureLoader.hpp"
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -1230,7 +1231,17 @@ bool D3D11Renderer::Resize(const int width, const int height)
         static_cast<UINT>(height), DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(resizeResult))
     {
-        LogError("Swap-chain resize failed.");
+        if (resizeResult == DXGI_ERROR_DEVICE_REMOVED || resizeResult == DXGI_ERROR_DEVICE_RESET) {
+            m_deviceLost = true;
+            const HRESULT reason = m_device->GetDeviceRemovedReason();
+            char message[192]{};
+            std::snprintf(message, sizeof(message),
+                "Direct3D 11: swap-chain resize lost the device (0x%08lX).",
+                static_cast<unsigned long>(reason));
+            LogError(message);
+        } else {
+            LogError("Swap-chain resize failed.");
+        }
         return false;
     }
 
@@ -1762,6 +1773,17 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     m_historyWriteIndex = 1U - writeIndex;
     ++m_frameIndex;
     m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
-    (void)m_swapChain->Present(0, 0);
+    const HRESULT presentResult = m_swapChain->Present(0, 0);
+    if (presentResult == DXGI_ERROR_DEVICE_REMOVED || presentResult == DXGI_ERROR_DEVICE_RESET) {
+        m_deviceLost = true;
+        const HRESULT reason = m_device->GetDeviceRemovedReason();
+        char message[192]{};
+        std::snprintf(message, sizeof(message),
+            "Direct3D 11: presentation lost the device (0x%08lX).",
+            static_cast<unsigned long>(reason));
+        LogError(message);
+    } else if (FAILED(presentResult)) {
+        LogError("Direct3D 11: swap-chain presentation failed.");
+    }
 }
 } // namespace vanta

@@ -8,7 +8,7 @@ namespace vanta::renderer
 {
 namespace
 {
-template <typename Slots, typename Resource>
+template <typename Slots>
 std::uint32_t FindFreeSlot(const Slots& slots)
 {
     for (std::size_t index = 0; index < slots.size(); ++index)
@@ -16,6 +16,8 @@ std::uint32_t FindFreeSlot(const Slots& slots)
         if (!slots[index].resource)
             return static_cast<std::uint32_t>(index);
     }
+    if (slots.size() >= MeshHandle::kInvalidIndex)
+        return MeshHandle::kInvalidIndex;
     return static_cast<std::uint32_t>(slots.size());
 }
 
@@ -103,7 +105,7 @@ MeshHandle SceneSubmission::CreateMesh(MeshDescription description)
             return {};
     }
 
-    const std::uint32_t index = FindFreeSlot<decltype(m_meshes), MeshResource>(m_meshes);
+    const std::uint32_t index = FindFreeSlot(m_meshes);
     if (index == MeshHandle::kInvalidIndex)
         return {};
 
@@ -149,7 +151,7 @@ MaterialHandle SceneSubmission::CreateMaterial(MaterialDescription description)
     if (!IsValid(description))
         return {};
 
-    const std::uint32_t index = FindFreeSlot<decltype(m_materials), MaterialResource>(m_materials);
+    const std::uint32_t index = FindFreeSlot(m_materials);
     if (index == MaterialHandle::kInvalidIndex)
         return {};
 

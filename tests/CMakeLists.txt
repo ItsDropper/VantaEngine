@@ -51,3 +51,9 @@ add_executable(VantaEngineAdaptiveBudgetTests
 )
 vanta_configure_test(VantaEngineAdaptiveBudgetTests)
 add_test(NAME VantaEngine.AdaptiveWorldBudgetTests COMMAND VantaEngineAdaptiveBudgetTests)
+
+add_executable(VantaEngineCameraTests
+    camera_tests.cpp
+)
+vanta_configure_test(VantaEngineCameraTests)
+add_test(NAME VantaEngine.CameraTests COMMAND VantaEngineCameraTests)

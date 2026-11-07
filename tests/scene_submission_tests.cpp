@@ -100,6 +100,20 @@ int main()
     assert(replacement.generation != mesh.generation);
     assert(!scene.Contains(mesh));
 
+    SceneSubmission normalScene;
+    MeshDescription normalMesh = Triangle();
+    for (auto& vertex : normalMesh.vertices)
+        vertex.normal = {0.70710678F, 0.70710678F, 0.0F};
+    const MeshHandle normalMeshHandle = normalScene.CreateMesh(std::move(normalMesh));
+    const MaterialHandle normalMaterialHandle = normalScene.CreateMaterial({});
+    const math::Mat4 nonUniformScale = math::Mat4::Scale({2.0F, 1.0F, 1.0F});
+    assert(normalScene.CreateInstance(normalMeshHandle, normalMaterialHandle, nonUniformScale).IsValid());
+    const SceneFrame normalFrame = normalScene.BuildFrame(view);
+    SubmittedSceneGeometry normalGeometry;
+    assert(BuildSubmittedSceneGeometry(normalFrame, normalGeometry, geometryError));
+    assert(std::abs(normalGeometry.vertices[0].normal[0] - 0.4472136F) < 0.0001F);
+    assert(std::abs(normalGeometry.vertices[0].normal[1] - 0.8944272F) < 0.0001F);
+
     const MaterialHandle invalidTextureMaterial = scene.CreateMaterial(
         MaterialDescription{{1.0F, 1.0F, 1.0F}, 0.5F, 0.0F, "albedo.png"});
     assert(!invalidTextureMaterial.IsValid());

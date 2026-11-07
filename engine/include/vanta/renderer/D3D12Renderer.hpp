@@ -30,6 +30,7 @@ public:
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                 float cameraYaw, float cameraPitch);
     void Render(const renderer::SceneFrame& submittedScene);
+    [[nodiscard]] bool IsDeviceLost() const noexcept { return m_deviceLost; }
 private:
     static constexpr UINT kFrameCount = 2;
     static constexpr UINT kIndirectStreamCount = 4;
@@ -165,5 +166,6 @@ private:
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView{};
     bool m_gpuCullingEnabled = false;
     bool m_failed = false;
+    bool m_deviceLost = false;
 };
 } // namespace vanta

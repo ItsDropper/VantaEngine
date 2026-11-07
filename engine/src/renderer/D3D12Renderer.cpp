@@ -1,4 +1,5 @@
 #include "vanta/renderer/D3D12Renderer.hpp"
+#include "vanta/renderer/SceneGeometry.hpp"
 
 #include "vanta/core/Log.hpp"
 #include "vanta/world/ProceduralWorld.hpp"
@@ -1530,11 +1531,94 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
 void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                            float cameraYaw, float cameraPitch)
 {
+    RenderInternal(elapsedSeconds, cameraX, cameraY, cameraZ, cameraYaw, cameraPitch, nullptr);
+}
+
+void D3D12Renderer::Render(const renderer::SceneFrame& submittedScene)
+{
+    const float forwardX = submittedScene.view.view.At(2, 0);
+    const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
+    const float forwardZ = submittedScene.view.view.At(2, 2);
+    RenderInternal(submittedScene.view.elapsedSeconds,
+        submittedScene.view.cameraPosition.x, submittedScene.view.cameraPosition.y,
+        submittedScene.view.cameraPosition.z, std::atan2(forwardX, forwardZ),
+        std::asin(forwardY), &submittedScene);
+}
+
+void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
+                           float cameraYaw, float cameraPitch,
+                           const renderer::SceneFrame* submittedScene)
+{
     if (m_failed) return;
     if (!WaitForFrame(m_frameIndex)) {
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         m_failed = true;
         return;
+    }
+
+    renderer::SubmittedSceneGeometry submittedGeometry;
+    const bool hasSubmittedScene = submittedScene != nullptr;
+    D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
+    D3D12_INDEX_BUFFER_VIEW submittedIndexView{};
+    m_submittedVertexBuffers[m_frameIndex].Reset();
+    m_submittedIndexBuffers[m_frameIndex].Reset();
+    if (hasSubmittedScene) {
+        std::string geometryError;
+        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+            LogError(geometryError.c_str());
+            return;
+        }
+        if (!submittedGeometry.vertices.empty()) {
+            const std::size_t vertexBytes = submittedGeometry.vertices.size() *
+                sizeof(renderer::SubmittedSceneVertex);
+            const std::size_t indexBytes = submittedGeometry.indices.size() * sizeof(std::uint32_t);
+            if (vertexBytes > UINT_MAX || indexBytes > UINT_MAX) {
+                LogError("Direct3D 12: submitted scene exceeds GPU buffer view limits.");
+                return;
+            }
+            const auto createUploadBuffer = [this](const UINT64 byteCount,
+                Microsoft::WRL::ComPtr<ID3D12Resource>& resource, const void* source) {
+                D3D12_HEAP_PROPERTIES heap{};
+                heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+                heap.CreationNodeMask = 1;
+                heap.VisibleNodeMask = 1;
+                D3D12_RESOURCE_DESC description{};
+                description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+                description.Width = byteCount;
+                description.Height = 1;
+                description.DepthOrArraySize = 1;
+                description.MipLevels = 1;
+                description.SampleDesc.Count = 1;
+                description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+                if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+                    &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                    IID_PPV_ARGS(resource.GetAddressOf()))))
+                    return false;
+                void* mapped = nullptr;
+                const D3D12_RANGE readRange{0, 0};
+                if (FAILED(resource->Map(0, &readRange, &mapped)))
+                    return false;
+                std::memcpy(mapped, source, static_cast<std::size_t>(byteCount));
+                const D3D12_RANGE writtenRange{0, static_cast<SIZE_T>(byteCount)};
+                resource->Unmap(0, &writtenRange);
+                return true;
+            };
+            if (!createUploadBuffer(static_cast<UINT64>(vertexBytes),
+                    m_submittedVertexBuffers[m_frameIndex], submittedGeometry.vertices.data()) ||
+                !createUploadBuffer(static_cast<UINT64>(indexBytes),
+                    m_submittedIndexBuffers[m_frameIndex], submittedGeometry.indices.data())) {
+                LogError("Direct3D 12: submitted scene upload buffer creation or mapping failed.");
+                return;
+            }
+            submittedVertexView.BufferLocation =
+                m_submittedVertexBuffers[m_frameIndex]->GetGPUVirtualAddress();
+            submittedVertexView.SizeInBytes = static_cast<UINT>(vertexBytes);
+            submittedVertexView.StrideInBytes = sizeof(renderer::SubmittedSceneVertex);
+            submittedIndexView.BufferLocation =
+                m_submittedIndexBuffers[m_frameIndex]->GetGPUVirtualAddress();
+            submittedIndexView.SizeInBytes = static_cast<UINT>(indexBytes);
+            submittedIndexView.Format = DXGI_FORMAT_R32_UINT;
+        }
     }
 
     // Timestamp readback is consumed only after this frame's fence completes.
@@ -1545,15 +1629,22 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     const Vec3 eye{cameraX, cameraY, cameraZ};
     const Vec3 forward{std::sin(cameraYaw) * std::cos(cameraPitch), std::sin(cameraPitch),
                        std::cos(cameraYaw) * std::cos(cameraPitch)};
-    const auto view = Mat4::LookAtLH(eye, eye + forward, {0.0F, 1.0F, 0.0F});
-    if (!view) return;
-    Mat4 projection = Mat4::Perspective(math::DegreesToRadians(68.0F),
-        static_cast<float>(m_width) / static_cast<float>(m_height), 0.08F, 260.0F);
+    Mat4 viewMatrix;
+    if (submittedScene != nullptr) {
+        viewMatrix = submittedScene->view.view;
+    } else {
+        const auto view = Mat4::LookAtLH(eye, eye + forward, {0.0F, 1.0F, 0.0F});
+        if (!view) return;
+        viewMatrix = *view;
+    }
+    Mat4 projection = submittedScene != nullptr ? submittedScene->view.projection :
+        Mat4::Perspective(math::DegreesToRadians(68.0F),
+            static_cast<float>(m_width) / static_cast<float>(m_height), 0.08F, 260.0F);
     const std::uint32_t jitterIndex = static_cast<std::uint32_t>(m_renderFrameNumber % 8U) + 1U;
     projection.At(0, 2) += (Halton(jitterIndex, 2U) - 0.5F) * 2.0F / static_cast<float>(m_width);
     projection.At(1, 2) += (Halton(jitterIndex, 3U) - 0.5F) * 2.0F / static_cast<float>(m_height);
     SceneConstants constants{};
-    constants.viewProjection = projection * *view;
+    constants.viewProjection = projection * viewMatrix;
     // A slow, deterministic day cycle. The same sun vector drives direct lighting and
     // every cascade's light camera, so the visible sun and cast shadows stay in sync.
     constexpr float kDayCycleRadiansPerSecond = 0.012F;
@@ -1752,6 +1843,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         // GPU-driven quality pressure also reduces mid/near shadow geometry detail.
         const UINT shadowLod = m_worldBudget.ShadowLodForCascade(cascade);
         const Mat4& lightViewProjection = constants.lightViewProjection[cascade];
+        if (!hasSubmittedScene) {
         if (m_gpuCullingEnabled) {
             GpuCullConstants cull{};
             cull.cullMatrix = lightViewProjection;
@@ -1802,6 +1894,17 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
             m_shadowDrawCallsAccumulated[cascade] += shadowCommandCount;
             m_shadowTrianglesAccumulated[cascade] += cascadeTriangles;
         }
+        }
+        if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex] &&
+            m_submittedIndexBuffers[m_frameIndex]) {
+            m_commandList->SetPipelineState(m_shadowPipelineState.Get());
+            m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
+            m_commandList->IASetIndexBuffer(&submittedIndexView);
+            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
+                    static_cast<INT>(draw.firstVertex), 0U);
+            }
+        }
         if (m_timestampFrequency != 0)
             m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + cascade + 1U);
     }
@@ -1845,6 +1948,7 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
+    if (!hasSubmittedScene) {
     if (m_gpuCullingEnabled) {
         GpuCullConstants cull{};
         cull.cullMatrix = m_previousViewProjection;
@@ -1896,6 +2000,20 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
         m_sceneDrawCallsAccumulated += sceneCommandCount;
     }
 
+    }
+    if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex] &&
+        m_submittedIndexBuffers[m_frameIndex]) {
+        m_commandList->SetPipelineState(m_pipelineState.Get());
+        m_commandList->SetGraphicsRootConstantBufferView(0,
+            m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
+        m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
+        m_commandList->IASetIndexBuffer(&submittedIndexView);
+        for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
+                static_cast<INT>(draw.firstVertex), 0U);
+        }
+        m_sceneDrawCallsAccumulated += submittedGeometry.draws.size();
+    }
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
     D3D12_RESOURCE_BARRIER depthToSample{};

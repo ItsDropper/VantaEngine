@@ -43,7 +43,10 @@ bool SceneSubmission::IsFinite(const math::Mat4& matrix) noexcept
 
 bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
 {
-    return std::isfinite(description.baseColor.x) && description.baseColor.x >= 0.0F &&
+    return description.baseColorTexture.empty() && description.normalTexture.empty() &&
+           description.roughnessTexture.empty() && description.metallicTexture.empty() &&
+           description.ambientOcclusionTexture.empty() &&
+           std::isfinite(description.baseColor.x) && description.baseColor.x >= 0.0F &&
            std::isfinite(description.baseColor.y) && description.baseColor.y >= 0.0F &&
            std::isfinite(description.baseColor.z) && description.baseColor.z >= 0.0F &&
            std::isfinite(description.roughness) &&

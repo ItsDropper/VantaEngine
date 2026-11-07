@@ -84,6 +84,29 @@ bool invalidConfigurationUsesSafeDefaults()
     return std::abs(clock.StepSeconds() - 1.0 / 60.0) < 1.0e-12;
 }
 
+
+bool pathologicalConfigurationCannotOverflowStepAccounting()
+{
+    vanta::FixedStepClock tinyStep(1.0e-300, 8, 1.0e300);
+    vanta::FixedStepClock hugeFrameLimit(0.01, 4, 1.0e300);
+    int tinyUpdates=0;
+    int boundedUpdates=0;
+    const auto tiny=tinyStep.Advance(0.25,[&](double){++tinyUpdates;});
+    const auto bounded=hugeFrameLimit.Advance(1.0e300,[&](double){++boundedUpdates;});
+    return std::abs(tinyStep.StepSeconds()-vanta::FixedStepClock::kDefaultStepSeconds)<1.0e-12 &&
+           tinyUpdates==8 && tiny.steps==8 && boundedUpdates==4 && bounded.steps==4 &&
+           bounded.droppedSeconds<=vanta::FixedStepClock::kMaximumFrameSeconds;
+}
+
+bool tinyValidStepAndLargeDeltaRemainBounded()
+{
+    vanta::FixedStepClock clock(1.0e-6, 5, 60.0);
+    int updates=0;
+    const auto result=clock.Advance(1.0e9,[&](double){++updates;});
+    return updates==5 && result.steps==5 && result.droppedSeconds<=60.0 &&
+           result.interpolationAlpha>=0.0 && result.interpolationAlpha<1.0;
+}
+
 constexpr std::array kCases{
     TestCase{"one exact fixed step", exactStepRunsOnce},
     TestCase{"sub-step frames accumulate deterministically", subStepFramesAccumulateDeterministically},
@@ -93,6 +116,8 @@ constexpr std::array kCases{
     TestCase{"maximum step count is configurable", maximumStepCountIsConfigurable},
     TestCase{"reset clears timing state", resetClearsAccumulatorAndDiagnostics},
     TestCase{"invalid configuration uses safe defaults", invalidConfigurationUsesSafeDefaults},
+    TestCase{"pathological configuration cannot overflow accounting", pathologicalConfigurationCannotOverflowStepAccounting},
+    TestCase{"tiny valid steps and large deltas remain bounded", tinyValidStepAndLargeDeltaRemainBounded},
 };
 }
 

@@ -17,6 +17,8 @@ class FixedStepClock final
 {
 public:
     static constexpr double kDefaultStepSeconds = 1.0 / 60.0;
+    static constexpr double kMinimumStepSeconds = 1.0e-6;
+    static constexpr double kMaximumFrameSeconds = 60.0;
     static constexpr double kDefaultMaximumFrameSeconds = 0.25;
     static constexpr std::uint32_t kDefaultMaximumStepsPerFrame = 8;
 
@@ -24,12 +26,12 @@ public:
         double stepSeconds = kDefaultStepSeconds,
         std::uint32_t maximumStepsPerFrame = kDefaultMaximumStepsPerFrame,
         double maximumFrameSeconds = kDefaultMaximumFrameSeconds) noexcept
-        : m_stepSeconds(std::isfinite(stepSeconds) && stepSeconds > 0.0
+        : m_stepSeconds(std::isfinite(stepSeconds) && stepSeconds >= kMinimumStepSeconds
               ? stepSeconds : kDefaultStepSeconds),
           m_maximumStepsPerFrame(maximumStepsPerFrame > 0
               ? maximumStepsPerFrame : kDefaultMaximumStepsPerFrame),
           m_maximumFrameSeconds(std::isfinite(maximumFrameSeconds) && maximumFrameSeconds > 0.0
-              ? maximumFrameSeconds : kDefaultMaximumFrameSeconds)
+              ? std::min(maximumFrameSeconds, kMaximumFrameSeconds) : kDefaultMaximumFrameSeconds)
     {
     }
 

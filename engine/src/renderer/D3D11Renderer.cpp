@@ -1349,8 +1349,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_submittedVertexBuffer.Reset();
         m_submittedIndexBuffer.Reset();
         if (!submittedGeometry.vertices.empty()) {
-            if (submittedGeometry.vertices.size() > UINT_MAX / sizeof(renderer::SubmittedSceneVertex) ||
-                submittedGeometry.indices.size() > UINT_MAX / sizeof(std::uint32_t)) {
+            if (submittedGeometry.vertices.size() > std::numeric_limits<UINT>::max() / sizeof(renderer::SubmittedSceneVertex) ||
+                submittedGeometry.indices.size() > std::numeric_limits<UINT>::max() / sizeof(std::uint32_t)) {
                 LogError("Direct3D 11: submitted scene exceeds buffer size limits.");
                 return;
             }
@@ -1479,7 +1479,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
             lightViewProjections[cascade]);
         }
-        if (hasSubmittedScene && m_submittedVertexBuffer && m_submittedIndexBuffer) {
+        if (hasSubmittedScene && m_submittedVertexBuffer.Get() != nullptr &&
+            m_submittedIndexBuffer.Get() != nullptr) {
             constexpr UINT submittedStride = sizeof(renderer::SubmittedSceneVertex);
             constexpr UINT submittedOffset = 0;
             ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();

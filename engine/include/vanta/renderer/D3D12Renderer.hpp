@@ -29,7 +29,7 @@ public:
     [[nodiscard]] bool Resize(int width, int height);
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                 float cameraYaw, float cameraPitch);
-    void Render(const renderer::SceneFrame& submittedScene);
+    [[nodiscard]] bool Render(const renderer::SceneFrame& submittedScene);
     [[nodiscard]] bool IsDeviceLost() const noexcept { return m_deviceLost; }
 private:
     static constexpr UINT kFrameCount = 2;
@@ -167,5 +167,6 @@ private:
     bool m_gpuCullingEnabled = false;
     bool m_failed = false;
     bool m_deviceLost = false;
+    bool m_lastFrameSucceeded = false;
 };
 } // namespace vanta

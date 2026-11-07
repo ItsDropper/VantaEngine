@@ -239,8 +239,14 @@ float4 PSMain(PSInput input) : SV_TARGET
         ValueNoise(worldXZ * 91.0 + float2(9.0, 21.0)) * 0.38;
     float materialHeight = woodWeight * barkGrain + foliageWeight * needleRelief +
         stoneWeight * stoneRelief + snowWeight * snowRelief;
-    float3 materialTangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
-    float3 materialBitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
+    float3 materialTangentRaw = dp1 * duv2.y - dp2 * duv1.y;
+    float tangentLengthSquared = dot(materialTangentRaw, materialTangentRaw);
+    float3 fallbackAxis = abs(n.y) < 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    float3 fallbackTangent = normalize(cross(fallbackAxis, n));
+    float3 materialTangent = tangentLengthSquared > 1.0e-8
+        ? materialTangentRaw * rsqrt(tangentLengthSquared) : fallbackTangent;
+    float uvHandedness = (duv1.x * duv2.y - duv1.y * duv2.x) < 0.0 ? -1.0 : 1.0;
+    float3 materialBitangent = normalize(cross(n, materialTangent)) * uvHandedness;
     float3 materialMicroNormal = normalize(n - materialTangent * ddx(materialHeight) * 1.25 -
         materialBitangent * ddy(materialHeight) * 1.25);
     float materialReliefMask = importedMaterial * (1.0 - terrainColorMask) *

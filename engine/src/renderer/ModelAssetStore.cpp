@@ -176,17 +176,47 @@ bool ModelAssetStore::LoadModel(
         return false;
     }
 
-    if (slotIndex == m_slots.size())
-        m_slots.emplace_back();
-    Slot& slot = m_slots[slotIndex];
-    slot.model = std::move(model);
-    slot.sourcePath = canonicalPath;
-    slot.cacheKey = cacheKey;
-    slot.occupied = true;
-    output = {static_cast<std::uint32_t>(slotIndex), slot.generation};
-    m_pathCache.emplace(slot.cacheKey, output);
-    ++m_loadedCount;
-    return true;
+    // Stage every allocation before publishing the slot. In particular, inserting
+    // into the path cache can allocate; doing that after marking the slot occupied
+    // previously allowed an allocation failure to leave an unreachable live asset.
+    try
+    {
+        Slot staged;
+        staged.model = std::move(model);
+        staged.sourcePath = canonicalPath;
+        staged.cacheKey = cacheKey;
+
+        if (slotIndex == m_slots.size())
+            m_slots.emplace_back();
+
+        Slot& slot = m_slots[slotIndex];
+        const ModelHandle handle{static_cast<std::uint32_t>(slotIndex), slot.generation};
+        const auto [cacheEntry, inserted] = m_pathCache.emplace(staged.cacheKey, handle);
+        if (!inserted)
+        {
+            if (Find(cacheEntry->second) != nullptr)
+            {
+                output = cacheEntry->second;
+                return true;
+            }
+            error = "Model asset cache contains a stale path entry.";
+            return false;
+        }
+
+        // Slot's owned members are standard move-only/movable containers and paths;
+        // publishing the staged value happens only after the cache insertion succeeds.
+        slot = std::move(staged);
+        slot.generation = handle.generation;
+        slot.occupied = true;
+        output = handle;
+        ++m_loadedCount;
+        return true;
+    }
+    catch (const std::exception& exception)
+    {
+        error = std::string("Could not store imported model: ") + exception.what();
+        return false;
+    }
 }
 
 bool ModelAssetStore::Unload(const ModelHandle handle) noexcept

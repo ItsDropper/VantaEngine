@@ -75,6 +75,21 @@ bool clearInvalidatesAllHandles()
     return cleared;
 }
 
+bool clearAllowsSafeSlotReuse()
+{
+    if(!WriteValidModel())return false;
+    ModelAssetStore store;
+    ModelHandle first{},second{};
+    std::string error;
+    if(!store.LoadModel(kModelPath,first,error))return false;
+    store.Clear();
+    if(store.LoadedCount()!=0||store.Contains(first))return false;
+    if(!store.LoadModel(kModelPath,second,error))return false;
+    return second.IsValid()&&second.index==first.index&&
+           second.generation!=first.generation&&store.LoadedCount()==1&&
+           store.Contains(second)&&store.GetModel(second)!=nullptr;
+}
+
 bool unsupportedAndMissingPathsReportErrors()
 {
     ModelAssetStore store;
@@ -139,6 +154,7 @@ constexpr std::array kCases{
     TestCase{"loads and caches OBJ by canonical path",loadsAndCachesObjByCanonicalPath},
     TestCase{"unload invalidates handles and supports reload",unloadInvalidatesHandleAndAllowsReload},
     TestCase{"clear invalidates every loaded handle",clearInvalidatesAllHandles},
+    TestCase{"clear permits safe generation-checked slot reuse",clearAllowsSafeSlotReuse},
     TestCase{"unsupported and missing paths report errors",unsupportedAndMissingPathsReportErrors},
     TestCase{"malformed model never enters the cache",malformedModelDoesNotEnterCache},
     TestCase{"model pointers remain stable when the store grows",modelPointersRemainStableWhenStoreGrows}

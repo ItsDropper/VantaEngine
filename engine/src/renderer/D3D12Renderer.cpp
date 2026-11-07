@@ -1356,12 +1356,22 @@ void D3D12Renderer::BuildHiZPyramid(UINT frameIndex)
 
 bool D3D12Renderer::WaitForFrame(UINT frameIndex)
 {
-    if (m_fence->GetCompletedValue() >= m_fenceValues[frameIndex]) return true;
+    const UINT64 completedValue = m_fence->GetCompletedValue();
+    if (completedValue == std::numeric_limits<UINT64>::max()) {
+        m_deviceLost = true;
+        return false;
+    }
+    if (completedValue >= m_fenceValues[frameIndex]) return true;
     if (FAILED(m_fence->SetEventOnCompletion(m_fenceValues[frameIndex], m_fenceEvent))) {
         m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
-    return WaitForSingleObject(m_fenceEvent, INFINITE) == WAIT_OBJECT_0;
+    const DWORD waitResult = WaitForSingleObject(m_fenceEvent, INFINITE);
+    if (waitResult != WAIT_OBJECT_0) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        return false;
+    }
+    return true;
 }
 
 bool D3D12Renderer::WaitForGpu()
@@ -1376,7 +1386,10 @@ bool D3D12Renderer::WaitForGpu()
         m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
         return false;
     }
-    if (WaitForSingleObject(m_fenceEvent, INFINITE) != WAIT_OBJECT_0) return false;
+    if (WaitForSingleObject(m_fenceEvent, INFINITE) != WAIT_OBJECT_0) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
+        return false;
+    }
     m_fenceValues.fill(value);
     return true;
 }
@@ -1561,8 +1574,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                            float cameraYaw, float cameraPitch,
                            const renderer::SceneFrame* submittedScene)
 {
-    if (m_failed) return;
+    if (m_failed || m_deviceLost) return;
     if (!WaitForFrame(m_frameIndex)) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: waiting for a reusable frame failed.");
         m_failed = true;
         return;
@@ -2131,6 +2145,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {
+        m_deviceLost = m_device && FAILED(m_device->GetDeviceRemovedReason());
         LogError("Direct3D 12: frame fence signal failed.");
         m_failed = true;
         return;

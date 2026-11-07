@@ -575,7 +575,7 @@ bool ValidateD3D11SceneShader(std::string& error)
             : std::string("D3D11 scene shader compilation failed without diagnostics.");
         return false;
     };
-    if (!compile("VSMain", "vs_5_0") || !compile("PSMain", "ps_5_0"))
+    if (!compile("VSMain", "vs_4_0") || !compile("PSMain", "ps_5_0"))
         return false;
     error.clear();
     return true;

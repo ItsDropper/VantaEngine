@@ -93,6 +93,24 @@ InputActionState InputActionMap::State(const std::string_view action) const noex
     return iterator == m_states.end() ? InputActionState{} : iterator->second;
 }
 
+std::vector<InputBinding> InputActionMap::Bindings(const std::string_view action) const
+{
+    const auto iterator = m_bindings.find(action);
+    return iterator == m_bindings.end() ? std::vector<InputBinding>{} : iterator->second;
+}
+
+std::vector<std::string> InputActionMap::ActionNames() const
+{
+    std::vector<std::string> names;
+    names.reserve(m_bindings.size());
+    for (const auto& [action, bindings] : m_bindings)
+    {
+        (void)bindings;
+        names.push_back(action);
+    }
+    return names;
+}
+
 std::size_t InputActionMap::BindingCount(const std::string_view action) const noexcept
 {
     const auto iterator = m_bindings.find(action);

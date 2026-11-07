@@ -83,12 +83,28 @@ bool clearAndUnknownActionsAreSafe()
     return actions.BindingCount("crouch") == 0 && !actions.State("crouch").down;
 }
 
+bool exposesBindingsAndStableActionNamesForSettingsUi()
+{
+    InputActionMap actions;
+    (void)actions.BindKey("jump", ' ');
+    (void)actions.BindKey("jump", 'J');
+    (void)actions.BindMouseButton("aim", 1);
+    const auto jump = actions.Bindings("jump");
+    const auto names = actions.ActionNames();
+    return jump.size() == 2 &&
+           jump[0] == InputBinding{InputBindingType::Key, ' '} &&
+           jump[1] == InputBinding{InputBindingType::Key, 'J'} &&
+           names == std::vector<std::string>{"aim", "jump"} &&
+           actions.Bindings("missing").empty();
+}
+
 constexpr std::array kCases{
     TestCase{"combines keyboard and mouse bindings", combinesKeyboardAndMouseBindings},
     TestCase{"aggregate release waits for final binding", emitsAggregateReleaseOnlyAfterLastBinding},
     TestCase{"binding removal releases held action", bindingChangesReleaseHeldActionOnNextEvaluation},
     TestCase{"invalid bindings are rejected and duplicates deduplicated", rejectsInvalidBindingsAndDeduplicates},
-    TestCase{"clear and unknown action handling", clearAndUnknownActionsAreSafe}
+    TestCase{"clear and unknown action handling", clearAndUnknownActionsAreSafe},
+    TestCase{"bindings and stable action names are queryable", exposesBindingsAndStableActionNamesForSettingsUi}
 };
 }
 

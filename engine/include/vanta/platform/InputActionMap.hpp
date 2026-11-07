@@ -43,6 +43,8 @@ public:
     void Evaluate(const InputState& input) noexcept;
     [[nodiscard]] InputActionState State(std::string_view action) const noexcept;
     [[nodiscard]] std::size_t BindingCount(std::string_view action) const noexcept;
+    [[nodiscard]] std::vector<InputBinding> Bindings(std::string_view action) const;
+    [[nodiscard]] std::vector<std::string> ActionNames() const;
 
 private:
     [[nodiscard]] bool Bind(std::string action, InputBinding binding);

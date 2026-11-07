@@ -15,6 +15,11 @@
 #include <string>
 #include <vector>
 
+namespace vanta::renderer
+{
+struct SubmittedSceneGeometry;
+}
+
 namespace vanta
 {
 class D3D12Renderer final

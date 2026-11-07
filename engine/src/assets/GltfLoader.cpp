@@ -4,7 +4,9 @@
 #include "../../third_party/cgltf.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -59,19 +61,103 @@ bool DecodeUriPath(const std::string& uri, std::string& decoded)
     return !decoded.empty();
 }
 
-bool ExternalTexturePath(const cgltf_texture_view& view, const std::filesystem::path& modelPath,
-                         std::filesystem::path& output, std::string& error, const char* label)
+bool DecodeBase64Image(std::string_view uri, CpuEmbeddedImage& image, std::string& error)
 {
-    if (!view.texture || !view.texture->image) return true;
+    const std::size_t comma = uri.find(',');
+    if (comma == std::string_view::npos || uri.substr(0, comma).find(";base64") == std::string_view::npos)
+    {
+        error = "Embedded glTF data URI must use an explicit MIME type and base64 encoding.";
+        return false;
+    }
+    const std::string_view metadata = uri.substr(5U, comma - 5U);
+    const std::size_t semicolon = metadata.find(';');
+    if (semicolon == std::string_view::npos || semicolon == 0U)
+    {
+        error = "Embedded glTF data URI is missing its image MIME type.";
+        return false;
+    }
+    image.mimeType = std::string(metadata.substr(0U, semicolon));
+    if (!image.mimeType.starts_with("image/"))
+    {
+        error = "Embedded glTF data URI MIME type must be an image type.";
+        return false;
+    }
+
+    const std::string_view payload = uri.substr(comma + 1U);
+    constexpr std::size_t maximumEncodedBytes = 256U * 1024U * 1024U;
+    if (payload.empty() || payload.size() > maximumEncodedBytes * 2U ||
+        payload.size() % 4U != 0U)
+    {
+        error = "Embedded glTF image payload is empty, oversized, or has invalid base64 length.";
+        return false;
+    }
+    const auto decode = [](char value) -> int
+    {
+        if (value >= 'A' && value <= 'Z') return value - 'A';
+        if (value >= 'a' && value <= 'z') return value - 'a' + 26;
+        if (value >= '0' && value <= '9') return value - '0' + 52;
+        if (value == '+') return 62;
+        if (value == '/') return 63;
+        return -1;
+    };
+
+    image.encodedBytes.clear();
+    image.encodedBytes.reserve(payload.size() / 4U * 3U);
+    for (std::size_t offset = 0; offset < payload.size(); offset += 4U)
+    {
+        const bool finalBlock = offset + 4U == payload.size();
+        const int a = decode(payload[offset]);
+        const int b = decode(payload[offset + 1U]);
+        const bool padC = payload[offset + 2U] == '=';
+        const bool padD = payload[offset + 3U] == '=';
+        const int c = padC ? 0 : decode(payload[offset + 2U]);
+        const int d = padD ? 0 : decode(payload[offset + 3U]);
+        if (a < 0 || b < 0 || c < 0 || d < 0 ||
+            (padC && (!padD || !finalBlock)) || (padD && !finalBlock) ||
+            (!finalBlock && (padC || padD)))
+        {
+            error = "Embedded glTF image contains invalid base64 characters or padding.";
+            return false;
+        }
+        const std::uint32_t packed = (static_cast<std::uint32_t>(a) << 18U) |
+                                     (static_cast<std::uint32_t>(b) << 12U) |
+                                     (static_cast<std::uint32_t>(c) << 6U) |
+                                     static_cast<std::uint32_t>(d);
+        image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 16U) & 0xffU));
+        if (!padC)
+            image.encodedBytes.push_back(static_cast<std::uint8_t>((packed >> 8U) & 0xffU));
+        if (!padD)
+            image.encodedBytes.push_back(static_cast<std::uint8_t>(packed & 0xffU));
+        if (image.encodedBytes.size() > maximumEncodedBytes)
+        {
+            error = "Embedded glTF image exceeds the 256 MiB decoded payload limit.";
+            return false;
+        }
+    }
+    return !image.encodedBytes.empty();
+}
+
+bool ResolveTexture(const cgltf_texture_view& view, const std::filesystem::path& modelPath,
+                    std::filesystem::path& externalPath,
+                    std::shared_ptr<const CpuEmbeddedImage>& embeddedImage,
+                    std::string& error, const char* label)
+{
+    if (!view.texture || !view.texture->image)
+        return true;
     const cgltf_image& image = *view.texture->image;
     if (image.uri && image.uri[0] != '\0')
     {
         const std::string uri = image.uri;
         if (uri.rfind("data:", 0) == 0)
         {
-            error = std::string("Embedded data-URI image for ") + label +
-                    " is not supported yet; export the texture as an external image.";
-            return false;
+            auto decoded = std::make_shared<CpuEmbeddedImage>();
+            if (!DecodeBase64Image(uri, *decoded, error))
+            {
+                error = std::string("Embedded image for ") + label + ": " + error;
+                return false;
+            }
+            embeddedImage = std::move(decoded);
+            return true;
         }
         std::string decodedUri;
         if (!DecodeUriPath(uri, decodedUri))
@@ -80,16 +166,42 @@ bool ExternalTexturePath(const cgltf_texture_view& view, const std::filesystem::
                     " contains invalid percent-encoding or an empty path.";
             return false;
         }
-        output = modelPath.parent_path() / std::filesystem::u8path(decodedUri);
+        externalPath = modelPath.parent_path() / std::filesystem::path(
+            std::u8string(reinterpret_cast<const char8_t*>(decodedUri.data()),
+                          reinterpret_cast<const char8_t*>(decodedUri.data() + decodedUri.size())));
         return true;
     }
     if (image.buffer_view)
     {
-        error = std::string("Embedded GLB image for ") + label +
-                " is not supported yet; export the texture as an external image.";
-        return false;
+        const cgltf_buffer_view& viewData = *image.buffer_view;
+        const void* source = viewData.data;
+        if (source == nullptr)
+        {
+            if (viewData.buffer == nullptr || viewData.buffer->data == nullptr ||
+                viewData.offset > viewData.buffer->size ||
+                viewData.size > viewData.buffer->size - viewData.offset)
+            {
+                error = std::string("Embedded GLB image for ") + label +
+                        " references an invalid buffer view.";
+                return false;
+            }
+            source = static_cast<const std::uint8_t*>(viewData.buffer->data) + viewData.offset;
+        }
+        if (viewData.size == 0U || viewData.size > 256U * 1024U * 1024U ||
+            image.mime_type == nullptr || std::string_view(image.mime_type).empty())
+        {
+            error = std::string("Embedded GLB image for ") + label +
+                    " has an empty/oversized payload or missing MIME type.";
+            return false;
+        }
+        auto decoded = std::make_shared<CpuEmbeddedImage>();
+        decoded->mimeType = image.mime_type;
+        const auto* bytes = static_cast<const std::uint8_t*>(source);
+        decoded->encodedBytes.assign(bytes, bytes + viewData.size);
+        embeddedImage = std::move(decoded);
+        return true;
     }
-    error = std::string("Texture image for ") + label + " has no readable URI.";
+    error = std::string("Texture image for ") + label + " has no readable URI or buffer view.";
     return false;
 }
 
@@ -97,21 +209,28 @@ bool ConvertMaterial(const cgltf_material* source, const std::filesystem::path& 
                      CpuMaterial& target, std::string& error)
 {
     target = CpuMaterial{};
-    if (!source) return true;
+    if (!source)
+        return true;
     if (source->has_pbr_metallic_roughness)
     {
         const auto& pbr = source->pbr_metallic_roughness;
         target.baseColor = {pbr.base_color_factor[0], pbr.base_color_factor[1], pbr.base_color_factor[2]};
         target.roughness = std::clamp(static_cast<float>(pbr.roughness_factor), 0.04F, 1.0F);
         target.metallic = std::clamp(static_cast<float>(pbr.metallic_factor), 0.0F, 1.0F);
-        if (!ExternalTexturePath(pbr.base_color_texture, modelPath, target.diffuseTexture, error, "base color") ||
-            !ExternalTexturePath(pbr.metallic_roughness_texture, modelPath, target.roughnessTexture, error, "metallic-roughness"))
+        if (!ResolveTexture(pbr.base_color_texture, modelPath, target.diffuseTexture,
+                            target.embeddedDiffuseTexture, error, "base color") ||
+            !ResolveTexture(pbr.metallic_roughness_texture, modelPath, target.roughnessTexture,
+                            target.embeddedRoughnessTexture, error, "metallic-roughness"))
             return false;
         target.metallicTexture = target.roughnessTexture;
-        target.packedMetallicRoughness = !target.roughnessTexture.empty();
+        target.embeddedMetallicTexture = target.embeddedRoughnessTexture;
+        target.packedMetallicRoughness = !target.roughnessTexture.empty() ||
+                                         static_cast<bool>(target.embeddedRoughnessTexture);
     }
-    if (!ExternalTexturePath(source->normal_texture, modelPath, target.normalTexture, error, "normal") ||
-        !ExternalTexturePath(source->occlusion_texture, modelPath, target.ambientOcclusionTexture, error, "occlusion"))
+    if (!ResolveTexture(source->normal_texture, modelPath, target.normalTexture,
+                        target.embeddedNormalTexture, error, "normal") ||
+        !ResolveTexture(source->occlusion_texture, modelPath, target.ambientOcclusionTexture,
+                        target.embeddedAmbientOcclusionTexture, error, "occlusion"))
         return false;
     return true;
 }

@@ -52,7 +52,20 @@ bool SceneSubmission::IsValidWorldTransform(const math::Mat4& matrix) noexcept
 
 bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
 {
-    return std::isfinite(description.baseColor.x) && description.baseColor.x >= 0.0F &&
+    const std::array<const std::filesystem::path*, 5> texturePaths = {
+        &description.baseColorTexture, &description.normalTexture,
+        &description.roughnessTexture, &description.metallicTexture,
+        &description.ambientOcclusionTexture
+    };
+    const bool pathsValid = std::all_of(texturePaths.begin(), texturePaths.end(),
+        [](const std::filesystem::path* path)
+        {
+            const std::string native = path->native();
+            return native.find('\\0') == std::string::npos &&
+                (path->empty() || path->is_absolute());
+        });
+    return pathsValid &&
+           std::isfinite(description.baseColor.x) && description.baseColor.x >= 0.0F &&
            std::isfinite(description.baseColor.y) && description.baseColor.y >= 0.0F &&
            std::isfinite(description.baseColor.z) && description.baseColor.z >= 0.0F &&
            std::isfinite(description.roughness) &&

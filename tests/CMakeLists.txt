@@ -102,6 +102,7 @@ add_test(NAME VantaEngine.PhysicsEventTests COMMAND VantaEnginePhysicsEventTests
 
 add_executable(VantaEngineInputActionTests
     input_action_tests.cpp
+    ../engine/src/platform/InputActionMap.cpp
 )
 vanta_configure_test(VantaEngineInputActionTests)
 add_test(NAME VantaEngine.InputActionTests COMMAND VantaEngineInputActionTests)

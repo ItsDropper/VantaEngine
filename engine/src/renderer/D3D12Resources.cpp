@@ -546,7 +546,7 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
     }
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += static_cast<SIZE_T>(descriptorIndex) * m_srvDescriptorSize;
-    m_device->CreateShaderResourceView(m_modelMaterialTextures[descriptorIndex - 7U].Get(), &srv, handle);
+    m_device->CreateShaderResourceView(destinationTexture.Get(), &srv, handle);
     return true;
 }
 

@@ -64,16 +64,17 @@ bool DecodeUriPath(const std::string& uri, std::string& decoded)
 bool DecodeBase64Image(std::string_view uri, CpuEmbeddedImage& image, std::string& error)
 {
     const std::size_t comma = uri.find(',');
-    if (comma == std::string_view::npos || uri.substr(0, comma).find(";base64") == std::string_view::npos)
+    if (comma == std::string_view::npos)
     {
         error = "Embedded glTF data URI must use an explicit MIME type and base64 encoding.";
         return false;
     }
     const std::string_view metadata = uri.substr(5U, comma - 5U);
     const std::size_t semicolon = metadata.find(';');
-    if (semicolon == std::string_view::npos || semicolon == 0U)
+    if (semicolon == std::string_view::npos || semicolon == 0U ||
+        metadata.substr(semicolon) != ";base64")
     {
-        error = "Embedded glTF data URI is missing its image MIME type.";
+        error = "Embedded glTF data URI is missing its image MIME type or has unsupported parameters.";
         return false;
     }
     image.mimeType = std::string(metadata.substr(0U, semicolon));
@@ -85,7 +86,7 @@ bool DecodeBase64Image(std::string_view uri, CpuEmbeddedImage& image, std::strin
 
     const std::string_view payload = uri.substr(comma + 1U);
     constexpr std::size_t maximumEncodedBytes = 256U * 1024U * 1024U;
-    if (payload.empty() || payload.size() > maximumEncodedBytes * 2U ||
+    if (payload.empty() || payload.size() > maximumEncodedBytes + maximumEncodedBytes / 2U ||
         payload.size() % 4U != 0U)
     {
         error = "Embedded glTF image payload is empty, oversized, or has invalid base64 length.";
@@ -188,7 +189,7 @@ bool ResolveTexture(const cgltf_texture_view& view, const std::filesystem::path&
             source = static_cast<const std::uint8_t*>(viewData.buffer->data) + viewData.offset;
         }
         if (viewData.size == 0U || viewData.size > 256U * 1024U * 1024U ||
-            image.mime_type == nullptr || std::string_view(image.mime_type).empty())
+            image.mime_type == nullptr || !std::string_view(image.mime_type).starts_with("image/"))
         {
             error = std::string("Embedded GLB image for ") + label +
                     " has an empty/oversized payload or missing MIME type.";

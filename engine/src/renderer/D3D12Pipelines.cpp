@@ -217,6 +217,36 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 microNormal = normalize(n - tangent * ddx(microHeight) * 2.4 -
         bitangent * ddy(microHeight) * 2.4);
     n = normalize(lerp(n, microNormal, terrainColorMask * 0.92));
+
+    // Subtle material-specific micro-relief for imported surfaces that do not yet carry
+    // authored normal maps. The height fields follow the UV direction for bark/needles
+    // and world-space triplanar scale for stone/snow, so they do not become screen-space
+    // speckle or a single repeated checker pattern.
+    float luminance = dot(albedo, float3(0.2126, 0.7152, 0.0722));
+    float foliageWeight = saturate((albedo.g - max(albedo.r, albedo.b)) * 5.0);
+    float woodWeight = saturate((albedo.r - albedo.b) * 2.8) * (1.0 - foliageWeight);
+    float snowWeight = saturate((luminance - 0.48) * 2.2);
+    float stoneWeight = saturate(1.0 - foliageWeight - woodWeight - snowWeight);
+    float barkGrain = ValueNoise(float2(input.uv.x * 38.0, input.uv.y * 190.0)) * 0.68 +
+        ValueNoise(float2(input.uv.x * 112.0, input.uv.y * 510.0) + 7.3) * 0.22 +
+        (0.5 + 0.5 * sin(input.uv.x * 510.0 + ValueNoise(input.uv * 73.0) * 3.0)) * 0.10;
+    float needleRelief = ValueNoise(input.uv * 185.0 + float2(13.0, 7.0)) * 0.58 +
+        ValueNoise(input.uv * 420.0 - float2(5.0, 19.0)) * 0.42;
+    float stoneRelief = TerrainNoise(worldXZ * 10.5) * 0.58 +
+        TerrainNoise(worldXZ * 31.0 + float2(4.7, -13.2)) * 0.29 +
+        ValueNoise(worldXZ * 83.0) * 0.13;
+    float snowRelief = ValueNoise(worldXZ * 34.0) * 0.62 +
+        ValueNoise(worldXZ * 91.0 + float2(9.0, 21.0)) * 0.38;
+    float materialHeight = woodWeight * barkGrain + foliageWeight * needleRelief +
+        stoneWeight * stoneRelief + snowWeight * snowRelief;
+    float3 materialTangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
+    float3 materialBitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
+    float3 materialMicroNormal = normalize(n - materialTangent * ddx(materialHeight) * 1.25 -
+        materialBitangent * ddy(materialHeight) * 1.25);
+    float materialReliefMask = importedMaterial * (1.0 - terrainColorMask) *
+        (((materialFlags & 2U) != 0U) ? 0.0 : 1.0);
+    n = normalize(lerp(n, materialMicroNormal, materialReliefMask * 0.72));
+
     float metallic = saturate(lerp(0.025, input.material.y, importedMaterial));
     if ((materialFlags & 4U) != 0U)
     {

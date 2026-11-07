@@ -1,4 +1,5 @@
 #include "vanta/renderer/D3D11Renderer.hpp"
+#include "vanta/renderer/SceneGeometry.hpp"
 
 #include "vanta/core/Log.hpp"
 #include "vanta/math/Math.hpp"
@@ -1237,7 +1238,16 @@ bool D3D11Renderer::Resize(const int width, const int height)
     return CreateRenderTarget() && CreateDepthTarget() && CreateTemporalTargets();
 }
 
-void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY, const float cameraZ, const float cameraYaw, const float cameraPitch)
+void D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
+{
+    Render(submittedScene.view.elapsedSeconds, submittedScene.view.cameraPosition.x,
+        submittedScene.view.cameraPosition.y, submittedScene.view.cameraPosition.z, 0.0F, 0.0F,
+        &submittedScene);
+}
+
+void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, const float cameraY,
+    const float cameraZ, const float cameraYaw, const float cameraPitch,
+    const renderer::SceneFrame* submittedScene)
 {
     const float adaptiveDetailScale = m_worldBudget.Update();
     constexpr float clearColor[] = {0.018F, 0.025F, 0.055F, 1.0F};
@@ -1266,10 +1276,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     const Vec3 cameraPosition{cameraX, cameraY, cameraZ};
     const float cosPitch = std::cos(cameraPitch);
     const Vec3 cameraForward{std::sin(cameraYaw) * cosPitch, std::sin(cameraPitch), std::cos(cameraYaw) * cosPitch};
-    const Mat4 view = Mat4::LookAtLH(cameraPosition, cameraPosition + cameraForward, {0.0F, 1.0F, 0.0F})
-        .value_or(Mat4::Identity());
+    const Mat4 view = submittedScene != nullptr ? submittedScene->view.view :
+        Mat4::LookAtLH(cameraPosition, cameraPosition + cameraForward, {0.0F, 1.0F, 0.0F})
+            .value_or(Mat4::Identity());
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    Mat4 projection = Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
+    Mat4 projection = submittedScene != nullptr ? submittedScene->view.projection :
+        Mat4::Perspective(math::DegreesToRadians(55.0F), aspect, 0.1F, 150.0F);
     // Eight-sample Halton jitter provides sub-pixel coverage for temporal AA.
     const auto halton = [](std::uint64_t index, std::uint32_t base) {
         float value = 0.0F;
@@ -1305,6 +1317,60 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         lightProjection.At(2, 3) = -0.1F / 320.0F;
         lightProjection.At(3, 3) = 1.0F;
         lightViewProjections[cascade] = lightProjection * lightView;
+    }
+
+    renderer::SubmittedSceneGeometry submittedGeometry;
+    const bool hasSubmittedScene = submittedScene != nullptr;
+    if (hasSubmittedScene) {
+        std::string geometryError;
+        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+            LogError(geometryError.c_str());
+            return;
+        }
+        m_submittedVertexBuffer.Reset();
+        m_submittedIndexBuffer.Reset();
+        if (!submittedGeometry.vertices.empty()) {
+            if (submittedGeometry.vertices.size() > UINT_MAX / sizeof(renderer::SubmittedSceneVertex) ||
+                submittedGeometry.indices.size() > UINT_MAX / sizeof(std::uint32_t)) {
+                LogError("Direct3D 11: submitted scene exceeds buffer size limits.");
+                return;
+            }
+            D3D11_BUFFER_DESC vertexDescription{};
+            vertexDescription.ByteWidth = static_cast<UINT>(
+                submittedGeometry.vertices.size() * sizeof(renderer::SubmittedSceneVertex));
+            vertexDescription.Usage = D3D11_USAGE_DYNAMIC;
+            vertexDescription.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+            vertexDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            if (FAILED(m_device->CreateBuffer(&vertexDescription, nullptr, m_submittedVertexBuffer.GetAddressOf()))) {
+                LogError("Direct3D 11: submitted scene vertex buffer creation failed.");
+                return;
+            }
+            D3D11_MAPPED_SUBRESOURCE vertexMapped{};
+            if (FAILED(m_context->Map(m_submittedVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &vertexMapped))) {
+                LogError("Direct3D 11: submitted scene vertex buffer mapping failed.");
+                return;
+            }
+            std::memcpy(vertexMapped.pData, submittedGeometry.vertices.data(), vertexDescription.ByteWidth);
+            m_context->Unmap(m_submittedVertexBuffer.Get(), 0);
+
+            D3D11_BUFFER_DESC indexDescription{};
+            indexDescription.ByteWidth = static_cast<UINT>(
+                submittedGeometry.indices.size() * sizeof(std::uint32_t));
+            indexDescription.Usage = D3D11_USAGE_DYNAMIC;
+            indexDescription.BindFlags = D3D11_BIND_INDEX_BUFFER;
+            indexDescription.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            if (FAILED(m_device->CreateBuffer(&indexDescription, nullptr, m_submittedIndexBuffer.GetAddressOf()))) {
+                LogError("Direct3D 11: submitted scene index buffer creation failed.");
+                return;
+            }
+            D3D11_MAPPED_SUBRESOURCE indexMapped{};
+            if (FAILED(m_context->Map(m_submittedIndexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &indexMapped))) {
+                LogError("Direct3D 11: submitted scene index buffer mapping failed.");
+                return;
+            }
+            std::memcpy(indexMapped.pData, submittedGeometry.indices.data(), indexDescription.ByteWidth);
+            m_context->Unmap(m_submittedIndexBuffer.Get(), 0);
+        }
     }
 
     ID3D11ShaderResourceView* noShadowTexture = nullptr;
@@ -1346,6 +1412,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     for (UINT cascade = 0; cascade < 3; ++cascade) {
         m_context->OMSetRenderTargets(0, nullptr, m_shadowDepthStencil[cascade].Get());
         m_context->ClearDepthStencilView(m_shadowDepthStencil[cascade].Get(), D3D11_CLEAR_DEPTH, 1.0F, 0);
+        if (!hasSubmittedScene) {
         drawShadowMesh(m_terrainVertexBuffer.Get(), m_terrainIndexBuffer.Get(), DXGI_FORMAT_R32_UINT,
             m_terrainIndexCount, Mat4::Identity(), lightViewProjections[cascade]);
         // Update shadow constants once per cascade, then draw only nearby chunks using
@@ -1392,6 +1459,27 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             static_cast<UINT>(std::size(kCubeIndices)),
             Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}),
             lightViewProjections[cascade]);
+        }
+        if (hasSubmittedScene && m_submittedVertexBuffer && m_submittedIndexBuffer) {
+            constexpr UINT submittedStride = sizeof(renderer::SubmittedSceneVertex);
+            constexpr UINT submittedOffset = 0;
+            ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
+            m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
+            m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                SceneConstants constants{};
+                constants.world = Mat4::Identity();
+                constants.lightViewProjection[0] = lightViewProjections[cascade];
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+                    LogError("Direct3D 11: submitted shadow constants mapping failed.");
+                    continue;
+                }
+                *static_cast<SceneConstants*>(mapped.pData) = constants;
+                m_context->Unmap(m_sceneConstants.Get(), 0);
+                m_context->DrawIndexed(draw.indexCount, draw.firstIndex, static_cast<INT>(draw.firstVertex));
+            }
+        }
     }
 
     // Restore the main color/depth targets and camera viewport.
@@ -1450,6 +1538,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->DrawIndexed(static_cast<UINT>(std::size(kCubeIndices)), 0, 0);
     };
 
+    if (!hasSubmittedScene) {
     // Render terrain and forest as merged static meshes; the ground is now a real walkable-scale landscape.
     const Mat4 identity = Mat4::Identity();
     SceneConstants worldConstants{projection * view, identity, 0U, {0.0F, 0.0F, 0.0F},
@@ -1548,6 +1637,50 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     drawCube(Mat4::Translation({2.4F, -0.4F, 2.6F}) * Mat4::Rotation(propB.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     drawCube(Mat4::Translation({3.4F, -0.4F, -2.4F}) * Mat4::Rotation(propC.value_or(Quaternion::Identity())) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
     drawCube(Mat4::Translation({-2.8F, -0.4F, -3.0F}) * Mat4::Scale({0.6F, 0.6F, 0.6F}));
+    }
+
+    if (hasSubmittedScene && m_submittedVertexBuffer && m_submittedIndexBuffer) {
+        constexpr UINT submittedStride = sizeof(renderer::SubmittedSceneVertex);
+        constexpr UINT submittedOffset = 0;
+        ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
+        m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
+        m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+        ID3D11ShaderResourceView* noTextures[6]{};
+        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(noTextures)), noTextures);
+        for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            SceneConstants constants{};
+            constants.worldViewProjection = projection * view;
+            constants.world = Mat4::Identity();
+            constants.useTexture = 0U;
+            constants.cameraPosition[0] = cameraX;
+            constants.cameraPosition[1] = cameraY;
+            constants.cameraPosition[2] = cameraZ;
+            constants.fogDensity = 0.018F;
+            constants.lightDirection[0] = -0.45F;
+            constants.lightDirection[1] = -0.8F;
+            constants.lightDirection[2] = 0.55F;
+            constants.fogStart = 5.0F;
+            constants.materialProperties[0] = draw.material.roughness;
+            constants.materialProperties[1] = draw.material.metallic;
+            constants.baseColorFactor[0] = 1.0F;
+            constants.baseColorFactor[1] = 1.0F;
+            constants.baseColorFactor[2] = 1.0F;
+            constants.baseColorFactor[3] = 1.0F;
+            for (std::size_t cascade = 0; cascade < 3; ++cascade)
+                constants.lightViewProjection[cascade] = lightViewProjections[cascade];
+            constants.cascadeSplits[0] = 25.0F;
+            constants.cascadeSplits[1] = 60.0F;
+            constants.cascadeSplits[2] = 130.0F;
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+                LogError("Direct3D 11: submitted scene constants mapping failed.");
+                continue;
+            }
+            *static_cast<SceneConstants*>(mapped.pData) = constants;
+            m_context->Unmap(m_sceneConstants.Get(), 0);
+            m_context->DrawIndexed(draw.indexCount, draw.firstIndex, static_cast<INT>(draw.firstVertex));
+        }
+    }
 
     // Composite the complete linear HDR scene into the swap chain. The HDR target must
     // be unbound before it is sampled, otherwise D3D11 reports a read/write hazard.

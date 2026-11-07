@@ -7,6 +7,7 @@
 #include <cwctype>
 #include <system_error>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace vanta::renderer
@@ -181,6 +182,7 @@ bool ModelAssetStore::LoadModel(
     // previously allowed an allocation failure to leave an unreachable live asset.
     try
     {
+        static_assert(std::is_nothrow_move_assignable_v<Slot>);
         Slot staged;
         staged.model = std::move(model);
         staged.sourcePath = canonicalPath;

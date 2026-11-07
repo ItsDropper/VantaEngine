@@ -75,6 +75,31 @@ bool clearInvalidatesAllHandles()
     return cleared;
 }
 
+bool failedImportCanBeCorrectedAndRetried()
+{
+    std::error_code ignored;
+    std::filesystem::create_directories(kDirectory,ignored);
+    const auto retryPath=kDirectory/"retry.obj";
+    {
+        std::ofstream file(retryPath);
+        file<<"v 0 0 0\\nf 1 2 3\\n";
+    }
+    ModelAssetStore store;
+    ModelHandle failed{},loaded{};
+    std::string error;
+    if(store.LoadModel(retryPath,failed,error)||failed.IsValid()||store.LoadedCount()!=0)
+        return false;
+    {
+        std::ofstream file(retryPath,std::ios::trunc);
+        file<<"v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1 2 3\\n";
+    }
+    error.clear();
+    const bool recovered=store.LoadModel(retryPath,loaded,error)&&loaded.IsValid()&&
+        store.LoadedCount()==1&&store.GetModel(loaded)!=nullptr;
+    std::filesystem::remove_all(kDirectory,ignored);
+    return recovered;
+}
+
 bool clearAllowsSafeSlotReuse()
 {
     if(!WriteValidModel())return false;
@@ -155,6 +180,7 @@ constexpr std::array kCases{
     TestCase{"unload invalidates handles and supports reload",unloadInvalidatesHandleAndAllowsReload},
     TestCase{"clear invalidates every loaded handle",clearInvalidatesAllHandles},
     TestCase{"clear permits safe generation-checked slot reuse",clearAllowsSafeSlotReuse},
+    TestCase{"failed imports can be corrected and retried",failedImportCanBeCorrectedAndRetried},
     TestCase{"unsupported and missing paths report errors",unsupportedAndMissingPathsReportErrors},
     TestCase{"malformed model never enters the cache",malformedModelDoesNotEnterCache},
     TestCase{"model pointers remain stable when the store grows",modelPointersRemainStableWhenStoreGrows}

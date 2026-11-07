@@ -82,7 +82,7 @@ bool failedImportCanBeCorrectedAndRetried()
     const auto retryPath=kDirectory/"retry.obj";
     {
         std::ofstream file(retryPath);
-        file<<"v 0 0 0\\nf 1 2 3\\n";
+        file<<"v 0 0 0\nf 1 2 3\n";
     }
     ModelAssetStore store;
     ModelHandle failed{},loaded{};
@@ -91,7 +91,7 @@ bool failedImportCanBeCorrectedAndRetried()
         return false;
     {
         std::ofstream file(retryPath,std::ios::trunc);
-        file<<"v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1 2 3\\n";
+        file<<"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
     }
     error.clear();
     const bool recovered=store.LoadModel(retryPath,loaded,error)&&loaded.IsValid()&&

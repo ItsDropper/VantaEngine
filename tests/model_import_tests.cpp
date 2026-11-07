@@ -9,9 +9,11 @@
 namespace
 {
 int failures = 0;
+int checks = 0;
 
 void Check(bool condition, const char* name)
 {
+    ++checks;
     if (condition) std::cout << "PASS: " << name << '\n';
     else { std::cerr << "FAIL: " << name << '\n'; ++failures; }
 }
@@ -70,6 +72,11 @@ int main()
         "resolves normal, roughness, and metallic map paths");
     Check(model.ambientOcclusionTexture.filename() == "sample_ao.png",
         "resolves the ambient-occlusion map path");
+    Check(model.materials.size() == 2U && model.materials[1].name == "test_material",
+        "retains named MTL materials");
+    Check(model.submeshes.size() == 1U && model.submeshes[0].materialIndex == 1U &&
+          model.submeshes[0].indexCount == 6U,
+        "assigns OBJ faces to their named material submesh");
     std::filesystem::remove(path);
     std::filesystem::remove(materialPath);
 
@@ -83,6 +90,42 @@ int main()
     Check(!error.empty(), "reports a useful import error");
     std::filesystem::remove(invalidPath);
 
+    const auto multiObj = std::filesystem::temp_directory_path() / "vanta_obj_multi_material.obj";
+    const auto firstMtl = multiObj.parent_path() / "vanta_obj_snow.mtl";
+    const auto secondMtl = multiObj.parent_path() / "vanta_obj_bark.mtl";
+    {
+        std::ofstream first(firstMtl);
+        first << "newmtl snow\\nKd 0.9 0.95 1.0\\nPr 0.92\\n";
+        std::ofstream second(secondMtl);
+        second << "newmtl bark\\nKd 0.3 0.18 0.08\\nPm 0.05\\n";
+        std::ofstream object(multiObj);
+        object << "mtllib vanta_obj_snow.mtl vanta_obj_bark.mtl\\n"
+                  "v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nv 1 1 0\\n"
+                  "usemtl snow\\nf 1 2 3\\n"
+                  "usemtl bark\\nf 2 4 3\\n";
+    }
+    Check(vanta::assets::LoadWavefrontObj(multiObj, model, error),
+        "loads multiple OBJ material libraries");
+    Check(model.materialLibraries.size() == 2U && model.materials.size() == 3U,
+        "retains both MTL dependencies and all named materials");
+    Check(model.submeshes.size() == 2U && model.submeshes[0].materialIndex == 1U &&
+          model.submeshes[1].materialIndex == 2U,
+        "splits geometry into submeshes with the correct material assignments");
+    Check(model.materials[1].name == "snow" && model.materials[2].name == "bark" &&
+          std::abs(model.materials[1].baseColor.x - 0.9F) < 0.001F &&
+          std::abs(model.materials[2].baseColor.x - 0.3F) < 0.001F,
+        "keeps material properties isolated across MTL libraries");
+    {
+        std::ofstream object(multiObj, std::ios::trunc);
+        object << "mtllib vanta_obj_snow.mtl\\nv 0 0 0\\nv 1 0 0\\nv 0 1 0\\n"
+                  "usemtl missing\\nf 1 2 3\\n";
+    }
+    Check(!vanta::assets::LoadWavefrontObj(multiObj, model, error) &&
+          error.find("unknown material") != std::string::npos,
+        "rejects OBJ references to undefined materials");
+    std::filesystem::remove(multiObj);
+    std::filesystem::remove(firstMtl);
+    std::filesystem::remove(secondMtl);
 
     const auto malformedIndexPath = std::filesystem::temp_directory_path() / "vanta_obj_import_malformed_index.obj";
     {

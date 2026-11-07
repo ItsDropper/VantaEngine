@@ -7,8 +7,6 @@ namespace vanta
 {
 namespace
 {
-constexpr float kDirectionEpsilon = 1.0e-8F;
-
 [[nodiscard]] bool Intersects(const Aabb& left, const Aabb& right) noexcept
 {
     return left.minimum.x <= right.maximum.x && left.maximum.x >= right.minimum.x &&
@@ -172,7 +170,7 @@ bool PhysicsWorld::Raycast(
         for (int axis = 0; axis < 3; ++axis)
         {
             const float component = directions[axis];
-            if (std::abs(component) <= kDirectionEpsilon)
+            if (component == 0.0F)
             {
                 if (origins[axis] < minimums[axis] || origins[axis] > maximums[axis])
                 {
@@ -257,7 +255,7 @@ bool PhysicsWorld::OverlapSphere(
     results.clear();
     if (!IsFinite(center) || !std::isfinite(radius) || radius < 0.0F || layerMask == 0U)
         return false;
-    const float radiusSquared = radius * radius;
+    const double radiusSquared = static_cast<double>(radius) * radius;
     for (std::size_t index = 0; index < m_slots.size(); ++index)
     {
         const Slot& slot = m_slots[index];
@@ -268,7 +266,7 @@ bool PhysicsWorld::OverlapSphere(
         const double dy = static_cast<double>(center.y) - closest.y;
         const double dz = static_cast<double>(center.z) - closest.z;
         const double distanceSquared = dx * dx + dy * dy + dz * dz;
-        if (distanceSquared <= static_cast<double>(radiusSquared))
+        if (distanceSquared <= radiusSquared)
             results.push_back({static_cast<std::uint32_t>(index), slot.generation});
     }
     return true;

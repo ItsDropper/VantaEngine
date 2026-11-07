@@ -127,5 +127,6 @@ add_executable(VantaEngineShaderValidationTests
     renderer_shader_validation_tests.cpp
 )
 vanta_configure_test(VantaEngineShaderValidationTests)
+target_compile_definitions(VantaEngineShaderValidationTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_link_libraries(VantaEngineShaderValidationTests PRIVATE VantaEngine::Runtime)
 add_test(NAME VantaEngine.ShaderValidationTests COMMAND VantaEngineShaderValidationTests)

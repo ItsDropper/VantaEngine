@@ -144,3 +144,17 @@ The D3D12 backend reports GPU timestamp averages for each shadow cascade, scene 
 9. Cascaded PCF directional shadows in D3D12. Implemented; stabilize cascades and profile filtering.
 10. D3D12 HDR tone mapping, bloom, contact AO and reprojection TAA implemented; add motion vectors and improve disocclusion handling.
 11. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.
+
+
+### Reusable CMake runtime target
+
+The Windows runtime is also built as the `VantaEngine::Runtime` static-library target. A separate CMake project can include this repository and link the target:
+
+```cmake
+add_subdirectory(external/VantaEngine)
+target_link_libraries(MyGame PRIVATE VantaEngine::Runtime)
+```
+
+The target exports the engine include directory, C++23 requirement, and Direct3D/Win32 link dependencies. The `VantaEngine` executable is now a separate sample/entry-point target that links the same runtime library.
+
+**Integration boundary:** this build target is reusable, but the current renderer still constructs its procedural valley internally. The public renderer entry points still accept the sample camera parameters rather than a game-owned scene. Linking the runtime does not yet provide arbitrary game-scene submission; that requires the scene/resource submission path to be implemented in both graphics backends.

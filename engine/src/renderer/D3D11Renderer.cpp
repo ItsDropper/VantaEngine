@@ -1400,8 +1400,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         const float tanHalfFov = submittedScene->view.projection.At(1, 1) > 0.0F
             ? 1.0F / submittedScene->view.projection.At(1, 1)
             : std::tan(math::DegreesToRadians(30.0F));
-        const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-        const float sunNdcX = sunDirection.Dot(skyRight) / (denominator * tanHalfFov * aspect);
+        const float skyAspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+        const float sunNdcX = sunDirection.Dot(skyRight) / (denominator * tanHalfFov * skyAspect);
         const float sunNdcY = sunDirection.Dot(skyUp) / (denominator * tanHalfFov);
         skyConstants.horizonColor[0] = skyEnvironment.fogColor.x;
         skyConstants.horizonColor[1] = skyEnvironment.fogColor.y;

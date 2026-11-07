@@ -308,7 +308,7 @@ float TerrainHeight(float x, float z)
     return world::TerrainHeightAt(x, z);
 }
 
-void AppendTerrain(std::vector<renderer::WorldVertex>& vertices, std::vector<unsigned int>& indices)
+void AppendTerrain(std::vector<world::WorldVertex>& vertices, std::vector<unsigned int>& indices)
 {
     // A half-metre grid keeps the shared noise terrain silhouette smooth at close range.
     constexpr int side = 257;
@@ -647,7 +647,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
 
 bool D3D12Renderer::CreateSceneGeometry()
 {
-    std::vector<renderer::WorldVertex> vertices;
+    std::vector<world::WorldVertex> vertices;
     std::vector<unsigned int> indices;
     AppendTerrain(vertices, indices);
     const std::size_t terrainVertexCount = vertices.size();
@@ -909,7 +909,7 @@ bool D3D12Renderer::CreateSceneGeometry()
     std::vector<D3D12WorldVertex> gpuVertices;
     gpuVertices.reserve(vertices.size());
     for (std::size_t i = 0; i < vertices.size(); ++i) {
-        const renderer::WorldVertex& source = vertices[i];
+        const world::WorldVertex& source = vertices[i];
         D3D12WorldVertex vertex{};
         std::copy(std::begin(source.position), std::end(source.position), std::begin(vertex.position));
         std::copy(std::begin(source.normal), std::end(source.normal), std::begin(vertex.normal));

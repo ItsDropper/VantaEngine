@@ -121,7 +121,7 @@ bool modelPointersRemainStableWhenStoreGrows()
     const auto secondPath=kDirectory/"second.obj";
     {
         std::ofstream file(secondPath);
-        file<<"v 0 0 0\\nv 0 0 1\\nv 1 0 0\\nf 1 2 3\\n";
+        file<<"v 0 0 0\nv 0 0 1\nv 1 0 0\nf 1 2 3\n";
     }
     ModelAssetStore store;
     ModelHandle first{},second{};

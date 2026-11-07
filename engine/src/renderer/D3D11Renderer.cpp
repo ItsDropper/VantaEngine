@@ -1385,7 +1385,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     skyConstants.sunParameters[0] = 0.72F;
     skyConstants.sunParameters[1] = 0.66F;
     skyConstants.sunParameters[2] = 1.0F;
-    const auto& skyEnvironment = submittedScene->view.environment;
+    const renderer::EnvironmentSettings skyEnvironment = submittedScene != nullptr
+        ? submittedScene->view.environment : renderer::EnvironmentSettings{};
     if (submittedScene != nullptr && skyEnvironment.enabled) {
         const Vec3 sunDirection = skyEnvironment.sunDirection.Normalized()
             .value_or(Vec3{0.0F, 0.3F, -0.95F});

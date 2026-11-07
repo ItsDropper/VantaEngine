@@ -139,6 +139,14 @@ LRESULT Window::HandleMessage(const UINT message, const WPARAM wParam, const LPA
             m_input.SetKey(static_cast<int>(wParam), false);
         return DefWindowProcW(m_handle, message, wParam, lParam);
 
+    case WM_MOUSEWHEEL:
+        m_input.AddMouseWheelDelta(GET_WHEEL_DELTA_WPARAM(wParam));
+        return 0;
+
+    case WM_MOUSEHWHEEL:
+        m_input.AddMouseWheelDelta(0, GET_WHEEL_DELTA_WPARAM(wParam));
+        return 0;
+
     case WM_MOUSEMOVE:
     {
         const int x = static_cast<short>(LOWORD(lParam));

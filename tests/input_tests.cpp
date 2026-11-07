@@ -86,6 +86,25 @@ bool mouseDeltaSaturatesWithoutOverflow()
     return input.MouseDeltaX() == 1'000'000 && input.MouseDeltaY() == -1'000'000;
 }
 
+bool mouseWheelAccumulatesAndResetsPerFrame()
+{
+    vanta::InputState input;
+    input.AddMouseWheelDelta(120);
+    input.AddMouseWheelDelta(-30, 240);
+    if (input.MouseWheelDelta() != 90 || input.MouseHorizontalWheelDelta() != 240)
+        return false;
+    input.BeginFrame();
+    return input.MouseWheelDelta() == 0 && input.MouseHorizontalWheelDelta() == 0;
+}
+
+bool focusLossClearsMouseWheelMotion()
+{
+    vanta::InputState input;
+    input.AddMouseWheelDelta(120, -120);
+    input.ReleaseAll();
+    return input.MouseWheelDelta() == 0 && input.MouseHorizontalWheelDelta() == 0;
+}
+
 constexpr std::array kCases{
     TestCase{"keyboard transitions are edge-triggered", keyTransitionsAreEdgeTriggered},
     TestCase{"mouse buttons track independent transitions", mouseButtonsHaveIndependentTransitions},
@@ -94,6 +113,8 @@ constexpr std::array kCases{
     TestCase{"focus loss releases all held inputs", focusLossReleasesAllHeldInputs},
     TestCase{"invalid input indices are ignored", invalidIndicesAreSafe},
     TestCase{"mouse delta accumulation saturates", mouseDeltaSaturatesWithoutOverflow},
+    TestCase{"vertical and horizontal wheel deltas accumulate per frame", mouseWheelAccumulatesAndResetsPerFrame},
+    TestCase{"focus loss clears wheel deltas", focusLossClearsMouseWheelMotion},
 };
 }
 

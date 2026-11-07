@@ -20,6 +20,8 @@ public:
         m_mouseReleased.fill(false);
         m_mouseDeltaX = 0;
         m_mouseDeltaY = 0;
+        m_mouseWheelDelta = 0;
+        m_mouseHorizontalWheelDelta = 0;
     }
 
     void SetKey(int virtualKey, bool down) noexcept
@@ -50,6 +52,12 @@ public:
         m_mouseDeltaY = SaturatingAdd(m_mouseDeltaY, y);
     }
 
+    void AddMouseWheelDelta(int vertical, int horizontal = 0) noexcept
+    {
+        m_mouseWheelDelta = SaturatingAdd(m_mouseWheelDelta, vertical);
+        m_mouseHorizontalWheelDelta = SaturatingAdd(m_mouseHorizontalWheelDelta, horizontal);
+    }
+
     void ReleaseAll() noexcept
     {
         for (std::size_t index = 0; index < kKeyCount; ++index)
@@ -70,6 +78,8 @@ public:
         }
         m_mouseDeltaX = 0;
         m_mouseDeltaY = 0;
+        m_mouseWheelDelta = 0;
+        m_mouseHorizontalWheelDelta = 0;
     }
 
     [[nodiscard]] bool IsKeyDown(int key) const noexcept { return Read(m_down, key); }
@@ -80,6 +90,9 @@ public:
     [[nodiscard]] bool WasMouseButtonReleased(int button) const noexcept { return Read(m_mouseReleased, button); }
     [[nodiscard]] int MouseDeltaX() const noexcept { return m_mouseDeltaX; }
     [[nodiscard]] int MouseDeltaY() const noexcept { return m_mouseDeltaY; }
+    // Wheel values use native Windows wheel units (120 per detent).
+    [[nodiscard]] int MouseWheelDelta() const noexcept { return m_mouseWheelDelta; }
+    [[nodiscard]] int MouseHorizontalWheelDelta() const noexcept { return m_mouseHorizontalWheelDelta; }
 
 private:
     template <std::size_t Size>
@@ -105,5 +118,7 @@ private:
     std::array<bool, kMouseButtonCount> m_mouseReleased{};
     int m_mouseDeltaX = 0;
     int m_mouseDeltaY = 0;
+    int m_mouseWheelDelta = 0;
+    int m_mouseHorizontalWheelDelta = 0;
 };
 } // namespace vanta

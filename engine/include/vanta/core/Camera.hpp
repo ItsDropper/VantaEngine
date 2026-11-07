@@ -12,8 +12,8 @@ class Camera final
 public:
     explicit Camera(math::Vec3 position = {}, float yawRadians = 0.0F,
                     float pitchRadians = 0.0F) noexcept
-        : m_position(position)
     {
+        SetPosition(position);
         SetOrientation(yawRadians, pitchRadians);
     }
 
@@ -81,7 +81,10 @@ public:
         const auto normalized = direction.Normalized();
         if (!normalized)
             return;
-        m_position += *normalized * (speed * deltaSeconds);
+        const math::Vec3 displacement = *normalized * (speed * deltaSeconds);
+        const math::Vec3 destination = m_position + displacement;
+        if (IsFinite(displacement) && IsFinite(destination))
+            m_position = destination;
     }
 
 private:

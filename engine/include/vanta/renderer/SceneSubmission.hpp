@@ -102,6 +102,7 @@ public:
         MeshHandle mesh, MaterialHandle material,
         const math::Mat4& world = math::Mat4::Identity());
     [[nodiscard]] bool DestroyInstance(InstanceHandle handle) noexcept;
+    [[nodiscard]] bool SetResources(InstanceHandle handle, MeshHandle mesh, MaterialHandle material) noexcept;
     [[nodiscard]] bool SetTransform(InstanceHandle handle, const math::Mat4& world) noexcept;
     [[nodiscard]] bool SetVisible(InstanceHandle handle, bool visible) noexcept;
     [[nodiscard]] bool Contains(InstanceHandle handle) const noexcept;

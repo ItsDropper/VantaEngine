@@ -80,6 +80,7 @@ int main()
     math::Mat4 invalid = math::Mat4::Identity();
     invalid.At(0, 0) = std::numeric_limits<float>::quiet_NaN();
     assert(!scene.SetTransform(instance, invalid));
+    assert(!scene.CreateInstance(mesh, material, invalid).IsValid());
     assert(scene.SetTransform(instance, world));
 
     SceneFrame retained = scene.BuildFrame(view);
@@ -109,6 +110,10 @@ int main()
     const MaterialHandle negativeColor = scene.CreateMaterial(
         MaterialDescription{{-0.1F, 0.5F, 0.5F}, 0.5F, 0.0F});
     assert(!negativeColor.IsValid());
+
+    MeshDescription zeroNormalMesh = Triangle();
+    zeroNormalMesh.vertices[0].normal = {};
+    assert(!scene.CreateMesh(std::move(zeroNormalMesh)).IsValid());
 
     MeshDescription badMesh = Triangle();
     badMesh.indices[2] = 99U;

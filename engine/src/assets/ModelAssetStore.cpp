@@ -110,11 +110,11 @@ bool ModelAssetStore::NormalizeAndValidate(CpuModel& model, std::string& error)
             error = "Imported model contains an invalid or oversized embedded image payload.";
             return false;
         }
-        if ((!material.embeddedDiffuseTexture || material.diffuseTexture.empty()) == false ||
-            (!material.embeddedNormalTexture || material.normalTexture.empty()) == false ||
-            (!material.embeddedRoughnessTexture || material.roughnessTexture.empty()) == false ||
-            (!material.embeddedMetallicTexture || material.metallicTexture.empty()) == false ||
-            (!material.embeddedAmbientOcclusionTexture || material.ambientOcclusionTexture.empty()) == false)
+        if ((material.embeddedDiffuseTexture && !material.diffuseTexture.empty()) ||
+            (material.embeddedNormalTexture && !material.normalTexture.empty()) ||
+            (material.embeddedRoughnessTexture && !material.roughnessTexture.empty()) ||
+            (material.embeddedMetallicTexture && !material.metallicTexture.empty()) ||
+            (material.embeddedAmbientOcclusionTexture && !material.ambientOcclusionTexture.empty()))
         {
             error = "Imported material texture slots may not be both external and embedded.";
             return false;

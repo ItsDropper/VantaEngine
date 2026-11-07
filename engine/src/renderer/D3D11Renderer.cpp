@@ -1343,11 +1343,74 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     renderer::SubmittedSceneGeometry submittedGeometry;
     const bool hasSubmittedScene = submittedScene != nullptr;
+    std::vector<GpuModelMaterial> submittedMaterials;
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
             LogError(geometryError.c_str());
             return;
+        }
+        const auto loadSubmittedTexture = [this](const std::filesystem::path& path, const bool srgb,
+            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination) {
+            if (path.empty())
+                return true;
+            assets::CpuTexture source;
+            if (!assets::LoadWicTexture(path, source) || source.width == 0U || source.height == 0U ||
+                source.rgba.size() < static_cast<std::size_t>(source.width) * source.height * 4U) {
+                LogError((std::string("Direct3D 11: submitted material texture could not be decoded: ") +
+                    path.string()).c_str());
+                return false;
+            }
+            D3D11_TEXTURE2D_DESC description{};
+            description.Width = source.width;
+            description.Height = source.height;
+            description.MipLevels = 0U;
+            description.ArraySize = 1U;
+            description.Format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+            description.SampleDesc.Count = 1U;
+            description.Usage = D3D11_USAGE_DEFAULT;
+            description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+            description.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            if (FAILED(m_device->CreateTexture2D(&description, nullptr, texture.GetAddressOf()))) {
+                LogError("Direct3D 11: submitted material texture allocation failed.");
+                return false;
+            }
+            m_context->UpdateSubresource(texture.Get(), 0U, nullptr, source.rgba.data(),
+                source.width * 4U, 0U);
+            D3D11_SHADER_RESOURCE_VIEW_DESC viewDescription{};
+            viewDescription.Format = description.Format;
+            viewDescription.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+            viewDescription.Texture2D.MostDetailedMip = 0U;
+            viewDescription.Texture2D.MipLevels = static_cast<UINT>(-1);
+            if (FAILED(m_device->CreateShaderResourceView(texture.Get(), &viewDescription,
+                destination.GetAddressOf()))) {
+                LogError("Direct3D 11: submitted material shader-resource view creation failed.");
+                return false;
+            }
+            m_context->GenerateMips(destination.Get());
+            return true;
+        };
+        submittedMaterials.reserve(submittedGeometry.draws.size());
+        for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            GpuModelMaterial material;
+            material.baseColor[0] = draw.material.baseColor.x;
+            material.baseColor[1] = draw.material.baseColor.y;
+            material.baseColor[2] = draw.material.baseColor.z;
+            material.baseColor[3] = 1.0F;
+            material.roughnessFactor = std::clamp(draw.material.roughness, 0.04F, 1.0F);
+            material.metallicFactor = std::clamp(draw.material.metallic, 0.0F, 1.0F);
+            if (!loadSubmittedTexture(draw.material.baseColorTexture, true, material.diffuse) ||
+                !loadSubmittedTexture(draw.material.normalTexture, false, material.normal) ||
+                !loadSubmittedTexture(draw.material.roughnessTexture, false, material.roughness) ||
+                !loadSubmittedTexture(draw.material.metallicTexture, false, material.metallic) ||
+                !loadSubmittedTexture(draw.material.ambientOcclusionTexture, false, material.ambientOcclusion))
+                return;
+            material.textureFlags[0] = material.normal ? 1U : 0U;
+            material.textureFlags[1] = material.roughness ? 1U : 0U;
+            material.textureFlags[2] = material.metallic ? 1U : 0U;
+            material.textureFlags[3] = material.ambientOcclusion ? 1U : 0U;
+            submittedMaterials.push_back(std::move(material));
         }
         if (!submittedGeometry.vertices.empty()) {
             const std::size_t vertexBytes = submittedGeometry.vertices.size() *
@@ -1698,13 +1761,18 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
         m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        ID3D11ShaderResourceView* noMaterialTexture = nullptr;
-        m_context->PSSetShaderResources(0, 1, &noMaterialTexture);
-        for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+        for (std::size_t drawIndex = 0; drawIndex < submittedGeometry.draws.size(); ++drawIndex) {
+            const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
+            const GpuModelMaterial& material = submittedMaterials[drawIndex];
+            ID3D11ShaderResourceView* materialViews[] = {
+                material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),
+                material.roughness.Get(), material.metallic.Get(), material.ambientOcclusion.Get()
+            };
+            m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(materialViews)), materialViews);
             SceneConstants constants{};
             constants.worldViewProjection = projection * view;
             constants.world = Mat4::Identity();
-            constants.useTexture = 0U;
+            constants.useTexture = material.diffuse ? 1U : 0U;
             constants.cameraPosition[0] = cameraX;
             constants.cameraPosition[1] = cameraY;
             constants.cameraPosition[2] = cameraZ;
@@ -1719,6 +1787,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.baseColorFactor[1] = 1.0F;
             constants.baseColorFactor[2] = 1.0F;
             constants.baseColorFactor[3] = 1.0F;
+            for (std::size_t flag = 0; flag < material.textureFlags->size(); ++flag)
+                constants.textureFlags[flag] = material.textureFlags[flag];
             for (std::size_t cascade = 0; cascade < 3; ++cascade)
                 constants.lightViewProjection[cascade] = lightViewProjections[cascade];
             constants.cascadeSplits[0] = 25.0F;
@@ -1733,6 +1803,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             m_context->Unmap(m_sceneConstants.Get(), 0);
             m_context->DrawIndexed(draw.indexCount, draw.firstIndex, static_cast<INT>(draw.firstVertex));
         }
+        ID3D11ShaderResourceView* nullMaterialViews[6]{};
+        m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(nullMaterialViews)), nullMaterialViews);
     }
 
     // Composite the complete linear HDR scene into the swap chain. The HDR target must

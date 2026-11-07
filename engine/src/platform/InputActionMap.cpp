@@ -15,6 +15,7 @@ bool InputActionMap::Bind(std::string action, const InputBinding binding)
          (binding.code < 0 || binding.code >= static_cast<int>(InputState::kMouseButtonCount))))
         return false;
 
+    m_states.try_emplace(action);
     auto& bindings = m_bindings[std::move(action)];
     if (std::find(bindings.begin(), bindings.end(), binding) == bindings.end())
         bindings.push_back(binding);
@@ -84,12 +85,6 @@ void InputActionMap::Evaluate(const InputState& input) noexcept
         state.down = down;
     }
 
-    for (const auto& [action, bindings] : m_bindings)
-    {
-        (void)bindings;
-        if (m_states.find(action) == m_states.end())
-            m_states.emplace(action, InputActionState{});
-    }
 }
 
 InputActionState InputActionMap::State(const std::string_view action) const noexcept

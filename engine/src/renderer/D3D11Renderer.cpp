@@ -784,7 +784,7 @@ bool D3D11Renderer::CreatePipeline()
     // Keep the OBJ/MTL loader compatible while giving both import paths the same
     // per-material/per-submesh representation consumed by the GPU renderer.
     if (model.materials.empty()) {
-        renderer::CpuMaterial material;
+        assets::CpuMaterial material;
         material.diffuseTexture = model.diffuseTexture;
         material.normalTexture = model.normalTexture;
         material.roughnessTexture = model.roughnessTexture;
@@ -798,16 +798,16 @@ bool D3D11Renderer::CreatePipeline()
     if (model.submeshes.empty())
         model.submeshes.push_back({0U, static_cast<std::uint32_t>(model.indices.size()), 0U});
     if (model.materials.empty() || std::any_of(model.submeshes.begin(), model.submeshes.end(),
-            [&](const renderer::CpuSubmesh& submesh) { return submesh.materialIndex >= model.materials.size(); })) {
+            [&](const assets::CpuSubmesh& submesh) { return submesh.materialIndex >= model.materials.size(); })) {
         LogError("Imported model has an invalid material/submesh reference.");
         return false;
     }
     m_modelSubmeshes.clear();
-    for (const renderer::CpuSubmesh& submesh : model.submeshes)
+    for (const assets::CpuSubmesh& submesh : model.submeshes)
         m_modelSubmeshes.push_back({submesh.firstIndex, submesh.indexCount, submesh.materialIndex});
     std::vector<Vertex> modelVertices;
     modelVertices.reserve(model.vertices.size());
-    for (const renderer::ModelVertex& source : model.vertices) {
+    for (const assets::ModelVertex& source : model.vertices) {
         modelVertices.push_back({{source.position.x, source.position.y, source.position.z},
             {source.normal.x, source.normal.y, source.normal.z}, {1.0F, 1.0F, 1.0F, 1.0F},
             {source.u, source.v}});
@@ -1073,7 +1073,7 @@ bool D3D11Renderer::CreatePipeline()
     m_modelMaterials.clear();
     m_modelMaterials.reserve(model.materials.size());
     for (std::size_t materialIndex = 0; materialIndex < model.materials.size(); ++materialIndex) {
-        const renderer::CpuMaterial& source = model.materials[materialIndex];
+        const assets::CpuMaterial& source = model.materials[materialIndex];
         GpuModelMaterial material;
         material.baseColor[0] = source.baseColor.x;
         material.baseColor[1] = source.baseColor.y;

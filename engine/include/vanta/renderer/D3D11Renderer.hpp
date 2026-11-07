@@ -119,6 +119,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_sceneConstants;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_submittedVertexBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> m_submittedIndexBuffer;
+    UINT m_submittedVertexBufferCapacity = 0;
+    UINT m_submittedIndexBufferCapacity = 0;
     UINT m_modelIndexCount = 0;
     std::vector<GpuModelMaterial> m_modelMaterials;
     std::vector<GpuSubmesh> m_modelSubmeshes;

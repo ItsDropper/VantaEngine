@@ -71,9 +71,10 @@ public:
     [[nodiscard]] bool IsActive(EntityHandle entity) const noexcept;
     [[nodiscard]] bool IsActiveInHierarchy(EntityHandle entity) const noexcept;
 
-    // A default/invalid parent handle makes the entity a root. Reparenting preserves
-    // local transform; callers that need world-space preservation should calculate it.
-    [[nodiscard]] bool SetParent(EntityHandle entity, EntityHandle parent = {}) noexcept;
+    // A default/invalid parent handle makes the entity a root. When requested, world-space
+    // transform is preserved if the resulting local matrix can be represented as TRS.
+    [[nodiscard]] bool SetParent(EntityHandle entity, EntityHandle parent = {},
+                                 bool preserveWorldTransform = false);
     [[nodiscard]] EntityHandle GetParent(EntityHandle entity) const noexcept;
     [[nodiscard]] std::optional<math::Mat4> GetWorldMatrix(EntityHandle entity) const;
     [[nodiscard]] std::vector<SceneEntitySnapshot> CreateSnapshot() const;

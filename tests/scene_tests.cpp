@@ -186,6 +186,63 @@ bool clearInvalidatesAllEntitiesAndAllowsReuse()
            replacement.generation!=first.generation&&scene.EntityCount()==1;
 }
 
+bool reparentCanPreserveWorldTransform()
+{
+    Scene scene;
+    const auto oldParent = scene.CreateEntity("old");
+    const auto newParent = scene.CreateEntity("new");
+    const auto child = scene.CreateEntity("child");
+    const auto oldRotation = math::Quaternion::FromAxisAngle({0,1,0}, 0.35F);
+    const auto newRotation = math::Quaternion::FromAxisAngle({0,1,0}, -0.7F);
+    if (!oldRotation || !newRotation ||
+        !scene.GetTransform(oldParent)->SetPosition({4,2,-3}) ||
+        !scene.GetTransform(oldParent)->SetRotation(*oldRotation) ||
+        !scene.GetTransform(newParent)->SetPosition({-8,1,6}) ||
+        !scene.GetTransform(newParent)->SetRotation(*newRotation) ||
+        !scene.GetTransform(newParent)->SetScale({2,2,2}) ||
+        !scene.GetTransform(child)->SetPosition({1,3,2}) ||
+        !scene.GetTransform(child)->SetScale({0.5F,1.5F,0.75F}) ||
+        !scene.SetParent(child, oldParent))
+        return false;
+
+    const auto before = scene.GetWorldMatrix(child);
+    if (!before || !scene.SetParent(child, newParent, true))
+        return false;
+    const auto after = scene.GetWorldMatrix(child);
+    if (!after || scene.GetParent(child) != newParent)
+        return false;
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column)
+            if (!Near(before->At(row, column), after->At(row, column)))
+                return false;
+    return true;
+}
+
+bool preserveWorldRejectsUnrepresentableShearAndSingularParent()
+{
+    Scene scene;
+    const auto parent = scene.CreateEntity("parent");
+    const auto child = scene.CreateEntity("child");
+    const auto rotation = math::Quaternion::FromAxisAngle({0,0,1}, 0.6F);
+    if (!rotation || !scene.GetTransform(parent)->SetScale({2,1,1}) ||
+        !scene.GetTransform(child)->SetRotation(*rotation))
+        return false;
+    const auto childBefore = scene.GetWorldMatrix(child);
+    if (scene.SetParent(child, parent, true) || scene.GetParent(child).IsValid())
+        return false;
+    const auto childAfter = scene.GetWorldMatrix(child);
+    if (!childBefore || !childAfter)
+        return false;
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 4; ++column)
+            if (!Near(childBefore->At(row, column), childAfter->At(row, column)))
+                return false;
+
+    if (!scene.GetTransform(parent)->SetScale({0,1,1}))
+        return false;
+    return !scene.SetParent(child, parent, true) && !scene.GetParent(child).IsValid();
+}
+
 constexpr std::array kCases{
     TestCase{"TRS transform composition",transformComposesTranslationRotationAndScale},
     TestCase{"transform rejects invalid values",transformRejectsInvalidValues},
@@ -194,6 +251,8 @@ constexpr std::array kCases{
     TestCase{"hierarchy composes rotation and scale",hierarchyComposesRotationAndScale},
     TestCase{"reparent rejects cycles and invalid handles",reparentRejectsCyclesAndInvalidHandles},
     TestCase{"reparent and unparent update world matrix",reparentingAndUnparentingUpdateWorldMatrix},
+    TestCase{"reparent preserves world transform",reparentCanPreserveWorldTransform},
+    TestCase{"preserve-world reparent rejects shear and singular parents",preserveWorldRejectsUnrepresentableShearAndSingularParent},
     TestCase{"destroying parent detaches children",destroyingParentDetachesChildren},
     TestCase{"active state inherits through hierarchy",activeStateInheritsThroughHierarchy},
     TestCase{"snapshots own names matrices and active state",snapshotsOwnNamesMatricesAndActiveState},

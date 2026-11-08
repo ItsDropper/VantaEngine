@@ -141,12 +141,21 @@ int main()
     const MaterialHandle texturedMaterial = texturedScene.CreateMaterial(texturedDescription);
     Require(texturedMaterial.IsValid());
     Require(texturedScene.CreateInstance(texturedMesh, texturedMaterial, math::Mat4::Identity()).IsValid());
+    // More than the D3D12 2,048-layer array limit worth of draws may reuse one
+    // texture set. Geometry must retain every draw while allocating only one layer.
+    for (std::uint32_t draw = 0; draw < 2050U; ++draw)
+        Require(texturedScene.CreateInstance(texturedMesh, texturedMaterial,
+            math::Mat4::Translation({static_cast<float>(draw), 0.0F, 0.0F})).IsValid());
     const SceneFrame texturedFrame = texturedScene.BuildFrame(view);
     SubmittedSceneGeometry texturedGeometry;
     Require(BuildSubmittedSceneGeometry(texturedFrame, texturedGeometry, geometryError));
-    Require(texturedGeometry.draws.size() == 1U);
+    Require(texturedGeometry.draws.size() == 2051U);
+    Require(texturedGeometry.materialLayers.size() == 1U);
+    Require(texturedGeometry.draws[0].materialLayer == 0U);
+    Require(texturedGeometry.draws[2050].materialLayer == 0U);
     Require(texturedGeometry.draws[0].material.normalTexture == textureRoot / "normal.png");
     Require(texturedGeometry.vertices[0].color[3] == 0.0F);
+    Require(texturedGeometry.vertices.back().color[3] == 0.0F);
     Require(texturedGeometry.vertices[0].material[3] == 159.0F);
 
     MaterialDescription packedOrmDescription;
@@ -160,7 +169,9 @@ int main()
     const SceneFrame packedOrmFrame = texturedScene.BuildFrame(view);
     SubmittedSceneGeometry packedOrmGeometry;
     Require(BuildSubmittedSceneGeometry(packedOrmFrame, packedOrmGeometry, geometryError));
-    Require(packedOrmGeometry.draws.size() == 2U);
+    Require(packedOrmGeometry.draws.size() == 2052U);
+    Require(packedOrmGeometry.materialLayers.size() == 2U);
+    Require(packedOrmGeometry.draws.back().materialLayer == 1U);
     Require(packedOrmGeometry.vertices[3].material[3] == 180.0F);
     Require(packedOrmGeometry.draws[1].material.packedMetallicRoughness);
 

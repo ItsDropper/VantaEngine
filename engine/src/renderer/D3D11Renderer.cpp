@@ -1759,6 +1759,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             // supports true per-instance GPU culling/instancing. The mid/far
             // cascades remain available to the engine's chunked world renderer.
             if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                if (!renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
                 SceneConstants constants{};
                 constants.world = draw.world;
                 constants.lightViewProjection[0] = lightViewProjections[cascade];
@@ -1940,6 +1941,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
         for (std::size_t drawIndex = 0; drawIndex < submittedGeometry.draws.size(); ++drawIndex) {
             const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
+            if (!renderer::IsSubmittedDrawVisible(draw, currentViewProjection)) continue;
             const GpuModelMaterial& material = m_submittedMaterials[drawIndex];
             ID3D11ShaderResourceView* materialViews[] = {
                 material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),

@@ -88,12 +88,17 @@ bool BuildTextureMipChain(const CpuTexture& source, const TextureColorSpace colo
                           std::vector<TextureMip>& output, std::string& error)
 {
     error.clear();
+    if (source.width == 0U || source.height == 0U ||
+        static_cast<std::uint64_t>(source.width) > MaximumMipBytes / 4ULL / source.height)
+    {
+        error = "Source texture dimensions are zero or exceed the 768 MiB safety limit.";
+        return false;
+    }
     const std::uint64_t expectedSourceBytes =
         static_cast<std::uint64_t>(source.width) * source.height * 4ULL;
-    if (source.width == 0U || source.height == 0U ||
-        expectedSourceBytes > MaximumMipBytes || source.rgba.size() != expectedSourceBytes)
+    if (source.rgba.size() != expectedSourceBytes)
     {
-        error = "Source texture dimensions and RGBA8 storage are inconsistent or exceed the 768 MiB safety limit.";
+        error = "Source texture RGBA8 storage does not match its dimensions.";
         return false;
     }
     if (colorSpace != TextureColorSpace::Linear && colorSpace != TextureColorSpace::Srgb)
@@ -163,12 +168,17 @@ bool BuildNormalMapMipChain(const CpuTexture& source,
                             std::vector<TextureMip>& output, std::string& error)
 {
     error.clear();
+    if (source.width == 0U || source.height == 0U ||
+        static_cast<std::uint64_t>(source.width) > MaximumMipBytes / 4ULL / source.height)
+    {
+        error = "Source normal map dimensions are zero or exceed the 768 MiB safety limit.";
+        return false;
+    }
     const std::uint64_t expectedSourceBytes =
         static_cast<std::uint64_t>(source.width) * source.height * 4ULL;
-    if (source.width == 0U || source.height == 0U ||
-        expectedSourceBytes > MaximumMipBytes || source.rgba.size() != expectedSourceBytes)
+    if (source.rgba.size() != expectedSourceBytes)
     {
-        error = "Source normal map dimensions and RGBA8 storage are inconsistent or exceed the 768 MiB safety limit.";
+        error = "Source normal map RGBA8 storage does not match its dimensions.";
         return false;
     }
 
@@ -365,6 +375,12 @@ bool WriteProcessedTexture(const std::filesystem::path& destination,
         if (expectedWidth == 1U && expectedHeight == 1U && level + 1U != mipChain.size())
         {
             error = "Mip chain contains levels after its terminal 1x1 image.";
+            return false;
+        }
+        if (mip.width == 0U || mip.height == 0U ||
+            static_cast<std::uint64_t>(mip.width) > MaximumMipBytes / 4ULL / mip.height)
+        {
+            error = "Mip dimensions are zero or exceed the processing safety limit.";
             return false;
         }
         const std::uint64_t expectedBytes = static_cast<std::uint64_t>(mip.width) * mip.height * 4ULL;

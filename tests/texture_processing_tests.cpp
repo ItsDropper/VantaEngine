@@ -126,6 +126,29 @@ int main()
           preservedNormalOutput.front().rgba == std::vector<std::uint8_t>({1U,2U,3U,4U}),
           "rejects inconsistent normal-map storage without changing output");
 
+    vanta::assets::CpuTexture overflowingTexture;
+    overflowingTexture.width = 1U << 31U;
+    overflowingTexture.height = 1U << 31U;
+    std::vector<vanta::assets::TextureMip> preservedColorOutput{
+        {1U,1U,std::vector<std::uint8_t>{5U,6U,7U,8U}}
+    };
+    Check(!vanta::assets::BuildTextureMipChain(overflowingTexture,
+          vanta::assets::TextureColorSpace::Linear, preservedColorOutput, error) &&
+          !error.empty() && preservedColorOutput.front().rgba ==
+          std::vector<std::uint8_t>({5U,6U,7U,8U}),
+          "rejects overflowing source dimensions before allocating or changing output");
+    Check(!vanta::assets::BuildNormalMapMipChain(overflowingTexture,
+          preservedNormalOutput, error) && !error.empty() &&
+          preservedNormalOutput.front().rgba == std::vector<std::uint8_t>({1U,2U,3U,4U}),
+          "rejects overflowing normal-map dimensions before allocating or changing output");
+    std::vector<vanta::assets::TextureMip> overflowingMipChain{
+        {1U << 31U,1U << 31U,{}}
+    };
+    Check(!vanta::assets::WriteProcessedTexture(directory / "overflow.ttex",
+          overflowingMipChain, vanta::assets::TextureColorSpace::Linear, error) &&
+          !error.empty(),
+          "rejects overflowing processed mip dimensions before serializing");
+
     Check(vanta::assets::WriteProcessedTexture(directory / "normal.ttex", normalMips,
           vanta::assets::TextureColorSpace::Linear, error),
           "writes normal mip data as linear processed texture");

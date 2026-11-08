@@ -129,6 +129,12 @@ int main()
     Require(visibilityScene.DestroyInstance(visibleB));
     Require(visibilityScene.VisibleInstanceCount() == 0U);
     Require(visibilityScene.BuildFrame(view).draws.empty());
+    // Clear also removes hidden live slots from the dense visible index bookkeeping.
+    Require(visibilityScene.InstanceCount() == 1U);
+    visibilityScene.Clear();
+    Require(visibilityScene.InstanceCount() == 0U);
+    Require(visibilityScene.VisibleInstanceCount() == 0U);
+    Require(!visibilityScene.Contains(visibleA));
 
     math::Mat4 invalid = math::Mat4::Identity();
     invalid.At(0, 0) = std::numeric_limits<float>::quiet_NaN();

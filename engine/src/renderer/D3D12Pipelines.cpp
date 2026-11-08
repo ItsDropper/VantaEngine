@@ -129,38 +129,21 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
     float2 uv = float2(projected.x * 0.5 + 0.5, 0.5 - projected.y * 0.5);
     if (any(uv <= 0.001) || any(uv >= 0.999) || projected.z <= 0.0 || projected.z >= 1.0)
         return 1.0;
+
     // Mid/far cascades occupy the upper-left 1024² region of their 2048² array slice.
-    // Remap their UVs and use their actual texel size to avoid sampling the cleared area.
     const float shadowScale = cascade == 0 ? 1.0 : 0.5;
     uv *= shadowScale;
-    float bias = max(0.00018 * (1.0 - saturate(dot(normal, lightDirection))), 0.000045);
-    // Contact-hardening shadow filtering: estimate the average blocker depth
-    // with a compact search kernel, then widen the PCF footprint with receiver-
-    // blocker separation. This preserves crisp contact shadows while softening
-    // distant penumbrae instead of blurring every shadow by the same amount.
     const float2 texel = cascade == 0 ? 1.0 / 2048.0 : 1.0 / 1024.0;
-    float blockerDepth = 0.0;
-    float blockerCount = 0.0;
-    [unroll] for (int searchY = -1; searchY <= 1; ++searchY)
-        [unroll] for (int searchX = -1; searchX <= 1; ++searchX)
-        {
-            float sampleDepth = shadowMap.SampleLevel(linearClamp,
-                float3(uv + texel * float2(searchX, searchY) * 1.5, cascade), 0);
-            if (sampleDepth < projected.z - bias)
-            {
-                blockerDepth += sampleDepth;
-                blockerCount += 1.0;
-            }
-        }
-    float averageBlocker = blockerDepth / max(blockerCount, 1.0);
-    float penumbra = blockerCount > 0.0
-        ? saturate((projected.z - averageBlocker) * 28.0) : 0.0;
-    float filterRadius = lerp(0.85, 2.6, penumbra);
+    const float bias = max(0.00018 * (1.0 - saturate(dot(normal, lightDirection))), 0.000045);
+
+    // A single 3x3 PCF kernel costs nine depth reads. The previous blocker-search
+    // plus filtering path performed eighteen reads for every shaded pixel, which
+    // was disproportionately expensive on dense imported vegetation.
     float visibility = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
             visibility += projected.z - bias <= shadowMap.SampleLevel(
-                linearClamp, float3(uv + texel * float2(x, y) * filterRadius, cascade), 0) ? 1.0 : 0.0;
+                linearClamp, float3(uv + texel * float2(x, y), cascade), 0) ? 1.0 : 0.0;
     return lerp(0.38, 1.0, visibility / 9.0);
 }
 float4 PSMain(PSInput input) : SV_TARGET

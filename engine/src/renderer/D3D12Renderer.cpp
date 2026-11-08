@@ -2494,9 +2494,18 @@ bool D3D12Renderer::ReadbackPresentedFrame(std::vector<std::uint8_t>& bgra,
     }
     const auto* sourceBytes = static_cast<const std::uint8_t*>(mapped);
     for (UINT row = 0U; row < m_height; ++row) {
-        std::memcpy(bgra.data() + static_cast<std::size_t>(row) * outputStride,
+        const std::size_t rowOffset = static_cast<std::size_t>(row) * outputStride;
+        std::memcpy(bgra.data() + rowOffset,
             sourceBytes + footprint.Offset + static_cast<std::size_t>(row) * footprint.Footprint.RowPitch,
             outputStride);
+        // The swap chain is DXGI_FORMAT_R8G8B8A8_UNORM (RGBA byte order), while
+        // this API and the WIC PNG encoder expose BGRA. Convert each pixel here.
+        for (UINT column = 0U; column < m_width; ++column) {
+            const std::size_t pixelOffset = rowOffset + static_cast<std::size_t>(column) * 4U;
+            const std::uint8_t red = bgra[pixelOffset];
+            bgra[pixelOffset] = bgra[pixelOffset + 2U];
+            bgra[pixelOffset + 2U] = red;
+        }
     }
     D3D12_RANGE writtenRange{0U, 0U};
     readback->Unmap(0U, &writtenRange);

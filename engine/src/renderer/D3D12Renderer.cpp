@@ -1990,8 +1990,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     shadowInstances.push_back(identityInstance);
     sceneInstances.push_back(identityInstance);
     if (hasSubmittedScene) {
-        shadowInstances.reserve(submittedGeometry.draws.size() + 1U);
-        sceneInstances.reserve(submittedGeometry.draws.size() + 1U);
+        const std::size_t initialInstanceCapacity =
+            std::min<std::size_t>(submittedGeometry.draws.size() + 1U, 32768U);
+        shadowInstances.reserve(initialInstanceCapacity);
+        sceneInstances.reserve(initialInstanceCapacity);
         shadowBatchDraws.reserve(submittedGeometry.batches.size());
         sceneBatchDraws.reserve(submittedGeometry.batches.size());
         for (UINT batchIndex = 0; batchIndex < submittedGeometry.batches.size(); ++batchIndex) {

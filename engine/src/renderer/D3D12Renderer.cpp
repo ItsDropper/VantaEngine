@@ -2141,6 +2141,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             // Restrict their shadow work to the near cascade until this path
             // has true GPU instancing and per-cascade instance culling.
             if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                if (!renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
                 m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
                 m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                     static_cast<INT>(draw.firstVertex), 0U);
@@ -2250,12 +2251,15 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
+        std::uint64_t visibleSubmittedDraws = 0U;
         for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
             m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
-                m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
+            m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                 static_cast<INT>(draw.firstVertex), 0U);
+            ++visibleSubmittedDraws;
         }
-        m_sceneDrawCallsAccumulated += submittedGeometry.draws.size();
+        m_sceneDrawCallsAccumulated += visibleSubmittedDraws;
     }
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);

@@ -605,7 +605,7 @@ bool D3D12Renderer::CreatePipeline()
     submittedArguments[0].Constant.Num32BitValuesToSet = 16;
     submittedArguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
     D3D12_COMMAND_SIGNATURE_DESC submittedSignature{};
-    submittedSignature.ByteStride = 80;
+    submittedSignature.ByteStride = 84;
     submittedSignature.NumArgumentDescs = static_cast<UINT>(std::size(submittedArguments));
     submittedSignature.pArgumentDescs = submittedArguments;
     if (FAILED(m_device->CreateCommandSignature(&submittedSignature, m_rootSignature.Get(),

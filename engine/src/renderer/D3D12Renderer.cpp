@@ -2107,7 +2107,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_commandList->SetGraphicsRoot32BitConstants(3, 16, identityWorld.elements, 0);
     m_commandList->SetPipelineState(m_shadowPipelineState.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+    D3D12_VERTEX_BUFFER_VIEW identityInstanceView = submittedInstanceView;
+    identityInstanceView.SizeInBytes = sizeof(SubmittedInstanceData);
+    const D3D12_VERTEX_BUFFER_VIEW worldVertexViews[] = {m_vertexBufferView, identityInstanceView};
+    m_commandList->IASetVertexBuffers(0, 2, worldVertexViews);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     const Vec3 cameraRight{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
     const auto normalizedUp = forward.Cross(cameraRight).Normalized();
@@ -2315,7 +2318,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_commandList->RSSetViewports(1, &sceneViewport);
     m_commandList->RSSetScissorRects(1, &sceneScissor);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+    m_commandList->IASetVertexBuffers(0, 2, worldVertexViews);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     if (!hasSubmittedScene) {
     if (m_gpuCullingEnabled) {

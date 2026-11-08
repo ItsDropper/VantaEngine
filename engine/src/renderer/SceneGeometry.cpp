@@ -35,36 +35,40 @@ std::string MaterialTextureKey(const MaterialDescription& material)
 bool IsSubmittedDrawVisible(
     const SubmittedDrawRange& draw, const math::Mat4& viewProjection) noexcept
 {
-    const math::Mat4 clipTransform = viewProjection * draw.world;
-    bool outsideLeft = true;
-    bool outsideRight = true;
-    bool outsideBottom = true;
-    bool outsideTop = true;
-    bool outsideNear = true;
-    bool outsideFar = true;
+    // Transform the local AABB into clip space as a center plus three half-axis
+    // vectors. Testing its support radius against each clip plane avoids the
+    // previous eight corner transforms and six per-corner rejection reductions.
+    const math::Mat4 clip = viewProjection * draw.world;
+    const float centerX = (draw.localBoundsMin.x + draw.localBoundsMax.x) * 0.5F;
+    const float centerY = (draw.localBoundsMin.y + draw.localBoundsMax.y) * 0.5F;
+    const float centerZ = (draw.localBoundsMin.z + draw.localBoundsMax.z) * 0.5F;
+    const float extentX = (draw.localBoundsMax.x - draw.localBoundsMin.x) * 0.5F;
+    const float extentY = (draw.localBoundsMax.y - draw.localBoundsMin.y) * 0.5F;
+    const float extentZ = (draw.localBoundsMax.z - draw.localBoundsMin.z) * 0.5F;
 
-    for (unsigned corner = 0; corner < 8U; ++corner)
+    const math::Vec4 center = clip.Transform({centerX, centerY, centerZ, 1.0F});
+    if (!std::isfinite(center.x) || !std::isfinite(center.y) ||
+        !std::isfinite(center.z) || !std::isfinite(center.w) ||
+        !std::isfinite(extentX) || !std::isfinite(extentY) || !std::isfinite(extentZ))
+        return true;
+
+    const auto rejectPlane = [&](const float a, const float b, const float c, const float d) noexcept
     {
-        const math::Vec4 local{
-            (corner & 1U) != 0U ? draw.localBoundsMax.x : draw.localBoundsMin.x,
-            (corner & 2U) != 0U ? draw.localBoundsMax.y : draw.localBoundsMin.y,
-            (corner & 4U) != 0U ? draw.localBoundsMax.z : draw.localBoundsMin.z,
-            1.0F};
-        const math::Vec4 clip = clipTransform.Transform(local);
-        if (!std::isfinite(clip.x) || !std::isfinite(clip.y) ||
-            !std::isfinite(clip.z) || !std::isfinite(clip.w))
-            return true;
+        const float value = a * center.x + b * center.y + c * center.z + d * center.w;
+        const float radius =
+            std::abs(a * clip.At(0, 0) + b * clip.At(1, 0) + c * clip.At(2, 0)) * extentX +
+            std::abs(a * clip.At(0, 1) + b * clip.At(1, 1) + c * clip.At(2, 1)) * extentY +
+            std::abs(a * clip.At(0, 2) + b * clip.At(1, 2) + c * clip.At(2, 2)) * extentZ;
+        return std::isfinite(value) && std::isfinite(radius) && value + radius < 0.0F;
+    };
 
-        outsideLeft = outsideLeft && clip.x < -clip.w;
-        outsideRight = outsideRight && clip.x > clip.w;
-        outsideBottom = outsideBottom && clip.y < -clip.w;
-        outsideTop = outsideTop && clip.y > clip.w;
-        outsideNear = outsideNear && clip.z < 0.0F;
-        outsideFar = outsideFar && clip.z > clip.w;
-    }
-
-    return !(outsideLeft || outsideRight || outsideBottom ||
-        outsideTop || outsideNear || outsideFar);
+    // D3D clip volume: -w<=x<=w, -w<=y<=w, 0<=z<=w.
+    return !(rejectPlane(1.0F, 0.0F, 0.0F, 1.0F) ||
+        rejectPlane(-1.0F, 0.0F, 0.0F, 1.0F) ||
+        rejectPlane(0.0F, 1.0F, 0.0F, 1.0F) ||
+        rejectPlane(0.0F, -1.0F, 0.0F, 1.0F) ||
+        rejectPlane(0.0F, 0.0F, 1.0F, 0.0F) ||
+        rejectPlane(0.0F, 0.0F, -1.0F, 1.0F));
 }
 
 bool BuildSubmittedSceneGeometry(

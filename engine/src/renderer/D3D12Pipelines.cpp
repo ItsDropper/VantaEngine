@@ -134,14 +134,15 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
     const float shadowScale = cascade == 0 ? 1.0 : 0.5;
     uv *= shadowScale;
     float bias = max(0.00018 * (1.0 - saturate(dot(normal, lightDirection))), 0.000045);
-    // Four bilinear-filtered taps approximate a wider PCF kernel with fewer depth reads.
+    // 3x3 PCF with cascade-correct texel spacing. Keep the kernel inside the
+    // cascade's valid atlas quadrant and soften only the penumbra, not direct light.
     float visibility = 0.0;
-    const float2 texel = (cascade == 0 ? 1.0 / 2048.0 : 1.0 / 1024.0);
-    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
-    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2( 0.5, -0.5), cascade), 0) ? 1.0 : 0.0;
-    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2(-0.5,  0.5), cascade), 0) ? 1.0 : 0.0;
-    visibility += projected.z - bias <= shadowMap.SampleLevel(linearClamp, float3(uv + texel * float2( 0.5,  0.5), cascade), 0) ? 1.0 : 0.0;
-    return lerp(0.58, 1.0, visibility * 0.25);
+    const float2 texel = cascade == 0 ? 1.0 / 2048.0 : 1.0 / 1024.0;
+    [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+            visibility += projected.z - bias <= shadowMap.SampleLevel(
+                linearClamp, float3(uv + texel * float2(x, y), cascade), 0) ? 1.0 : 0.0;
+    return lerp(0.42, 1.0, visibility / 9.0);
 }
 float4 PSMain(PSInput input) : SV_TARGET
 {

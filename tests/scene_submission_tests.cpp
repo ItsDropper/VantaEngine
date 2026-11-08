@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <cstdint>
 #include <limits>
-#include <source_location>
 #include <iostream>
 #include <utility>
 
@@ -16,16 +15,16 @@ using namespace vanta::renderer;
 namespace
 {
 
-void Require(const bool condition,
-    const std::source_location location = std::source_location::current())
+void RequireImpl(const bool condition, const int line)
 {
     if (!condition)
     {
         std::cerr << "SceneSubmissionTests assertion failed at line "
-                  << location.line() << '\\n';
+                  << line << '\\n';
         std::exit(EXIT_FAILURE);
     }
 }
+#define Require(condition) RequireImpl((condition), __LINE__)
 
 MeshDescription Triangle()
 {

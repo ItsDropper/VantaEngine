@@ -1,5 +1,6 @@
 #include "vanta/renderer/SceneGeometry.hpp"
 
+#include <algorithm>
 #include <array>
 
 #include <cmath>
@@ -53,8 +54,10 @@ bool BuildSubmittedSceneGeometry(
     };
 
     std::unordered_map<GeometryKey, std::pair<std::uint32_t, std::uint32_t>, GeometryKeyHash> geometryRanges;
+    std::unordered_map<const MeshResource*, std::pair<math::Vec3, math::Vec3>> meshBounds;
     std::unordered_map<std::string, std::uint32_t> materialLayerByTextureSet;
     geometryRanges.reserve(frame.draws.size());
+    meshBounds.reserve(frame.draws.size());
     materialLayerByTextureSet.reserve(frame.draws.size());
     output.draws.reserve(frame.draws.size());
 
@@ -112,6 +115,31 @@ bool BuildSubmittedSceneGeometry(
             output.materialLayers.push_back(range.material);
         range.materialLayer = layerIt->second;
 
+        auto bounds = meshBounds.find(draw.mesh.get());
+        if (bounds == meshBounds.end())
+        {
+            math::Vec3 minimum{
+                std::numeric_limits<float>::max(),
+                std::numeric_limits<float>::max(),
+                std::numeric_limits<float>::max()};
+            math::Vec3 maximum{
+                std::numeric_limits<float>::lowest(),
+                std::numeric_limits<float>::lowest(),
+                std::numeric_limits<float>::lowest()};
+            for (const assets::ModelVertex& vertex : draw.mesh->vertices)
+            {
+                minimum.x = std::min(minimum.x, vertex.position.x);
+                minimum.y = std::min(minimum.y, vertex.position.y);
+                minimum.z = std::min(minimum.z, vertex.position.z);
+                maximum.x = std::max(maximum.x, vertex.position.x);
+                maximum.y = std::max(maximum.y, vertex.position.y);
+                maximum.z = std::max(maximum.z, vertex.position.z);
+            }
+            bounds = meshBounds.emplace(draw.mesh.get(), std::pair{minimum, maximum}).first;
+        }
+        range.localBoundsMin = bounds->second.first;
+        range.localBoundsMax = bounds->second.second;
+
         const GeometryKey geometryKey{draw.mesh.get(), draw.material.get()};
         const auto cachedGeometry = geometryRanges.find(geometryKey);
         if (cachedGeometry != geometryRanges.end())
@@ -132,8 +160,6 @@ bool BuildSubmittedSceneGeometry(
             return false;
         }
 
-        range.localBoundsMin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-        range.localBoundsMax = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
         range.firstVertex = static_cast<std::uint32_t>(output.vertices.size());
         range.vertexCount = static_cast<std::uint32_t>(draw.mesh->vertices.size());
         range.firstIndex = static_cast<std::uint32_t>(output.indices.size());
@@ -165,13 +191,6 @@ bool BuildSubmittedSceneGeometry(
                     return false;
                 }
             }
-
-            range.localBoundsMin.x = std::min(range.localBoundsMin.x, source.position.x);
-            range.localBoundsMin.y = std::min(range.localBoundsMin.y, source.position.y);
-            range.localBoundsMin.z = std::min(range.localBoundsMin.z, source.position.z);
-            range.localBoundsMax.x = std::max(range.localBoundsMax.x, source.position.x);
-            range.localBoundsMax.y = std::max(range.localBoundsMax.y, source.position.y);
-            range.localBoundsMax.z = std::max(range.localBoundsMax.z, source.position.z);
 
             SubmittedSceneVertex vertex;
             vertex.position[0] = source.position.x;

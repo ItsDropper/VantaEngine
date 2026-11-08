@@ -225,6 +225,10 @@ InstanceHandle SceneSubmission::CreateInstance(
         !IsValidWorldTransform(world))
         return {};
 
+    // SetVisible is noexcept, so reserve enough space here for every live instance
+    // before mutating slot state. The visible set can never exceed InstanceCount().
+    m_visibleInstances.reserve(m_instanceCount + 1U);
+
     std::uint32_t index = InstanceHandle::kInvalidIndex;
     if (m_freeInstanceHead != InstanceHandle::kInvalidIndex)
     {

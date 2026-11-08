@@ -91,7 +91,7 @@ struct SubmittedIndirectCommand
     UINT instanceWorld[16]{};
     D3D12_DRAW_INDEXED_ARGUMENTS draw{};
 };
-static_assert(sizeof(SubmittedIndirectCommand) == 80);
+static_assert(sizeof(SubmittedIndirectCommand) == 84);
 
 struct HiZBuildConstants
 {

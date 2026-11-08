@@ -1718,11 +1718,19 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
 
     const bool hasSubmittedScene = submittedScene != nullptr;
     SubmittedIndirectCommand* submittedCommands = nullptr;
+    UINT64 submittedSceneIndirectOffset = 0U;
     SubmittedIndirectCommand* submittedCommands = nullptr;
     if (submittedScene != nullptr) {
-        const UINT64 requiredBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
+        const UINT64 commandBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
             sizeof(SubmittedIndirectCommand);
-        if (requiredBytes > 0U) {
+        if (commandBytes > std::numeric_limits<UINT64>::max() / 2U) {
+            m_lastRenderError = "D3D12 imported-scene indirect argument size overflow.";
+            LogError(m_lastRenderError.c_str());
+            return;
+        }
+        const UINT64 requiredBytes = commandBytes * 2U;
+        submittedSceneIndirectOffset = commandBytes;
+        if (commandBytes > 0U) {
             auto& buffer = m_submittedIndirectBuffers[m_frameIndex];
             if (!buffer || m_submittedIndirectBufferCapacities[m_frameIndex] < requiredBytes) {
                 if (m_mappedSubmittedIndirectBuffers[m_frameIndex] != nullptr) {
@@ -2323,14 +2331,14 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         if (submittedCommands != nullptr) {
             for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
                 if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
-                SubmittedIndirectCommand& command = submittedCommands[visibleSubmittedDraws++];
+                SubmittedIndirectCommand& command = submittedCommands[submittedGeometry.draws.size() + visibleSubmittedDraws++];
                 std::memcpy(command.instanceWorld, draw.world.elements, sizeof(command.instanceWorld));
                 command.draw = {draw.indexCount, 1U, draw.firstIndex,
                     static_cast<INT>(draw.firstVertex), 0U};
             }
             if (visibleSubmittedDraws != 0U)
                 m_commandList->ExecuteIndirect(m_submittedDrawCommandSignature.Get(), visibleSubmittedDraws,
-                    m_submittedIndirectBuffers[m_frameIndex].Get(), 0, nullptr, 0);
+                    m_submittedIndirectBuffers[m_frameIndex].Get(), submittedSceneIndirectOffset, nullptr, 0);
         }
         m_sceneDrawCallsAccumulated += visibleSubmittedDraws;
     }

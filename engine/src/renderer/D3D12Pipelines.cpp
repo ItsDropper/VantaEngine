@@ -312,8 +312,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     // low elevation preferentially removes blue wavelengths, warming sunrise/sunset
     // light without applying a global color grade to materials.
     float solarElevation = max(saturate(lighting.y), 0.015);
-    float airMass = min(1.0 / (solarElevation + 0.12 * pow(93.885 -
-        degrees(asin(solarElevation)), -1.253)), 12.0);
+    float solarZenithDegrees = 90.0 - degrees(asin(solarElevation));
+    float airMass = min(1.0 / max(solarElevation + 0.50572 *
+        pow(max(96.07995 - solarZenithDegrees, 0.1), -1.6364), 0.02), 12.0);
     float3 solarTransmittance = exp(-float3(0.105, 0.041, 0.018) * airMass);
     float3 atmosphericSolar = solarTransmittance * float3(5.25, 5.05, 4.72);
     float3 daylightColor = environmentSunColor.w > 0.5

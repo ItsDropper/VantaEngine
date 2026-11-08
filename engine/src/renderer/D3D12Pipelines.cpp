@@ -195,7 +195,13 @@ float4 PSMain(PSInput input) : SV_TARGET
     float2 worldXZ = input.worldPosition.xz;
     float importedMaterial = saturate(input.material.z);
     float isTerrain = (materialFlags & 64U) != 0U ? 1.0 : 0.0;
-    float terrainColorMask = isTerrain * (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
+    float snowTerrainMask = (materialFlags & 256U) != 0U ? 1.0 : 0.0;
+    // Generic procedural ground remains limited to low-altitude grass/soil.
+    // Sakkola's authored snow surface is a separate semantic material and must
+    // not be disabled by the old 1.65 m grass-terrain height cutoff.
+    float terrainColorMask = isTerrain * (1.0 - snowTerrainMask) *
+        (1.0 - smoothstep(0.15, 1.65, input.worldPosition.y));
+    float terrainSurfaceMask = max(terrainColorMask, snowTerrainMask);
     float macroNoise = 0.5;
     float breakup = 0.5;
     float clumpNoise = 0.5;
@@ -204,6 +210,43 @@ float4 PSMain(PSInput input) : SV_TARGET
     float flecks = 0.5;
     float microHeight = 0.0;
     float roughness = saturate(lerp(0.76, input.material.x, importedMaterial));
+
+    if (snowTerrainMask > 0.001)
+    {
+        const float2 windDirection = environmentWind.w > 0.5
+            ? normalize(environmentWind.xy) : normalize(float2(0.914, 0.406));
+        const float broadDrift = TerrainNoise(worldXZ * 0.012 + float2(17.0, -9.0));
+        const float crossWindDrift = TerrainNoise(worldXZ * 0.031 +
+            float2(-windDirection.y, windDirection.x) * 23.0);
+        const float crustNoise = TerrainNoise(worldXZ * 0.17 + float2(4.3, 19.1));
+        const float crystalNoise = ValueNoise(worldXZ * 2.4 + float2(31.0, -7.0));
+        const float fineGrain = ValueNoise(worldXZ * 9.0 + float2(-13.0, 27.0));
+        const float slope = 1.0 - saturate(n.y);
+        const float windExposure = saturate(0.5 +
+            dot(normalize(worldXZ + float2(0.001, 0.001)), windDirection) * 0.18);
+        const float packedMask = saturate(0.30 + (broadDrift - 0.5) * 0.55 +
+            (crossWindDrift - 0.5) * 0.38 + slope * 0.42 + windExposure * 0.12);
+        const float crustMask = saturate((crustNoise - 0.43) * 1.7 +
+            (fineGrain - 0.5) * 0.28);
+        const float exposedStone = saturate(smoothstep(0.34, 0.72,
+            slope + (broadDrift - 0.5) * 0.22) * 0.34);
+        const float3 freshSnow = albedo *
+            (0.965 + (broadDrift - 0.5) * 0.095 + (crystalNoise - 0.5) * 0.035);
+        const float3 windPackedSnow = albedo * float3(0.84, 0.895, 0.96) *
+            (0.965 + (crustNoise - 0.5) * 0.065);
+        float3 snowAlbedo = lerp(freshSnow, windPackedSnow, packedMask * 0.62);
+        snowAlbedo *= 0.97 + fineGrain * 0.055;
+        const float3 exposedRockAlbedo = float3(0.34, 0.365, 0.39) *
+            (0.91 + crystalNoise * 0.18);
+        snowAlbedo = lerp(snowAlbedo, exposedRockAlbedo, exposedStone);
+        albedo = lerp(albedo, snowAlbedo, snowTerrainMask);
+        roughness = lerp(0.965, 0.76, packedMask * 0.58 + crustMask * 0.12);
+        microHeight = (broadDrift - 0.5) * 0.48 +
+            (crossWindDrift - 0.5) * 0.27 +
+            (crustNoise - 0.5) * 0.13 +
+            (crystalNoise - 0.5) * 0.075 +
+            (fineGrain - 0.5) * 0.035;
+    }
 
     if (terrainColorMask > 0.001)
     {
@@ -244,7 +287,9 @@ float4 PSMain(PSInput input) : SV_TARGET
             TerrainNoise(worldXZ * 17.0 + float2(8.3, 2.1)) * 0.28 +
             TerrainNoise(worldXZ * 43.0 - float2(4.7, 12.6)) * 0.10;
     }
-    roughness = saturate(lerp(roughness, input.material.x + 0.05 * (grainNoise - 0.5), importedMaterial));
+    const float authoredRoughness = snowTerrainMask > 0.5
+        ? roughness : input.material.x + 0.05 * (grainNoise - 0.5);
+    roughness = saturate(lerp(roughness, authoredRoughness, importedMaterial));
 
     // Keep derivatives outside the terrain branch: pixel-shader derivatives must remain
     // well-defined across 2x2 lanes. The zero micro-height on non-terrain pixels is masked
@@ -254,7 +299,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 bitangent = normalize(cross(n, tangent));
     float3 microNormal = normalize(n - tangent * ddx(microHeight) * 2.4 -
         bitangent * ddy(microHeight) * 2.4);
-    n = normalize(lerp(n, microNormal, terrainColorMask * 0.92));
+    n = normalize(lerp(n, microNormal, terrainSurfaceMask * 0.92));
 
     // Subtle material-specific micro-relief for imported surfaces that do not yet carry
     // authored normal maps. The height fields follow the UV direction for bark/needles
@@ -287,7 +332,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 materialBitangent = normalize(cross(n, materialTangent)) * uvHandedness;
     float3 materialMicroNormal = normalize(n - materialTangent * ddx(materialHeight) * 1.25 -
         materialBitangent * ddy(materialHeight) * 1.25);
-    float materialReliefMask = importedMaterial * (1.0 - terrainColorMask) *
+    float materialReliefMask = importedMaterial * (1.0 - terrainSurfaceMask) *
         (((materialFlags & 2U) != 0U) ? 0.0 : 1.0);
     n = normalize(lerp(n, materialMicroNormal, materialReliefMask * 0.72));
 

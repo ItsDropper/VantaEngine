@@ -182,8 +182,9 @@ int main()
     Require(packedOrmGeometry.draws.size() == 2052U);
     Require(packedOrmGeometry.materialLayers.size() == 2U);
     Require(packedOrmGeometry.draws.back().materialLayer == 1U);
-    Require(packedOrmGeometry.vertices[3].material[3] == 180.0F);
-    Require(packedOrmGeometry.draws[1].material.packedMetallicRoughness);
+    const std::size_t packedFirstVertex = (packedOrmGeometry.draws.size() - 1U) * 3U;
+    Require(packedOrmGeometry.vertices[packedFirstVertex].material[3] == 180.0F);
+    Require(packedOrmGeometry.draws.back().material.packedMetallicRoughness);
 
     MaterialDescription unresolvedTextureDescription;
     unresolvedTextureDescription.normalTexture = "textures/normal.png";

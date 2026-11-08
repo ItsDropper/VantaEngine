@@ -86,12 +86,27 @@ struct GpuCullConstants
 };
 static_assert(sizeof(GpuCullConstants) == 160);
 
-struct SubmittedIndirectCommand
+struct SubmittedInstanceData
 {
-    UINT instanceWorld[16]{};
-    D3D12_DRAW_INDEXED_ARGUMENTS draw{};
+    float worldRows[4][4]{};
 };
-static_assert(sizeof(SubmittedIndirectCommand) == 84);
+static_assert(sizeof(SubmittedInstanceData) == 64);
+
+struct SubmittedBatchDraw
+{
+    UINT batchIndex = 0;
+    UINT firstInstance = 0;
+    UINT instanceCount = 0;
+};
+
+SubmittedInstanceData MakeSubmittedInstance(const Mat4& world) noexcept
+{
+    SubmittedInstanceData instance{};
+    for (UINT row = 0; row < 4; ++row)
+        for (UINT column = 0; column < 4; ++column)
+            instance.worldRows[row][column] = world.At(static_cast<int>(row), static_cast<int>(column));
+    return instance;
+}
 
 struct HiZBuildConstants
 {

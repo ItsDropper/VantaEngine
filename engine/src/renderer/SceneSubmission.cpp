@@ -225,17 +225,21 @@ InstanceHandle SceneSubmission::CreateInstance(
         !IsValidWorldTransform(world))
         return {};
 
-    std::size_t index = 0;
-    for (; index < m_instances.size(); ++index)
+    std::uint32_t index = InstanceHandle::kInvalidIndex;
+    if (m_freeInstanceHead != InstanceHandle::kInvalidIndex)
     {
-        if (!m_instances[index].occupied)
-            break;
+        index = m_freeInstanceHead;
+        InstanceSlot& freeSlot = m_instances[index];
+        m_freeInstanceHead = freeSlot.nextFreeIndex;
+        freeSlot.nextFreeIndex = InstanceHandle::kInvalidIndex;
     }
-    if (index >= InstanceHandle::kInvalidIndex)
-        return {};
-
-    if (index == m_instances.size())
+    else
+    {
+        if (m_instances.size() >= InstanceHandle::kInvalidIndex)
+            return {};
+        index = static_cast<std::uint32_t>(m_instances.size());
         m_instances.emplace_back();
+    }
     auto& slot = m_instances[index];
     slot.mesh = mesh;
     slot.material = material;
@@ -256,6 +260,8 @@ bool SceneSubmission::DestroyInstance(const InstanceHandle handle) noexcept
     slot->mesh = {};
     slot->material = {};
     slot->world = math::Mat4::Identity();
+    slot->nextFreeIndex = m_freeInstanceHead;
+    m_freeInstanceHead = handle.index;
     AdvanceGeneration(*slot);
     --m_instanceCount;
     return true;
@@ -343,8 +349,10 @@ void SceneSubmission::Clear() noexcept
             AdvanceGeneration(slot);
         }
     }
-    for (auto& slot : m_instances)
+    m_freeInstanceHead = InstanceHandle::kInvalidIndex;
+    for (std::size_t index = 0; index < m_instances.size(); ++index)
     {
+        auto& slot = m_instances[index];
         if (slot.occupied)
         {
             slot.occupied = false;
@@ -354,6 +362,8 @@ void SceneSubmission::Clear() noexcept
             slot.world = math::Mat4::Identity();
             AdvanceGeneration(slot);
         }
+        slot.nextFreeIndex = m_freeInstanceHead;
+        m_freeInstanceHead = static_cast<std::uint32_t>(index);
     }
     m_meshCount = 0;
     m_materialCount = 0;

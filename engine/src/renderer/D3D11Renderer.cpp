@@ -358,6 +358,16 @@ float4 PSMain(PixelInput input) : SV_TARGET
         : float3(4.2, 3.45, 2.55);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
+    // Snow transmits a small amount of light beneath its surface. Restrict the
+    // effect to bright, rough dielectrics so timber, foliage and ice stay distinct.
+    float snowSubsurfaceMask = saturate((min(albedo.r, min(albedo.g, albedo.b)) - 0.70) * 5.0) *
+        saturate((roughness - 0.58) * 2.4) * (1.0 - metallic);
+    float wrappedSnowDiffuse = saturate((dot(n, l) + 0.32) / 1.32);
+    float snowBackScatter = pow(saturate(dot(-l, v)), 3.0);
+    float3 snowTransmission = albedo * radiance *
+        (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
+        snowSubsurfaceMask * (1.0 - shadow * 0.35);
+    direct += snowTransmission;
     // Analytic environment lighting approximates a prefiltered sky environment:
     // diffuse irradiance follows the normal hemisphere; roughness broadens reflections.
     float3 skyZenith = environmentFogColor.w > 0.5

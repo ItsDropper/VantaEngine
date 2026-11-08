@@ -38,6 +38,7 @@ public:
     void Render(float elapsedSeconds, float cameraX, float cameraY, float cameraZ,
                 float cameraYaw, float cameraPitch);
     [[nodiscard]] bool Render(const renderer::SceneFrame& submittedScene);
+    [[nodiscard]] const std::string& LastRenderError() const noexcept { return m_lastRenderError; }
     [[nodiscard]] bool IsDeviceLost() const noexcept { return m_deviceLost; }
 private:
     static constexpr UINT kFrameCount = 2;
@@ -185,5 +186,6 @@ private:
     bool m_failed = false;
     bool m_deviceLost = false;
     bool m_lastFrameSucceeded = false;
+    std::string m_lastRenderError;
 };
 } // namespace vanta

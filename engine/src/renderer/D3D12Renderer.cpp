@@ -1691,10 +1691,12 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                            const renderer::SceneFrame* submittedScene)
 {
     m_lastFrameSucceeded = false;
-    if (m_failed || m_deviceLost) return;
+    m_lastRenderError.clear();
+    if (m_failed || m_deviceLost) { m_lastRenderError = m_deviceLost ? "D3D12 device is lost before frame recording." : "D3D12 renderer is in a failed state."; return; }
     if (!WaitForFrame(m_frameIndex)) {
         m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
-        LogError("Direct3D 12: waiting for a reusable frame failed.");
+        m_lastRenderError = "Direct3D 12: waiting for a reusable frame failed.";
+        LogError(m_lastRenderError.c_str());
         m_failed = true;
         return;
     }
@@ -1706,6 +1708,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+            m_lastRenderError = geometryError;
+            m_lastRenderError = geometryError;
             LogError(geometryError.c_str());
             return;
         }
@@ -1718,7 +1722,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 sizeof(renderer::SubmittedSceneVertex);
             const std::size_t indexBytes = submittedGeometry.indices.size() * sizeof(std::uint32_t);
             if (vertexBytes > UINT_MAX || indexBytes > UINT_MAX) {
-                LogError("Direct3D 12: submitted scene exceeds GPU buffer view limits.");
+                m_lastRenderError = "Direct3D 12: submitted scene exceeds GPU buffer view limits.";
+                LogError(m_lastRenderError.c_str());
                 return;
             }
             const auto createUploadBuffer = [this](const UINT64 byteCount,
@@ -1767,7 +1772,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 !createUploadBuffer(static_cast<UINT64>(indexBytes),
                     m_submittedIndexBuffers[m_frameIndex],
                     m_submittedIndexBufferCapacities[m_frameIndex], submittedGeometry.indices.data())) {
-                LogError("Direct3D 12: submitted scene upload buffer creation or mapping failed.");
+                m_lastRenderError = "Direct3D 12: submitted scene upload buffer creation or mapping failed.";
+                LogError(m_lastRenderError.c_str());
                 return;
             }
             submittedVertexView.BufferLocation =
@@ -1794,7 +1800,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         viewMatrix = submittedScene->view.view;
     } else {
         const auto view = Mat4::LookAtLH(eye, eye + forward, {0.0F, 1.0F, 0.0F});
-        if (!view) return;
+        if (!view) { m_lastRenderError = "D3D12 camera LookAtLH construction failed."; return; }
         viewMatrix = *view;
     }
     Mat4 projection = submittedScene != nullptr ? submittedScene->view.projection :
@@ -1837,7 +1843,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             lightUp * (std::round(centerUp / shadowTexelWorldSize) * shadowTexelWorldSize - centerUp);
         const Vec3 lightEye = snappedCenter + lightDirection * (radius * 2.4F + 30.0F);
         const auto lightView = Mat4::LookAtLH(lightEye, snappedCenter, worldUp);
-        if (!lightView) return;
+        if (!lightView) { m_lastRenderError = "D3D12 shadow cascade light-view construction failed."; return; }
         const Mat4 lightProjection = OrthographicLH(radius * 2.0F, radius * 2.0F, 0.1F, radius * 5.0F + 40.0F);
         constants.lightViewProjection[cascade] = lightProjection * *lightView;
         previousSplit = split;
@@ -1885,7 +1891,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         ++m_hiZOcclusionActiveFrameAccumulated;
     if (cameraCut) m_historyValid = false;
     TemporalConstants temporalConstants{};
-    if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) return;
+    if (!InvertMatrix(constants.viewProjection, temporalConstants.inverseViewProjection)) { m_lastRenderError = "D3D12 temporal pass could not invert the camera view-projection matrix."; return; }
     temporalConstants.previousViewProjection = m_previousViewProjection;
     temporalConstants.parameters[0] = m_historyValid ? 1.0F : 0.0F;
     temporalConstants.parameters[1] = static_cast<float>(1U - m_historyWriteIndex);
@@ -1926,7 +1932,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
 
     if (FAILED(m_commandAllocators[m_frameIndex]->Reset()) ||
         FAILED(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get()))) {
-        LogError("Direct3D 12: command recording reset failed.");
+        m_lastRenderError = "Direct3D 12: command recording reset failed.";
+        LogError(m_lastRenderError.c_str());
         m_failed = true;
         return;
     }
@@ -2300,7 +2307,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
     m_commandList->ResourceBarrier(1, &toPresent);
     if (FAILED(m_commandList->Close())) {
-        LogError("Direct3D 12: command-list close failed.");
+        m_lastRenderError = "Direct3D 12: command-list close failed.";
+        LogError(m_lastRenderError.c_str());
         m_failed = true;
         return;
     }
@@ -2318,7 +2326,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {
         m_deviceLost = m_device.Get() != nullptr && FAILED(m_device->GetDeviceRemovedReason());
-        LogError("Direct3D 12: frame fence signal failed.");
+        m_lastRenderError = "Direct3D 12: frame fence signal failed.";
+        LogError(m_lastRenderError.c_str());
         m_failed = true;
         return;
     }
@@ -2329,6 +2338,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         std::snprintf(message, sizeof(message),
             "Direct3D 12: Present failed (HRESULT 0x%08lX, device reason 0x%08lX).",
             static_cast<unsigned long>(presentResult), static_cast<unsigned long>(deviceReason));
+        m_lastRenderError = message;
         LogError(message);
         m_deviceLost = presentResult == DXGI_ERROR_DEVICE_REMOVED || presentResult == DXGI_ERROR_DEVICE_RESET ||
             FAILED(deviceReason);

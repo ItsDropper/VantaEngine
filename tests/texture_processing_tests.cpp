@@ -1,6 +1,7 @@
 #include "vanta/assets/TextureProcessing.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -89,6 +90,38 @@ int main()
           "normalizes source-level tangent vectors");
     Check(normalMips.back().rgba == std::vector<std::uint8_t>({128U,128U,255U,112U}),
           "renormalizes filtered normals and averages alpha linearly");
+
+    vanta::assets::CpuTexture varyingNormals;
+    varyingNormals.width = 2U;
+    varyingNormals.height = 2U;
+    varyingNormals.rgba = {
+        255U,128U,128U,255U, 128U,255U,128U,255U,
+        128U,128U,255U,255U, 128U,128U,255U,255U
+    };
+    std::vector<vanta::assets::TextureMip> varyingMips;
+    const auto allMipNormalsAreUnitLength = [](const std::vector<vanta::assets::TextureMip>& chain)
+    {
+        for (const auto& mip : chain)
+        {
+            for (std::size_t offset = 0U; offset < mip.rgba.size(); offset += 4U)
+            {
+                const float x = static_cast<float>(mip.rgba[offset]) / 127.5F - 1.0F;
+                const float y = static_cast<float>(mip.rgba[offset + 1U]) / 127.5F - 1.0F;
+                const float z = static_cast<float>(mip.rgba[offset + 2U]) / 127.5F - 1.0F;
+                const float length = std::sqrt(x * x + y * y + z * z);
+                if (std::abs(length - 1.0F) > 0.02F)
+                    return false;
+            }
+        }
+        return !chain.empty();
+    };
+    Check(vanta::assets::BuildNormalMapMipChain(varyingNormals, varyingMips, error) &&
+          allMipNormalsAreUnitLength(varyingMips),
+          "renormalizes directional normal averages at every mip level");
+    Check(varyingMips.back().rgba[0] >= 178U && varyingMips.back().rgba[0] <= 182U &&
+          varyingMips.back().rgba[1] >= 178U && varyingMips.back().rgba[1] <= 182U &&
+          varyingMips.back().rgba[2] >= 229U && varyingMips.back().rgba[2] <= 233U,
+          "preserves the expected direction when reducing varied tangent normals");
 
     vanta::assets::CpuTexture opposingNormals;
     opposingNormals.width = 2U;

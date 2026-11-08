@@ -162,6 +162,16 @@ struct PixelInput
     float4 shadowPosition : TEXCOORD2;
 };
 
+float3 TransformWorldNormal(float3 normal)
+{
+    const float3x3 linearWorld = (float3x3)world;
+    const float3 cofactor0 = cross(linearWorld[1], linearWorld[2]);
+    const float3 cofactor1 = cross(linearWorld[2], linearWorld[0]);
+    const float3 cofactor2 = cross(linearWorld[0], linearWorld[1]);
+    const float determinant = dot(linearWorld[0], cofactor0);
+    return normalize(float3(dot(cofactor0, normal), dot(cofactor1, normal), dot(cofactor2, normal)) / determinant);
+}
+
 PixelInput VSMain(VertexInput input)
 {
     PixelInput output;
@@ -179,7 +189,7 @@ PixelInput VSMain(VertexInput input)
         localPosition.z += waveB * environmentWind.z * environmentWind.y * heightWeight;
     }
     output.position = mul(worldViewProjection, float4(localPosition, 1.0));
-    output.normal = normalize(mul((float3x3)world, input.normal));
+    output.normal = TransformWorldNormal(input.normal);
     output.worldPosition = mul(world, float4(localPosition, 1.0)).xyz;
     output.shadowPosition = mul(lightViewProjection[0], float4(output.worldPosition, 1.0));
     output.color = input.color;

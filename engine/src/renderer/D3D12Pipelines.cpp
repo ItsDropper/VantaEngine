@@ -38,6 +38,15 @@ Texture2DArray submittedOcclusionTexture : register(t16);
 cbuffer InstanceConstants : register(b1) { float4x4 instanceWorld; };
 SamplerState linearClamp : register(s0);
 SamplerState linearWrap : register(s1);
+float3 TransformInstanceNormal(float3 normal)
+{
+    const float3x3 linearWorld = (float3x3)instanceWorld;
+    const float3 cofactor0 = cross(linearWorld[1], linearWorld[2]);
+    const float3 cofactor1 = cross(linearWorld[2], linearWorld[0]);
+    const float3 cofactor2 = cross(linearWorld[0], linearWorld[1]);
+    const float determinant = dot(linearWorld[0], cofactor0);
+    return normalize(float3(dot(cofactor0, normal), dot(cofactor1, normal), dot(cofactor2, normal)) / determinant);
+}
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
 PSInput VSMain(VSInput input)
@@ -62,7 +71,7 @@ PSInput VSMain(VSInput input)
     worldPosition.z += waveB * windStrength * windDirection.y * foliageMask * heightWeight;
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
-    o.normal = normalize(mul((float3x3)transpose(inverse(instanceWorld)), input.normal));
+    o.normal = TransformInstanceNormal(input.normal);
     o.color = input.color;
     o.uv = input.uv;
     o.material = input.material;

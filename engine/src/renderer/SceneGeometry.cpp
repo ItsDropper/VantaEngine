@@ -32,6 +32,41 @@ std::string MaterialTextureKey(const MaterialDescription& material)
 
 } // namespace
 
+bool IsSubmittedDrawVisible(
+    const SubmittedDrawRange& draw, const math::Mat4& viewProjection) noexcept
+{
+    const math::Mat4 clipTransform = viewProjection * draw.world;
+    bool outsideLeft = true;
+    bool outsideRight = true;
+    bool outsideBottom = true;
+    bool outsideTop = true;
+    bool outsideNear = true;
+    bool outsideFar = true;
+
+    for (unsigned corner = 0; corner < 8U; ++corner)
+    {
+        const math::Vec4 local{
+            (corner & 1U) != 0U ? draw.localBoundsMax.x : draw.localBoundsMin.x,
+            (corner & 2U) != 0U ? draw.localBoundsMax.y : draw.localBoundsMin.y,
+            (corner & 4U) != 0U ? draw.localBoundsMax.z : draw.localBoundsMin.z,
+            1.0F};
+        const math::Vec4 clip = clipTransform.Transform(local);
+        if (!std::isfinite(clip.x) || !std::isfinite(clip.y) ||
+            !std::isfinite(clip.z) || !std::isfinite(clip.w))
+            return true;
+
+        outsideLeft = outsideLeft && clip.x < -clip.w;
+        outsideRight = outsideRight && clip.x > clip.w;
+        outsideBottom = outsideBottom && clip.y < -clip.w;
+        outsideTop = outsideTop && clip.y > clip.w;
+        outsideNear = outsideNear && clip.z < 0.0F;
+        outsideFar = outsideFar && clip.z > clip.w;
+    }
+
+    return !(outsideLeft || outsideRight || outsideBottom ||
+        outsideTop || outsideNear || outsideFar);
+}
+
 bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error)
 {

@@ -2259,21 +2259,18 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->SetPipelineState(m_shadowPipelineState.Get());
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
-            // Imported scene submissions currently use one draw per instance.
-            // Restrict their shadow work to the near cascade until this path
-            // has true GPU instancing and per-cascade instance culling.
-            if (cascade == 0U && submittedCommands != nullptr) {
-                UINT commandCount = 0U;
-                for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-                    if (!renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[cascade])) continue;
-                    SubmittedIndirectCommand& command = submittedCommands[commandCount++];
-                    std::memcpy(command.instanceWorld, draw.world.elements, sizeof(command.instanceWorld));
-                    command.draw = {draw.indexCount, 1U, draw.firstIndex,
-                        static_cast<INT>(draw.firstVertex), 0U};
+            if (cascade == 0U) {
+                for (const SubmittedBatchDraw& submittedDraw : shadowBatchDraws) {
+                    const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
+                    D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
+                    instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
+                        sizeof(SubmittedInstanceData);
+                    instanceView.SizeInBytes = submittedDraw.instanceCount * sizeof(SubmittedInstanceData);
+                    const D3D12_VERTEX_BUFFER_VIEW vertexViews[] = {submittedVertexView, instanceView};
+                    m_commandList->IASetVertexBuffers(0, 2, vertexViews);
+                    m_commandList->DrawIndexedInstanced(batch.indexCount, submittedDraw.instanceCount,
+                        batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
                 }
-                if (commandCount != 0U)
-                    m_commandList->ExecuteIndirect(m_submittedDrawCommandSignature.Get(), commandCount,
-                        m_submittedIndirectBuffers[m_frameIndex].Get(), 0, nullptr, 0);
             }
         }
         if (m_timestampFrequency != 0)
@@ -2380,20 +2377,18 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
-        UINT visibleSubmittedDraws = 0U;
-        if (submittedCommands != nullptr) {
-            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-                if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
-                SubmittedIndirectCommand& command = submittedCommands[submittedGeometry.draws.size() + visibleSubmittedDraws++];
-                std::memcpy(command.instanceWorld, draw.world.elements, sizeof(command.instanceWorld));
-                command.draw = {draw.indexCount, 1U, draw.firstIndex,
-                    static_cast<INT>(draw.firstVertex), 0U};
-            }
-            if (visibleSubmittedDraws != 0U)
-                m_commandList->ExecuteIndirect(m_submittedDrawCommandSignature.Get(), visibleSubmittedDraws,
-                    m_submittedIndirectBuffers[m_frameIndex].Get(), submittedSceneIndirectOffset, nullptr, 0);
+        for (const SubmittedBatchDraw& submittedDraw : sceneBatchDraws) {
+            const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
+            D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
+            instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
+                sizeof(SubmittedInstanceData);
+            instanceView.SizeInBytes = submittedDraw.instanceCount * sizeof(SubmittedInstanceData);
+            const D3D12_VERTEX_BUFFER_VIEW vertexViews[] = {submittedVertexView, instanceView};
+            m_commandList->IASetVertexBuffers(0, 2, vertexViews);
+            m_commandList->DrawIndexedInstanced(batch.indexCount, submittedDraw.instanceCount,
+                batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
         }
-        m_sceneDrawCallsAccumulated += visibleSubmittedDraws;
+        m_sceneDrawCallsAccumulated += sceneBatchDraws.size();
     }
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);

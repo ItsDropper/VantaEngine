@@ -26,6 +26,8 @@ struct SubmittedDrawRange
     std::uint32_t firstIndex = 0;
     std::uint32_t indexCount = 0;
     std::uint32_t materialLayer = 0;
+    math::Vec3 localBoundsMin{};
+    math::Vec3 localBoundsMax{};
     math::Mat4 world = math::Mat4::Identity();
     MaterialDescription material;
 };
@@ -49,6 +51,9 @@ struct SubmittedSceneGeometryCache
 // Reuses immutable local-space geometry when only camera/instance transforms change.
 [[nodiscard]] bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometryCache& cache, std::string& error);
+
+[[nodiscard]] bool IsSubmittedDrawVisible(
+    const SubmittedDrawRange& draw, const math::Mat4& viewProjection) noexcept;
 
 // Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.

@@ -1714,7 +1714,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             return;
         }
         if (!PrepareSubmittedMaterialTextures(submittedGeometry, geometryError)) {
-            LogError(geometryError.c_str());
+            m_lastRenderError = "Direct3D 12 submitted-material preparation failed: " +
+                (geometryError.empty() ? std::string("unspecified failure") : geometryError);
+            LogError(m_lastRenderError.c_str());
             return;
         }
         if (!submittedGeometry.vertices.empty()) {

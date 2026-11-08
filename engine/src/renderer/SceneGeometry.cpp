@@ -56,9 +56,9 @@ bool IsSubmittedDrawVisible(
     {
         const float value = a * center.x + b * center.y + c * center.z + d * center.w;
         const float radius =
-            std::abs(a * clip.At(0, 0) + b * clip.At(1, 0) + c * clip.At(2, 0)) * extentX +
-            std::abs(a * clip.At(0, 1) + b * clip.At(1, 1) + c * clip.At(2, 1)) * extentY +
-            std::abs(a * clip.At(0, 2) + b * clip.At(1, 2) + c * clip.At(2, 2)) * extentZ;
+            std::abs(a * clip.At(0, 0) + b * clip.At(1, 0) + c * clip.At(2, 0) + d * clip.At(3, 0)) * extentX +
+            std::abs(a * clip.At(0, 1) + b * clip.At(1, 1) + c * clip.At(2, 1) + d * clip.At(3, 1)) * extentY +
+            std::abs(a * clip.At(0, 2) + b * clip.At(1, 2) + c * clip.At(2, 2) + d * clip.At(3, 2)) * extentZ;
         return std::isfinite(value) && std::isfinite(radius) && value + radius < 0.0F;
     };
 

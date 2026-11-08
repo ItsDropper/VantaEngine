@@ -685,7 +685,13 @@ TemporalOutput PSMain(VSOut input)
     float3 history = ReadHistoryColor(previousUv).rgb;
     float3 expansion = (neighborhoodMax - neighborhoodMin) * 0.12 + 0.002;
     history = clamp(history, neighborhoodMin - expansion, neighborhoodMax + expansion);
-    output.color = float4(lerp(current, history, 0.88), 1.0);
+    // Respect the per-frame history weight and reduce accumulation around unstable,
+    // high-contrast foliage edges to limit ghost trails during camera motion.
+    float neighborhoodRange = max(neighborhoodMax.r - neighborhoodMin.r,
+        max(neighborhoodMax.g - neighborhoodMin.g, neighborhoodMax.b - neighborhoodMin.b));
+    float historyWeight = saturate(temporalParams.w) *
+        (1.0 - saturate(neighborhoodRange * 1.8) * 0.42);
+    output.color = float4(lerp(current, history, historyWeight), 1.0);
     return output;
 }
 )";
@@ -827,18 +833,32 @@ float4 PSMain(VSOut input) : SV_TARGET
     hdrScene.GetDimensions(width, height);
     float2 texel = 1.0 / float2(max(width, 1u), max(height, 1u));
     float3 color = max(ResolvedColor(input.uv), 0.0);
-    // Small cross-kernel contact AO approximation from neighboring depth discontinuities.
-    float ao = 1.0;
-    const float2 offsets[4] = {
-        float2(1,0), float2(-1,0), float2(0,1), float2(0,-1)
-    };
+    // Multi-radius screen-space contact occlusion. Compare nearby depth samples
+    // against the center depth at two radii so small contacts remain visible while
+    // broad depth discontinuities do not create a dark outline around every object.
     float occlusion = 0.0;
-    [unroll] for (int i = 0; i < 4; ++i)
+    float sampleWeight = 0.0;
+    const float2 directions[8] = {
+        float2(1.0, 0.0), float2(-1.0, 0.0),
+        float2(0.0, 1.0), float2(0.0, -1.0),
+        float2(0.7071, 0.7071), float2(-0.7071, 0.7071),
+        float2(0.7071, -0.7071), float2(-0.7071, -0.7071)
+    };
+    [unroll] for (int radiusIndex = 0; radiusIndex < 2; ++radiusIndex)
     {
-        float sampleDepth = sceneDepth.SampleLevel(linearClamp, saturate(input.uv + offsets[i] * texel * 2.0), 0).r;
-        occlusion += step(0.00015, depth - sampleDepth) * saturate(1.0 - abs(depth - sampleDepth) * 85.0);
+        float radius = radiusIndex == 0 ? 1.5 : 4.0;
+        float radiusWeight = radiusIndex == 0 ? 1.0 : 0.55;
+        [unroll] for (int directionIndex = 0; directionIndex < 8; ++directionIndex)
+        {
+            float2 sampleUv = saturate(input.uv + directions[directionIndex] * texel * radius);
+            float sampleDepth = sceneDepth.SampleLevel(linearClamp, sampleUv, 0).r;
+            float nearer = max(depth - sampleDepth - 0.00012, 0.0);
+            float depthRelevance = saturate(nearer * (radiusIndex == 0 ? 150.0 : 95.0));
+            occlusion += depthRelevance * radiusWeight;
+            sampleWeight += radiusWeight;
+        }
     }
-    ao = 1.0 - saturate(occlusion * 0.25) * 0.24;
+    float ao = 1.0 - saturate(occlusion / max(sampleWeight, 0.001)) * 0.30;
     color *= ao;
     float3 bloom = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)

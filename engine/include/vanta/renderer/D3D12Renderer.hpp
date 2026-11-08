@@ -39,6 +39,8 @@ public:
                 float cameraYaw, float cameraPitch);
     [[nodiscard]] bool Render(const renderer::SceneFrame& submittedScene);
     [[nodiscard]] const std::string& LastRenderError() const noexcept { return m_lastRenderError; }
+    [[nodiscard]] bool ReadbackPresentedFrame(std::vector<std::uint8_t>& bgra,
+        UINT& width, UINT& height, std::string& error);
     [[nodiscard]] bool IsDeviceLost() const noexcept { return m_deviceLost; }
 private:
     static constexpr UINT kFrameCount = 2;

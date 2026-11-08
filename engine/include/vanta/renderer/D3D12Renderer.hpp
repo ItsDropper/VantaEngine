@@ -179,6 +179,7 @@ private:
     float m_previousCameraYaw = 0.0F;
     float m_previousCameraPitch = 0.0F;
     UINT m_frameIndex = 0;
+    UINT m_lastPresentedBackBufferIndex = 0;
     UINT64 m_nextFenceValue = 1;
     UINT m_indexCount = 0;
     std::vector<DrawChunk> m_drawChunks;

@@ -2325,6 +2325,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
     if (m_timestampFrequency != 0) m_profilePending[m_frameIndex] = true;
     // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
+    m_lastPresentedBackBufferIndex = m_frameIndex;
     const HRESULT presentResult = m_swapChain->Present(0, 0);
     const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
@@ -2378,7 +2379,9 @@ bool D3D12Renderer::ReadbackPresentedFrame(std::vector<std::uint8_t>& bgra,
         return false;
     }
 
-    const UINT backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+    // Present advances GetCurrentBackBufferIndex() to the next render target.
+    // Read the buffer that was actually submitted to Present, not the next frame's buffer.
+    const UINT backBufferIndex = m_lastPresentedBackBufferIndex;
     Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
     HRESULT hr = m_swapChain->GetBuffer(backBufferIndex, IID_PPV_ARGS(backBuffer.GetAddressOf()));
     if (FAILED(hr)) {

@@ -10,7 +10,7 @@ namespace vanta
 {
 namespace
 {
-constexpr char kSceneShader[] = R"(
+constexpr char kSceneShader[] = R"VANTA0(
 cbuffer SceneConstants : register(b0)
 {
     float4x4 viewProjection;
@@ -152,7 +152,8 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
     // plus filtering path performed eighteen reads for every shaded pixel, which
     // was disproportionately expensive on dense imported vegetation.
     float visibility = 0.0;
-    [unroll] for (int y = -1; y <= 1; ++y)
+)VANTA0"
+    R"VANTA1(    [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
             visibility += projected.z - bias <= shadowMap.SampleLevel(
                 linearClamp, float3(uv + texel * float2(x, y), cascade), 0) ? 1.0 : 0.0;
@@ -264,7 +265,8 @@ float4 PSMain(PSInput input) : SV_TARGET
         float fibreB = 0.5 + 0.5 * sin((worldXZ.x + worldXZ.y * 0.63) * 27.0 + clumpNoise * 5.0);
         float grassFibres = lerp(0.78, 1.12, fibreA * 0.62 + fibreB * 0.38);
         float3 grassAlbedo = albedo * grassVariation * lerp(0.87, 1.10, fineNoise) * grassFibres;
-        float soilCrumb = lerp(0.66, 1.22, grainNoise) * lerp(0.86, 1.12, flecks);
+)VANTA1"
+    R"VANTA2(        float soilCrumb = lerp(0.66, 1.22, grainNoise) * lerp(0.86, 1.12, flecks);
         float3 soilTint = float3(0.54, 0.40, 0.27);
         float3 soilAlbedo = albedo * soilTint * soilCrumb * lerp(0.78, 1.12, clumpNoise);
         float strata = 0.5 + 0.5 * sin((worldXZ.x * 0.83 + worldXZ.y * 0.47) +
@@ -372,7 +374,8 @@ float4 PSMain(PSInput input) : SV_TARGET
             : modelRoughnessTexture.Sample(linearWrap, float3(input.uv, input.color.a)).b;
         metallic = saturate(metallic * packedMetallic);
     }
-    float ambientOcclusion = (materialFlags & 16U) != 0U
+)VANTA2"
+    R"VANTA3(    float ambientOcclusion = (materialFlags & 16U) != 0U
         ? (submittedMaterial
             ? submittedOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r
             : modelOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r)
@@ -470,7 +473,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
     return float4(litColor, 1.0);
 }
-)";
+)VANTA3";
 
 bool CreateUploadBuffer(ID3D12Device* device, UINT64 size, Microsoft::WRL::ComPtr<ID3D12Resource>& resource)
 {

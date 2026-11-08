@@ -1734,11 +1734,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 Microsoft::WRL::ComPtr<ID3D12Resource>& resource, UINT64& capacity,
                 const void* source) {
                 if (resource.Get() == nullptr || capacity < byteCount) {
-                    UINT64 newCapacity = capacity == 0U ? 65536U : capacity;
-                    while (newCapacity < byteCount && newCapacity <= UINT_MAX / 2U)
-                        newCapacity *= 2U;
-                    if (newCapacity < byteCount || newCapacity > UINT_MAX)
-                        newCapacity = byteCount;
+                    // Power-of-two growth can nearly double large scene uploads.
+                    // Allocate the exact required size instead of wasting upload-heap memory.
+                    const UINT64 newCapacity = std::max<UINT64>(65536U, byteCount);
 
                     resource.Reset();
                     capacity = 0U;
@@ -1754,17 +1752,27 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                     description.MipLevels = 1;
                     description.SampleDesc.Count = 1;
                     description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-                    if (FAILED(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-                        &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                        IID_PPV_ARGS(resource.GetAddressOf()))))
+                    const HRESULT createResult = m_device->CreateCommittedResource(&heap,
+                        D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+                        nullptr, IID_PPV_ARGS(resource.GetAddressOf()));
+                    if (FAILED(createResult)) {
+                        m_lastRenderError = "D3D12 upload allocation failed for " +
+                            std::to_string(byteCount) + " bytes (HRESULT " +
+                            std::to_string(static_cast<unsigned long>(createResult)) + ").";
                         return false;
+                    }
                     capacity = newCapacity;
                 }
 
                 void* mapped = nullptr;
                 const D3D12_RANGE readRange{0, 0};
-                if (FAILED(resource->Map(0, &readRange, &mapped)))
+                const HRESULT mapResult = resource->Map(0, &readRange, &mapped);
+                if (FAILED(mapResult) || mapped == nullptr) {
+                    m_lastRenderError = "D3D12 upload mapping failed for " +
+                        std::to_string(byteCount) + " bytes (HRESULT " +
+                        std::to_string(static_cast<unsigned long>(mapResult)) + ").";
                     return false;
+                }
                 std::memcpy(mapped, source, static_cast<std::size_t>(byteCount));
                 const D3D12_RANGE writtenRange{0, static_cast<SIZE_T>(byteCount)};
                 resource->Unmap(0, &writtenRange);
@@ -1776,7 +1784,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 !createUploadBuffer(static_cast<UINT64>(indexBytes),
                     m_submittedIndexBuffers[m_frameIndex],
                     m_submittedIndexBufferCapacities[m_frameIndex], submittedGeometry.indices.data())) {
-                m_lastRenderError = "Direct3D 12: submitted scene upload buffer creation or mapping failed.";
+                if (m_lastRenderError.empty())
+                    m_lastRenderError = "D3D12 submitted scene upload failed (vertex bytes " +
+                        std::to_string(vertexBytes) + ", index bytes " +
+                        std::to_string(indexBytes) + ").";
                 LogError(m_lastRenderError.c_str());
                 return;
             }

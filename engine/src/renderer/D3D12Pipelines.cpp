@@ -35,10 +35,10 @@ Texture2DArray submittedNormalTexture : register(t13);
 Texture2DArray submittedRoughnessTexture : register(t14);
 Texture2DArray submittedMetallicTexture : register(t15);
 Texture2DArray submittedOcclusionTexture : register(t16);
-cbuffer InstanceConstants : register(b1) { float4x4 instanceWorld; };
+cbuffer InstanceConstants : register(b1) { float4x4 instanceWorldConstants; };
 SamplerState linearClamp : register(s0);
 SamplerState linearWrap : register(s1);
-float3 TransformInstanceNormal(float3 normal)
+float3 TransformInstanceNormal(float3 normal, float4x4 instanceWorld)
 {
     const float3x3 linearWorld = (float3x3)instanceWorld;
     const float3 cofactor0 = cross(linearWorld[1], linearWorld[2]);
@@ -47,11 +47,26 @@ float3 TransformInstanceNormal(float3 normal)
     const float determinant = dot(linearWorld[0], cofactor0);
     return normalize(float3(dot(cofactor0, normal), dot(cofactor1, normal), dot(cofactor2, normal)) / determinant);
 }
-struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
+struct VSInput
+{
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+    float4 color : COLOR;
+    float2 uv : TEXCOORD0;
+    float4 material : TEXCOORD1;
+    float4 worldRow0 : INSTANCEWORLD0;
+    float4 worldRow1 : INSTANCEWORLD1;
+    float4 worldRow2 : INSTANCEWORLD2;
+    float4 worldRow3 : INSTANCEWORLD3;
+};
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
 PSInput VSMain(VSInput input)
 {
     PSInput o;
+    const float4x4 instanceWorld = float4x4(input.worldRow0, input.worldRow1,
+        input.worldRow2, input.worldRow3);
+    const float4x4 instanceWorld = float4x4(input.worldRow0, input.worldRow1,
+        input.worldRow2, input.worldRow3);
     float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
     // Wind only affects green-dominant foliage. Trunks, buildings, rocks, and terrain
     // remain rigid. The height weight keeps grass motion subtle and tree crowns flexible.
@@ -71,7 +86,7 @@ PSInput VSMain(VSInput input)
     worldPosition.z += waveB * windStrength * windDirection.y * foliageMask * heightWeight;
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
-    o.normal = TransformInstanceNormal(input.normal);
+    o.normal = TransformInstanceNormal(input.normal, instanceWorld);
     o.color = input.color;
     o.uv = input.uv;
     o.material = input.material;
@@ -598,28 +613,16 @@ bool D3D12Renderer::CreatePipeline()
         return false;
     }
 
-    D3D12_INDIRECT_ARGUMENT_DESC submittedArguments[2]{};
-    submittedArguments[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-    submittedArguments[0].Constant.RootParameterIndex = 3;
-    submittedArguments[0].Constant.DestOffsetIn32BitValues = 0;
-    submittedArguments[0].Constant.Num32BitValuesToSet = 16;
-    submittedArguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
-    D3D12_COMMAND_SIGNATURE_DESC submittedSignature{};
-    submittedSignature.ByteStride = 84;
-    submittedSignature.NumArgumentDescs = static_cast<UINT>(std::size(submittedArguments));
-    submittedSignature.pArgumentDescs = submittedArguments;
-    if (FAILED(m_device->CreateCommandSignature(&submittedSignature, m_rootSignature.Get(),
-            IID_PPV_ARGS(m_submittedDrawCommandSignature.GetAddressOf())))) {
-        LogError("Direct3D 12: imported-scene indirect command signature creation failed.");
-        return false;
-    }
-
     const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"INSTANCEWORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();
@@ -670,8 +673,15 @@ bool D3D12Renderer::CreateShadowPipeline()
 {
     constexpr char shader[] = R"(
 cbuffer ShadowConstants : register(b0) { float4x4 lightViewProjection; float windTime; };
-cbuffer InstanceConstants : register(b1) { float4x4 instanceWorld; };
-struct VSInput { float3 position : POSITION; float4 color : COLOR; };
+struct VSInput
+{
+    float3 position : POSITION;
+    float4 color : COLOR;
+    float4 worldRow0 : INSTANCEWORLD0;
+    float4 worldRow1 : INSTANCEWORLD1;
+    float4 worldRow2 : INSTANCEWORLD2;
+    float4 worldRow3 : INSTANCEWORLD3;
+};
 float4 VSMain(VSInput input) : SV_POSITION
 {
     float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
@@ -702,7 +712,11 @@ float4 VSMain(VSInput input) : SV_POSITION
     }
     const D3D12_INPUT_ELEMENT_DESC input[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"INSTANCEWORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
+        {"INSTANCEWORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();

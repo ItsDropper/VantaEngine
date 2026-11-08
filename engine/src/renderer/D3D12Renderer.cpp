@@ -2390,7 +2390,8 @@ bool D3D12Renderer::ReadbackPresentedFrame(std::vector<std::uint8_t>& bgra,
     UINT rows = 0U;
     UINT64 rowSize = 0U;
     UINT64 totalBytes = 0U;
-    m_device->GetCopyableFootprints(&backBuffer->GetDesc(), 0U, 1U, 0U,
+    const D3D12_RESOURCE_DESC backBufferDescription = backBuffer->GetDesc();
+    m_device->GetCopyableFootprints(&backBufferDescription, 0U, 1U, 0U,
         &footprint, &rows, &rowSize, &totalBytes);
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_READBACK;

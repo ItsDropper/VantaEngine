@@ -308,9 +308,18 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 specular = d * g * f / max(4.0 * ndv * max(ndl, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
+    // Approximate clear-sky solar transmittance. The longer atmospheric path at
+    // low elevation preferentially removes blue wavelengths, warming sunrise/sunset
+    // light without applying a global color grade to materials.
+    float solarElevation = max(saturate(lighting.y), 0.015);
+    float airMass = min(1.0 / (solarElevation + 0.12 * pow(93.885 -
+        degrees(asin(solarElevation)), -1.253)), 12.0);
+    float3 solarTransmittance = exp(-float3(0.105, 0.041, 0.018) * airMass);
+    float3 atmosphericSolar = solarTransmittance * float3(5.25, 5.05, 4.72);
     float3 daylightColor = environmentSunColor.w > 0.5
         ? environmentSunColor.rgb
-        : lerp(float3(1.9, 0.62, 0.28), float3(4.2, 3.85, 3.45), smoothstep(0.02, 0.48, lighting.y));
+        : lerp(float3(1.55, 0.46, 0.18), atmosphericSolar,
+            smoothstep(0.015, 0.30, solarElevation));
     float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
     // Snow is a translucent dielectric: add restrained forward-scattering and
     // back-lit transmission only to bright, rough, non-metallic surfaces.
@@ -322,9 +331,17 @@ float4 PSMain(PSInput input) : SV_TARGET
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
         snowSubsurfaceMask * (1.0 - shadow * 0.35);
     direct += snowTransmission;
+    // Hemispherical sky irradiance: the horizon carries atmospheric haze while
+    // the upper hemisphere retains the colder blue skylight of a clear winter day.
+    float skyElevation = saturate(n.y * 0.5 + 0.5);
+    float horizonWeight = pow(1.0 - skyElevation, 2.2);
+    float3 physicallyBasedSky = lerp(float3(0.29, 0.35, 0.40),
+        float3(0.075, 0.145, 0.245), skyElevation);
+    physicallyBasedSky = lerp(physicallyBasedSky,
+        float3(0.48, 0.52, 0.54), horizonWeight * 0.24);
     float3 sky = environmentSunColor.w > 0.5
-        ? lerp(environmentAmbient.rgb * 0.18, environmentAmbient.rgb, saturate(n.y * 0.5 + 0.5))
-        : lerp(float3(0.025, 0.032, 0.055), float3(0.20, 0.30, 0.43), saturate(n.y * 0.5 + 0.5));
+        ? lerp(environmentAmbient.rgb * 0.18, environmentAmbient.rgb, skyElevation)
+        : physicallyBasedSky;
     float ambientIntensity = environmentSunColor.w > 0.5 ? environmentAmbient.w : 1.05;
     float3 ambient = sky * albedo * (1.0 - metallic) * ambientIntensity * ambientOcclusion;
     float3 reflectedSky = environmentSunColor.w > 0.5
@@ -362,8 +379,15 @@ float4 PSMain(PSInput input) : SV_TARGET
         2.0 * anisotropy * phaseCosine, 0.08), 1.5);
     float phase = (1.0 - anisotropy * anisotropy) /
         (12.5663706 * phaseDenominator);
-    float3 inScattering = daylightColor * phase * lighting.w * fog * 0.22;
-    fogColor = max(fogColor + inScattering, 0.0);
+    // Integrate a restrained single-scattering term with the solar phase function.
+    // Height-dependent extinction above already models cold-air pooling; this term
+    // adds the warm/cool directional response that makes distant forest layers recede.
+    float3 inScattering = daylightColor * phase * lighting.w * fog * 0.30;
+    float horizonHaze = saturate(1.0 - abs(viewRay.y) * 1.7);
+    float aerialPerspective = fog * horizonHaze;
+    fogColor = max(fogColor + inScattering +
+        lerp(float3(0.34, 0.41, 0.47), daylightColor * 0.055,
+            saturate(phase * 8.0)) * aerialPerspective, 0.0);
     float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
     return float4(litColor, 1.0);
 }
@@ -884,32 +908,59 @@ float4 PSMain(VSOut input) : SV_TARGET
     hdrScene.GetDimensions(width, height);
     float2 texel = 1.0 / float2(max(width, 1u), max(height, 1u));
     float3 color = max(ResolvedColor(input.uv), 0.0);
-    // Multi-radius screen-space contact occlusion. Compare nearby depth samples
-    // against the center depth at two radii so small contacts remain visible while
-    // broad depth discontinuities do not create a dark outline around every object.
-    float occlusion = 0.0;
-    float sampleWeight = 0.0;
+    // Horizon-based screen-space ambient occlusion. Reconstruct view/world
+    // positions from the depth buffer, estimate the local surface normal, then
+    // integrate the maximum horizon elevation over eight azimuths and four steps.
+    // Unlike raw depth-difference darkening this is distance/radius aware and
+    // suppresses false halos at large depth discontinuities.
+    float4 centerH = mul(inverseViewProjection,
+        float4(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depth, 1.0));
+    float3 centerPosition = centerH.xyz / max(abs(centerH.w), 1.0e-5);
+    float2 pixel = texel;
+    float depthRight = sceneDepth.SampleLevel(linearClamp, saturate(input.uv + float2(pixel.x, 0.0)), 0).r;
+    float depthDown = sceneDepth.SampleLevel(linearClamp, saturate(input.uv + float2(0.0, pixel.y)), 0).r;
+    float4 rightH = mul(inverseViewProjection,
+        float4((input.uv.x + pixel.x) * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depthRight, 1.0));
+    float4 downH = mul(inverseViewProjection,
+        float4(input.uv.x * 2.0 - 1.0, 1.0 - (input.uv.y + pixel.y) * 2.0, depthDown, 1.0));
+    float3 rightPosition = rightH.xyz / max(abs(rightH.w), 1.0e-5);
+    float3 downPosition = downH.xyz / max(abs(downH.w), 1.0e-5);
+    float3 surfaceNormal = normalize(cross(rightPosition - centerPosition,
+        downPosition - centerPosition));
+    if (dot(surfaceNormal, centerPosition) > 0.0) surfaceNormal = -surfaceNormal;
     const float2 directions[8] = {
-        float2(1.0, 0.0), float2(-1.0, 0.0),
-        float2(0.0, 1.0), float2(0.0, -1.0),
-        float2(0.7071, 0.7071), float2(-0.7071, 0.7071),
-        float2(0.7071, -0.7071), float2(-0.7071, -0.7071)
+        float2(1.0, 0.0), float2(0.7071, 0.7071),
+        float2(0.0, 1.0), float2(-0.7071, 0.7071),
+        float2(-1.0, 0.0), float2(-0.7071, -0.7071),
+        float2(0.0, -1.0), float2(0.7071, -0.7071)
     };
-    [unroll] for (int radiusIndex = 0; radiusIndex < 2; ++radiusIndex)
+    float horizonOcclusion = 0.0;
+    float horizonWeight = 0.0;
+    const float aoRadiusPixels = 14.0;
+    [unroll] for (int directionIndex = 0; directionIndex < 8; ++directionIndex)
     {
-        float radius = radiusIndex == 0 ? 1.5 : 4.0;
-        float radiusWeight = radiusIndex == 0 ? 1.0 : 0.55;
-        [unroll] for (int directionIndex = 0; directionIndex < 8; ++directionIndex)
+        float horizon = -1.0;
+        [unroll] for (int stepIndex = 1; stepIndex <= 4; ++stepIndex)
         {
-            float2 sampleUv = saturate(input.uv + directions[directionIndex] * texel * radius);
+            float stepScale = (float)stepIndex * 0.25;
+            float2 sampleUv = saturate(input.uv +
+                directions[directionIndex] * pixel * aoRadiusPixels * stepScale);
             float sampleDepth = sceneDepth.SampleLevel(linearClamp, sampleUv, 0).r;
-            float nearer = max(depth - sampleDepth - 0.00012, 0.0);
-            float depthRelevance = saturate(nearer * (radiusIndex == 0 ? 150.0 : 95.0));
-            occlusion += depthRelevance * radiusWeight;
-            sampleWeight += radiusWeight;
+            float4 sampleH = mul(inverseViewProjection,
+                float4(sampleUv.x * 2.0 - 1.0, 1.0 - sampleUv.y * 2.0, sampleDepth, 1.0));
+            float3 samplePosition = sampleH.xyz / max(abs(sampleH.w), 1.0e-5);
+            float3 delta = samplePosition - centerPosition;
+            float distanceSquared = dot(delta, delta);
+            float distanceToSample = sqrt(max(distanceSquared, 1.0e-5));
+            float elevation = dot(surfaceNormal, delta / distanceToSample);
+            float rangeFade = saturate(1.0 - distanceToSample / 2.8);
+            horizon = max(horizon, elevation * rangeFade);
         }
+        float directionalOcclusion = saturate(horizon - 0.035);
+        horizonOcclusion += directionalOcclusion * directionalOcclusion;
+        horizonWeight += 1.0;
     }
-    float ao = 1.0 - saturate(occlusion / max(sampleWeight, 0.001)) * 0.30;
+    float ao = 1.0 - saturate(horizonOcclusion / max(horizonWeight, 1.0)) * 0.62;
     color *= ao;
     float3 bloom = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)

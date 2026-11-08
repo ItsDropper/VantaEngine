@@ -2061,6 +2061,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         const D3D12_RANGE noRead{0, 0};
         void* mapped = nullptr;
         if (FAILED(submittedInstanceBuffer->Map(0, &noRead, &mapped)) || mapped == nullptr) {
+            submittedInstanceBuffer.Reset();
+            m_submittedInstanceBufferCapacities[m_frameIndex] = 0U;
             m_lastRenderError = "D3D12 imported-scene instance buffer mapping failed.";
             LogError(m_lastRenderError.c_str());
             return;

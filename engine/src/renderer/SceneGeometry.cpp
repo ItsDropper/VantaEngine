@@ -132,6 +132,8 @@ bool BuildSubmittedSceneGeometry(
             return false;
         }
 
+        range.localBoundsMin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
+        range.localBoundsMax = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
         range.firstVertex = static_cast<std::uint32_t>(output.vertices.size());
         range.vertexCount = static_cast<std::uint32_t>(draw.mesh->vertices.size());
         range.firstIndex = static_cast<std::uint32_t>(output.indices.size());
@@ -163,6 +165,13 @@ bool BuildSubmittedSceneGeometry(
                     return false;
                 }
             }
+
+            range.localBoundsMin.x = std::min(range.localBoundsMin.x, source.position.x);
+            range.localBoundsMin.y = std::min(range.localBoundsMin.y, source.position.y);
+            range.localBoundsMin.z = std::min(range.localBoundsMin.z, source.position.z);
+            range.localBoundsMax.x = std::max(range.localBoundsMax.x, source.position.x);
+            range.localBoundsMax.y = std::max(range.localBoundsMax.y, source.position.y);
+            range.localBoundsMax.z = std::max(range.localBoundsMax.z, source.position.z);
 
             SubmittedSceneVertex vertex;
             vertex.position[0] = source.position.x;

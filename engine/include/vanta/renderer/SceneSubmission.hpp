@@ -148,6 +148,7 @@ private:
         std::uint32_t generation = 1;
         bool occupied = false;
         bool visible = true;
+        std::uint32_t nextFreeIndex = InstanceHandle::kInvalidIndex;
     };
 
     [[nodiscard]] static bool IsFinite(const math::Mat4& matrix) noexcept;
@@ -164,5 +165,6 @@ private:
     std::size_t m_meshCount = 0;
     std::size_t m_materialCount = 0;
     std::size_t m_instanceCount = 0;
+    std::uint32_t m_freeInstanceHead = InstanceHandle::kInvalidIndex;
 };
 } // namespace vanta::renderer

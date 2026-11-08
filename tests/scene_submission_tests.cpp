@@ -52,7 +52,7 @@ int main()
     const InstanceHandle instance = scene.CreateInstance(mesh, material, world);
     Require(instance.IsValid() && scene.Contains(instance));
     Require(scene.MeshCount() == 1U && scene.MaterialCount() == 1U &&
-           scene.InstanceCount() == 1U);
+           scene.InstanceCount() == 1U && scene.VisibleInstanceCount() == 1U);
 
     FrameView view;
     view.cameraPosition = {0.0F, 1.0F, -5.0F};
@@ -96,8 +96,39 @@ int main()
     Require(scene.DestroyMaterial(replacementMaterial));
 
     Require(scene.SetVisible(instance, false));
+    Require(scene.VisibleInstanceCount() == 0U);
     Require(scene.BuildFrame(view).draws.empty());
     Require(scene.SetVisible(instance, true));
+    Require(scene.VisibleInstanceCount() == 1U);
+
+    // Visible indices stay dense when visibility changes and instances are destroyed.
+    // BuildFrame should only need to visit this compact visible set, not every slot.
+    SceneSubmission visibilityScene;
+    const MeshHandle visibilityMesh = visibilityScene.CreateMesh(Triangle());
+    const MaterialHandle visibilityMaterial = visibilityScene.CreateMaterial({});
+    const InstanceHandle visibleA = visibilityScene.CreateInstance(
+        visibilityMesh, visibilityMaterial, math::Mat4::Translation({1.0F, 0.0F, 0.0F}));
+    const InstanceHandle visibleB = visibilityScene.CreateInstance(
+        visibilityMesh, visibilityMaterial, math::Mat4::Translation({2.0F, 0.0F, 0.0F}));
+    const InstanceHandle visibleC = visibilityScene.CreateInstance(
+        visibilityMesh, visibilityMaterial, math::Mat4::Translation({3.0F, 0.0F, 0.0F}));
+    Require(visibleA.IsValid() && visibleB.IsValid() && visibleC.IsValid());
+    Require(visibilityScene.VisibleInstanceCount() == 3U);
+    Require(visibilityScene.SetVisible(visibleB, false));
+    Require(visibilityScene.VisibleInstanceCount() == 2U);
+    Require(visibilityScene.BuildFrame(view).draws.size() == 2U);
+    Require(visibilityScene.SetVisible(visibleA, false));
+    Require(visibilityScene.VisibleInstanceCount() == 1U);
+    Require(visibilityScene.BuildFrame(view).draws.size() == 1U);
+    Require(visibilityScene.SetVisible(visibleB, true));
+    Require(visibilityScene.VisibleInstanceCount() == 2U);
+    Require(visibilityScene.BuildFrame(view).draws.size() == 2U);
+    Require(visibilityScene.DestroyInstance(visibleC));
+    Require(visibilityScene.VisibleInstanceCount() == 1U);
+    Require(visibilityScene.BuildFrame(view).draws.size() == 1U);
+    Require(visibilityScene.DestroyInstance(visibleB));
+    Require(visibilityScene.VisibleInstanceCount() == 0U);
+    Require(visibilityScene.BuildFrame(view).draws.empty());
 
     math::Mat4 invalid = math::Mat4::Identity();
     invalid.At(0, 0) = std::numeric_limits<float>::quiet_NaN();
@@ -107,12 +138,15 @@ int main()
 
     SceneFrame retained = scene.BuildFrame(view);
     Require(scene.DestroyInstance(instance));
+    Require(scene.VisibleInstanceCount() == 0U);
     Require(!scene.Contains(instance));
     Require(!scene.DestroyInstance(instance));
     const InstanceHandle reusedInstance = scene.CreateInstance(mesh, material, world);
     Require(reusedInstance.IsValid() && reusedInstance.index == instance.index &&
             reusedInstance.generation != instance.generation);
+    Require(scene.VisibleInstanceCount() == 1U);
     Require(scene.DestroyInstance(reusedInstance));
+    Require(scene.VisibleInstanceCount() == 0U);
     Require(scene.DestroyMesh(mesh));
     Require(scene.DestroyMaterial(material));
     Require(!scene.Contains(mesh) && !scene.Contains(material));
@@ -281,7 +315,7 @@ int main()
 
     scene.Clear();
     Require(scene.MeshCount() == 0U && scene.MaterialCount() == 0U &&
-           scene.InstanceCount() == 0U);
+           scene.InstanceCount() == 0U && scene.VisibleInstanceCount() == 0U);
     Require(!scene.Contains(replacement));
     return 0;
 }

@@ -20,7 +20,7 @@ void RequireImpl(const bool condition, const int line)
     if (!condition)
     {
         std::cerr << "SceneSubmissionTests assertion failed at line "
-                  << line << '\\n';
+                  << line << std::endl;
         std::exit(EXIT_FAILURE);
     }
 }

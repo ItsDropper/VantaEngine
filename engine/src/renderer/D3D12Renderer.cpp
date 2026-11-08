@@ -752,7 +752,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     if (!CreatePipeline() || !CreateShadowPipeline() || !CreateTemporalPipeline() || !CreatePostProcessPipeline())
         return false;
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
-    LogInfo("Direct3D 12 scene renderer initialized: HDR PBR shading, three 2048px cascaded shadow maps with 3x3 PCF, ACES tone mapping, highlight bloom, depth-aware contact occlusion, procedural sky and atmospheric fog.");
+    LogInfo("Direct3D 12 scene renderer initialized: HDR PBR shading, three cascaded 3x3 PCF shadow maps, atmospheric solar transmittance, height-integrated aerial perspective, horizon-based screen-space GTAO, ACES tone mapping and highlight bloom.");
     LogInfo("Camera controls: W/A/S/D move, Q/E descend/ascend, arrow keys look, Escape exits.");
     return true;
 }

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace vanta::renderer
@@ -37,6 +38,17 @@ struct SubmittedSceneGeometry
     // Texture arrays contain unique texture sets, not one layer per draw call.
     std::vector<MaterialDescription> materialLayers;
 };
+
+struct SubmittedSceneGeometryCache
+{
+    SubmittedSceneGeometry geometry;
+    std::vector<std::pair<const MeshResource*, const MaterialResource*>> drawKey;
+    std::uint64_t revision = 0;
+};
+
+// Reuses immutable local-space geometry when only camera/instance transforms change.
+[[nodiscard]] bool BuildSubmittedSceneGeometry(
+    const SceneFrame& frame, SubmittedSceneGeometryCache& cache, std::string& error);
 
 // Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.

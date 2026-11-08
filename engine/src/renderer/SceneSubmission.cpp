@@ -226,8 +226,16 @@ InstanceHandle SceneSubmission::CreateInstance(
         return {};
 
     // SetVisible is noexcept, so reserve enough space here for every live instance
-    // before mutating slot state. The visible set can never exceed InstanceCount().
-    m_visibleInstances.reserve(m_instanceCount + 1U);
+    // before mutating slot state. Grow geometrically to avoid reallocating per spawn.
+    const std::size_t requiredVisibleCapacity = m_instanceCount + 1U;
+    if (m_visibleInstances.capacity() < requiredVisibleCapacity)
+    {
+        const std::size_t capacity = m_visibleInstances.capacity();
+        const std::size_t maxCapacity = m_visibleInstances.max_size();
+        const std::size_t doubledCapacity = capacity == 0U ? 8U :
+            (capacity > maxCapacity / 2U ? maxCapacity : capacity * 2U);
+        m_visibleInstances.reserve(std::max(requiredVisibleCapacity, doubledCapacity));
+    }
 
     std::uint32_t index = InstanceHandle::kInvalidIndex;
     if (m_freeInstanceHead != InstanceHandle::kInvalidIndex)

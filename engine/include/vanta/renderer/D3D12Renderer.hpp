@@ -109,6 +109,11 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedVertexBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndexBuffers;
+    // CPU-built imported-scene commands are consumed in one ExecuteIndirect call per pass.
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndirectBuffers;
+    std::array<void*, kFrameCount> m_mappedSubmittedIndirectBuffers{};
+    std::array<UINT64, kFrameCount> m_submittedIndirectBufferCapacities{};
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_submittedDrawCommandSignature;
     std::array<UINT64, kFrameCount> m_submittedVertexBufferCapacities{};
     std::array<UINT64, kFrameCount> m_submittedIndexBufferCapacities{};
     renderer::SubmittedSceneGeometryCache m_submittedGeometryCache;

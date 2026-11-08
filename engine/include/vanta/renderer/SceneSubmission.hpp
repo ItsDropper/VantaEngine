@@ -50,6 +50,8 @@ struct MaterialDescription
     std::filesystem::path metallicTexture;
     std::filesystem::path ambientOcclusionTexture;
     bool packedMetallicRoughness = false;
+    bool terrain = false;
+    bool snowSurface = false;
 };
 
 struct EnvironmentSettings

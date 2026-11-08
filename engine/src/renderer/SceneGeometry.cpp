@@ -105,6 +105,7 @@ bool BuildSubmittedSceneGeometry(
     meshBounds.reserve(frame.draws.size());
     materialLayerByTextureSet.reserve(frame.draws.size());
     output.draws.reserve(frame.draws.size());
+    output.batches.reserve(frame.draws.size());
 
     for (const DrawItem& draw : frame.draws)
     {

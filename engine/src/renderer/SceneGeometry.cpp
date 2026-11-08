@@ -2,12 +2,31 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace vanta::renderer
 {
 namespace
 {
+std::string MaterialTextureKey(const MaterialDescription& material)
+{
+    const std::array<const std::filesystem::path*, 5> paths = {
+        &material.baseColorTexture, &material.normalTexture, &material.roughnessTexture,
+        &material.metallicTexture, &material.ambientOcclusionTexture
+    };
+    std::string key;
+    for (const std::filesystem::path* path : paths)
+    {
+        const std::string value = path->generic_string();
+        key += std::to_string(value.size());
+        key.push_back(':');
+        key += value;
+    }
+    return key;
+}
+
 bool TransformNormal(const math::Mat4& world, const math::Vec3& normal, math::Vec3& output) noexcept
 {
     const float a = world.At(0, 0), b = world.At(0, 1), c = world.At(0, 2);
@@ -72,6 +91,9 @@ bool BuildSubmittedSceneGeometry(
     output.vertices.reserve(totalVertices);
     output.indices.reserve(totalIndices);
     output.draws.reserve(frame.draws.size());
+    output.materialLayers.reserve(frame.draws.size());
+    std::unordered_map<std::string, std::uint32_t> materialLayerByTextureSet;
+    materialLayerByTextureSet.reserve(frame.draws.size());
 
     for (const DrawItem& draw : frame.draws)
     {
@@ -81,7 +103,12 @@ bool BuildSubmittedSceneGeometry(
         range.firstIndex = static_cast<std::uint32_t>(output.indices.size());
         range.indexCount = static_cast<std::uint32_t>(draw.mesh->indices.size());
         range.material = draw.material->description;
-        const std::uint32_t materialLayer = static_cast<std::uint32_t>(output.draws.size());
+        const std::string textureSetKey = MaterialTextureKey(range.material);
+        const auto [layerIt, inserted] = materialLayerByTextureSet.emplace(
+            textureSetKey, static_cast<std::uint32_t>(output.materialLayers.size()));
+        if (inserted)
+            output.materialLayers.push_back(range.material);
+        range.materialLayer = layerIt->second;
         std::uint32_t materialFlags = 0U;
         if (!range.material.baseColorTexture.empty()) materialFlags |= 1U;
         if (!range.material.normalTexture.empty()) materialFlags |= 2U;
@@ -123,7 +150,7 @@ bool BuildSubmittedSceneGeometry(
             vertex.color[0] = range.material.baseColor.x;
             vertex.color[1] = range.material.baseColor.y;
             vertex.color[2] = range.material.baseColor.z;
-            vertex.color[3] = static_cast<float>(materialLayer);
+            vertex.color[3] = static_cast<float>(range.materialLayer);
             vertex.uv[0] = source.u;
             vertex.uv[1] = source.v;
             vertex.material[0] = range.material.roughness;

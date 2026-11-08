@@ -24,6 +24,7 @@ struct SubmittedDrawRange
     std::uint32_t vertexCount = 0;
     std::uint32_t firstIndex = 0;
     std::uint32_t indexCount = 0;
+    std::uint32_t materialLayer = 0;
     MaterialDescription material;
 };
 
@@ -32,6 +33,8 @@ struct SubmittedSceneGeometry
     std::vector<SubmittedSceneVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<SubmittedDrawRange> draws;
+    // Texture arrays contain unique texture sets, not one layer per draw call.
+    std::vector<MaterialDescription> materialLayers;
 };
 
 // Flattens a stable SceneFrame into backend-neutral, world-space vertices.

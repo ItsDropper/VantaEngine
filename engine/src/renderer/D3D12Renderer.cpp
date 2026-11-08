@@ -466,14 +466,16 @@ std::vector<std::uint8_t> ResampleTexture(const assets::CpuTexture& source, UINT
 bool D3D12Renderer::PrepareSubmittedMaterialTextures(
     const renderer::SubmittedSceneGeometry& geometry, std::string& error)
 {
-    if (geometry.draws.empty()) {
+    if (geometry.materialLayers.empty()) {
         m_submittedMaterialCacheKey.clear();
         m_submittedMaterialLayerCount = 0U;
         error.clear();
         return true;
     }
-    if (geometry.draws.size() > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) {
-        error = "Submitted scene exceeds the Direct3D 12 material texture-array layer limit.";
+    if (geometry.materialLayers.size() > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) {
+        error = "Submitted scene has " + std::to_string(geometry.materialLayers.size()) +
+            " unique material texture sets; Direct3D 12 supports at most " +
+            std::to_string(D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) + " layers per array.";
         return false;
     }
 
@@ -485,14 +487,14 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         {{255U, 255U, 255U, 255U}}
     }};
     std::array<bool, 5> usedSlots{};
-    std::string cacheKey = std::to_string(geometry.draws.size());
-    for (const renderer::SubmittedDrawRange& draw : geometry.draws) {
+    std::string cacheKey = std::to_string(geometry.materialLayers.size());
+    for (const renderer::MaterialDescription& material : geometry.materialLayers) {
         const std::array<std::filesystem::path, 5> paths = {
-            draw.material.baseColorTexture,
-            draw.material.normalTexture,
-            draw.material.roughnessTexture,
-            draw.material.metallicTexture,
-            draw.material.ambientOcclusionTexture
+            material.baseColorTexture,
+            material.normalTexture,
+            material.roughnessTexture,
+            material.metallicTexture,
+            material.ambientOcclusionTexture
         };
         for (std::size_t slot = 0; slot < paths.size(); ++slot) {
             cacheKey.push_back('|');
@@ -501,7 +503,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         }
     }
     if (cacheKey == m_submittedMaterialCacheKey &&
-        static_cast<std::size_t>(m_submittedMaterialLayerCount) == geometry.draws.size()) {
+        static_cast<std::size_t>(m_submittedMaterialLayerCount) == geometry.materialLayers.size()) {
         error.clear();
         return true;
     }
@@ -517,16 +519,16 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         if (!usedSlots[slot])
             continue;
         std::vector<assets::CpuTexture> materialMaps;
-        materialMaps.reserve(geometry.draws.size());
+        materialMaps.reserve(geometry.materialLayers.size());
         UINT textureWidth = 1U;
         UINT textureHeight = 1U;
-        for (const renderer::SubmittedDrawRange& draw : geometry.draws) {
+        for (const renderer::MaterialDescription& material : geometry.materialLayers) {
             const std::array<std::filesystem::path, 5> paths = {
-                draw.material.baseColorTexture,
-                draw.material.normalTexture,
-                draw.material.roughnessTexture,
-                draw.material.metallicTexture,
-                draw.material.ambientOcclusionTexture
+                material.baseColorTexture,
+                material.normalTexture,
+                material.roughnessTexture,
+                material.metallicTexture,
+                material.ambientOcclusionTexture
             };
             assets::CpuTexture texture;
             texture.width = 1U;
@@ -565,7 +567,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
     }
 
     m_submittedMaterialCacheKey = std::move(cacheKey);
-    m_submittedMaterialLayerCount = static_cast<UINT>(geometry.draws.size());
+    m_submittedMaterialLayerCount = static_cast<UINT>(geometry.materialLayers.size());
     error.clear();
     return true;
 }

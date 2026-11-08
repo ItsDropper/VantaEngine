@@ -152,9 +152,10 @@ int main()
     Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
     outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, -4.0F});
     Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
-    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 1.5F});
+    // D3D12 uses a zero-to-one clip-space depth range.
+    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 0.5F});
     Require(IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
-    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 2.01F});
+    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 1.5F});
     Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
 
     SceneSubmission texturedScene;

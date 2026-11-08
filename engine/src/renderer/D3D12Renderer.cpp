@@ -1704,6 +1704,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
 
     const bool hasSubmittedScene = submittedScene != nullptr;
+    const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
     D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
     D3D12_INDEX_BUFFER_VIEW submittedIndexView{};
     if (hasSubmittedScene) {
@@ -1714,7 +1715,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             LogError(geometryError.c_str());
             return;
         }
-        const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
         if (!PrepareSubmittedMaterialTextures(submittedGeometry, geometryError)) {
             m_lastRenderError = "Direct3D 12 submitted-material preparation failed: " +
                 (geometryError.empty() ? std::string("unspecified failure") : geometryError);

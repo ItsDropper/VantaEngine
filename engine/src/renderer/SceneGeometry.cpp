@@ -61,121 +61,35 @@ bool TransformNormal(const math::Mat4& world, const math::Vec3& normal, math::Ve
 }
 } // namespace
 
-bool BuildSubmittedSceneGeometry(
-    const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error)
+bool BuildSubmittedSceneGeometry(const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error)
 {
     output = {};
-    std::size_t totalVertices = 0;
-    std::size_t totalIndices = 0;
-    for (const DrawItem& draw : frame.draws)
-    {
-        if (!draw.mesh || !draw.material)
-        {
-            error = "Scene frame contains a draw with a missing mesh or material.";
-            return false;
-        }
-        if (draw.mesh->vertices.empty() || draw.mesh->indices.empty() ||
-            draw.mesh->indices.size() % 3U != 0U)
-        {
-            error = "Scene frame contains invalid indexed triangle geometry.";
-            return false;
-        }
-        if (draw.mesh->vertices.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()) - totalVertices ||
-            draw.mesh->indices.size() > std::numeric_limits<std::uint32_t>::max() - totalIndices)
-        {
-            error = "Submitted scene exceeds the 32-bit draw range limits.";
-            return false;
-        }
-        totalVertices += draw.mesh->vertices.size();
-        totalIndices += draw.mesh->indices.size();
+    struct Key { const MeshResource* mesh; const MaterialResource* material; bool operator==(const Key&) const noexcept = default; };
+    struct Hash { std::size_t operator()(const Key& k) const noexcept { auto a=std::hash<const void*>{}(k.mesh),b=std::hash<const void*>{}(k.material);return a^(b+0x9e3779b9U+(a<<6U)+(a>>2U)); } };
+    std::unordered_map<Key,std::pair<std::uint32_t,std::uint32_t>,Hash> cachedGeometry;
+    std::unordered_map<std::string,std::uint32_t> layers;
+    cachedGeometry.reserve(frame.draws.size()); layers.reserve(frame.draws.size()); output.draws.reserve(frame.draws.size());
+    for(const DrawItem& draw:frame.draws) {
+        if(!draw.mesh||!draw.material){error="Scene frame contains a draw with a missing mesh or material.";output={};return false;}
+        if(draw.mesh->vertices.empty()||draw.mesh->indices.empty()||draw.mesh->indices.size()%3U){error="Scene frame contains invalid indexed triangle geometry.";output={};return false;}
+        for(int r=0;r<4;++r)for(int c=0;c<4;++c)if(!std::isfinite(draw.world.At(r,c))){error="Submitted instance has a non-finite world transform.";output={};return false;}
+        const auto& w=draw.world;
+        const float det=w.At(0,0)*(w.At(1,1)*w.At(2,2)-w.At(1,2)*w.At(2,1))-w.At(0,1)*(w.At(1,0)*w.At(2,2)-w.At(1,2)*w.At(2,0))+w.At(0,2)*(w.At(1,0)*w.At(2,1)-w.At(1,1)*w.At(2,0));
+        if(!std::isfinite(det)||std::abs(det)<=1.0e-8F||std::abs(w.At(3,0))>1.0e-6F||std::abs(w.At(3,1))>1.0e-6F||std::abs(w.At(3,2))>1.0e-6F||std::abs(w.At(3,3)-1.0F)>1.0e-6F){error="Submitted instance has a singular or non-affine world transform.";output={};return false;}
+        SubmittedDrawRange range;range.world=w;range.material=draw.material->description;
+        const auto [layer,inserted]=layers.emplace(MaterialTextureKey(range.material),static_cast<std::uint32_t>(output.materialLayers.size()));
+        if(inserted)output.materialLayers.push_back(range.material);
+        range.materialLayer=layer->second;
+        const Key key{draw.mesh.get(),draw.material.get()};const auto cached=cachedGeometry.find(key);
+        if(cached!=cachedGeometry.end()){range.firstVertex=cached->second.first;range.vertexCount=static_cast<std::uint32_t>(draw.mesh->vertices.size());range.firstIndex=cached->second.second;range.indexCount=static_cast<std::uint32_t>(draw.mesh->indices.size());output.draws.push_back(std::move(range));continue;}
+        if(draw.mesh->vertices.size()>std::numeric_limits<std::uint32_t>::max()-output.vertices.size()||draw.mesh->indices.size()>std::numeric_limits<std::uint32_t>::max()-output.indices.size()){error="Submitted scene exceeds the 32-bit draw range limits.";output={};return false;}
+        range.firstVertex=static_cast<std::uint32_t>(output.vertices.size());range.vertexCount=static_cast<std::uint32_t>(draw.mesh->vertices.size());range.firstIndex=static_cast<std::uint32_t>(output.indices.size());range.indexCount=static_cast<std::uint32_t>(draw.mesh->indices.size());
+        std::uint32_t flags=0; if(!range.material.baseColorTexture.empty())flags|=1U;if(!range.material.normalTexture.empty())flags|=2U;if(!range.material.roughnessTexture.empty())flags|=4U;if(!range.material.metallicTexture.empty())flags|=8U;if(!range.material.ambientOcclusionTexture.empty())flags|=16U;if(range.material.packedMetallicRoughness)flags|=32U;if(flags)flags|=128U;
+        for(const assets::ModelVertex& src:draw.mesh->vertices){const float v[]={src.position.x,src.position.y,src.position.z,src.normal.x,src.normal.y,src.normal.z,src.u,src.v};for(float x:v)if(!std::isfinite(x)){error="Submitted mesh contains a non-finite vertex attribute.";output={};return false;}
+            SubmittedSceneVertex out;out.position[0]=src.position.x;out.position[1]=src.position.y;out.position[2]=src.position.z;out.normal[0]=src.normal.x;out.normal[1]=src.normal.y;out.normal[2]=src.normal.z;out.color[0]=range.material.baseColor.x;out.color[1]=range.material.baseColor.y;out.color[2]=range.material.baseColor.z;out.color[3]=static_cast<float>(range.materialLayer);out.uv[0]=src.u;out.uv[1]=src.v;out.material[0]=range.material.roughness;out.material[1]=range.material.metallic;out.material[2]=1.0F;out.material[3]=static_cast<float>(flags);output.vertices.push_back(out);}
+        for(auto index:draw.mesh->indices){if(index>=range.vertexCount){error="Submitted mesh contains an out-of-range index.";output={};return false;}output.indices.push_back(index);}
+        cachedGeometry.emplace(key,std::pair{range.firstVertex,range.firstIndex});output.draws.push_back(std::move(range));
     }
-
-    output.vertices.reserve(totalVertices);
-    output.indices.reserve(totalIndices);
-    output.draws.reserve(frame.draws.size());
-    output.materialLayers.reserve(frame.draws.size());
-    std::unordered_map<std::string, std::uint32_t> materialLayerByTextureSet;
-    materialLayerByTextureSet.reserve(frame.draws.size());
-
-    for (const DrawItem& draw : frame.draws)
-    {
-        SubmittedDrawRange range;
-        range.firstVertex = static_cast<std::uint32_t>(output.vertices.size());
-        range.vertexCount = static_cast<std::uint32_t>(draw.mesh->vertices.size());
-        range.firstIndex = static_cast<std::uint32_t>(output.indices.size());
-        range.indexCount = static_cast<std::uint32_t>(draw.mesh->indices.size());
-        range.material = draw.material->description;
-        const std::string textureSetKey = MaterialTextureKey(range.material);
-        const auto [layerIt, inserted] = materialLayerByTextureSet.emplace(
-            textureSetKey, static_cast<std::uint32_t>(output.materialLayers.size()));
-        if (inserted)
-            output.materialLayers.push_back(range.material);
-        range.materialLayer = layerIt->second;
-        std::uint32_t materialFlags = 0U;
-        if (!range.material.baseColorTexture.empty()) materialFlags |= 1U;
-        if (!range.material.normalTexture.empty()) materialFlags |= 2U;
-        if (!range.material.roughnessTexture.empty()) materialFlags |= 4U;
-        if (!range.material.metallicTexture.empty()) materialFlags |= 8U;
-        if (!range.material.ambientOcclusionTexture.empty()) materialFlags |= 16U;
-        if (range.material.packedMetallicRoughness) materialFlags |= 32U;
-        if (materialFlags != 0U) materialFlags |= 128U;
-
-        for (const assets::ModelVertex& source : draw.mesh->vertices)
-        {
-            const math::Vec4 transformed = draw.world.Transform(
-                {source.position.x, source.position.y, source.position.z, 1.0F});
-            if (!std::isfinite(transformed.x) || !std::isfinite(transformed.y) ||
-                !std::isfinite(transformed.z) || !std::isfinite(transformed.w) ||
-                std::abs(transformed.w) <= 1.0e-8F)
-            {
-                error = "Submitted vertex transform produced an invalid homogeneous position.";
-                output = {};
-                return false;
-            }
-
-            math::Vec3 normal;
-            if (!TransformNormal(draw.world, source.normal, normal))
-            {
-                error = "Submitted instance has a singular world transform or invalid normal.";
-                output = {};
-                return false;
-            }
-
-            SubmittedSceneVertex vertex;
-            const float inverseW = 1.0F / transformed.w;
-            vertex.position[0] = transformed.x * inverseW;
-            vertex.position[1] = transformed.y * inverseW;
-            vertex.position[2] = transformed.z * inverseW;
-            vertex.normal[0] = normal.x;
-            vertex.normal[1] = normal.y;
-            vertex.normal[2] = normal.z;
-            vertex.color[0] = range.material.baseColor.x;
-            vertex.color[1] = range.material.baseColor.y;
-            vertex.color[2] = range.material.baseColor.z;
-            vertex.color[3] = static_cast<float>(range.materialLayer);
-            vertex.uv[0] = source.u;
-            vertex.uv[1] = source.v;
-            vertex.material[0] = range.material.roughness;
-            vertex.material[1] = range.material.metallic;
-            vertex.material[2] = 1.0F;
-            vertex.material[3] = static_cast<float>(materialFlags);
-            output.vertices.push_back(vertex);
-        }
-
-        for (const std::uint32_t index : draw.mesh->indices)
-        {
-            if (index >= range.vertexCount)
-            {
-                error = "Submitted mesh contains an out-of-range index.";
-                output = {};
-                return false;
-            }
-            output.indices.push_back(index);
-        }
-        output.draws.push_back(std::move(range));
-    }
-
-    error.clear();
-    return true;
+    error.clear();return true;
 }
 } // namespace vanta::renderer

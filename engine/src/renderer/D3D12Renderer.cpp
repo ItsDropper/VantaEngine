@@ -1966,6 +1966,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     // Near shadows retain 2048² detail. Mid/far cascades render at 1024² to
     // cut their raster workload while retaining enough resolution at their larger ranges.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+    const Mat4 identityWorld = Mat4::Identity();
+    m_commandList->SetGraphicsRoot32BitConstants(3, 16, identityWorld.elements, 0);
     m_commandList->SetPipelineState(m_shadowPipelineState.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
@@ -2121,6 +2123,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
             for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
                 m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                     static_cast<INT>(draw.firstVertex), 0U);
             }
@@ -2161,6 +2164,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_commandList->SetDescriptorHeaps(1, sceneHeaps);
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
     m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRoot32BitConstants(3, 16, identityWorld.elements, 0);
     D3D12_VIEWPORT sceneViewport{0.0F, 0.0F, static_cast<float>(m_width), static_cast<float>(m_height), 0.0F, 1.0F};
     D3D12_RECT sceneScissor{0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height)};
     m_commandList->RSSetViewports(1, &sceneViewport);
@@ -2229,7 +2233,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
         for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-            m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
+            m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
+                m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                 static_cast<INT>(draw.firstVertex), 0U);
         }
         m_sceneDrawCallsAccumulated += submittedGeometry.draws.size();

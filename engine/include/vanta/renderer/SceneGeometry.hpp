@@ -25,6 +25,7 @@ struct SubmittedDrawRange
     std::uint32_t firstIndex = 0;
     std::uint32_t indexCount = 0;
     std::uint32_t materialLayer = 0;
+    math::Mat4 world = math::Mat4::Identity();
     MaterialDescription material;
 };
 
@@ -37,7 +38,7 @@ struct SubmittedSceneGeometry
     std::vector<MaterialDescription> materialLayers;
 };
 
-// Flattens a stable SceneFrame into backend-neutral, world-space vertices.
+// Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.
 [[nodiscard]] bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error);

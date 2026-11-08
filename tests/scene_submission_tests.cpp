@@ -77,9 +77,10 @@ int main()
     Require(geometryError.empty());
     Require(submitted.vertices.size() == 3U && submitted.indices.size() == 3U);
     Require(submitted.draws.size() == 1U);
-    Require(submitted.vertices[0].position[0] == 1.0F);
-    Require(submitted.vertices[0].position[1] == 2.0F);
-    Require(submitted.vertices[0].position[2] == 1.0F);
+    Require(submitted.vertices[0].position[0] == -1.0F);
+    Require(submitted.vertices[0].position[1] == 0.0F);
+    Require(submitted.vertices[0].position[2] == 0.0F);
+    Require(submitted.draws[0].world.At(0, 3) == 3.0F);
     Require(submitted.vertices[0].normal[1] == 1.0F);
     Require(submitted.vertices[0].color[0] == 1.0F);
     Require(submitted.vertices[0].material[0] == 0.8F);
@@ -136,8 +137,9 @@ int main()
     const SceneFrame normalFrame = normalScene.BuildFrame(view);
     SubmittedSceneGeometry normalGeometry;
     Require(BuildSubmittedSceneGeometry(normalFrame, normalGeometry, geometryError));
-    Require(std::abs(normalGeometry.vertices[0].normal[0] - 0.4472136F) < 0.0001F);
-    Require(std::abs(normalGeometry.vertices[0].normal[1] - 0.8944272F) < 0.0001F);
+    Require(std::abs(normalGeometry.vertices[0].normal[0] - 0.70710678F) < 0.0001F);
+    Require(std::abs(normalGeometry.vertices[0].normal[1] - 0.70710678F) < 0.0001F);
+    Require(normalGeometry.draws[0].world.At(0, 0) == 2.0F);
 
     SceneSubmission texturedScene;
     const MeshHandle texturedMesh = texturedScene.CreateMesh(Triangle());
@@ -160,6 +162,11 @@ int main()
     SubmittedSceneGeometry texturedGeometry;
     Require(BuildSubmittedSceneGeometry(texturedFrame, texturedGeometry, geometryError));
     Require(texturedGeometry.draws.size() == 2051U);
+    Require(texturedGeometry.vertices.size() == 3U);
+    Require(texturedGeometry.indices.size() == 3U);
+    Require(texturedGeometry.draws[0].firstVertex == texturedGeometry.draws[2050].firstVertex);
+    Require(texturedGeometry.draws[0].firstIndex == texturedGeometry.draws[2050].firstIndex);
+    Require(texturedGeometry.draws[2050].world.At(0, 3) == 2049.0F);
     Require(texturedGeometry.materialLayers.size() == 1U);
     Require(texturedGeometry.draws[0].materialLayer == 0U);
     Require(texturedGeometry.draws[2050].materialLayer == 0U);
@@ -182,7 +189,9 @@ int main()
     Require(packedOrmGeometry.draws.size() == 2052U);
     Require(packedOrmGeometry.materialLayers.size() == 2U);
     Require(packedOrmGeometry.draws.back().materialLayer == 1U);
-    const std::size_t packedFirstVertex = (packedOrmGeometry.draws.size() - 1U) * 3U;
+    Require(packedOrmGeometry.vertices.size() == 6U);
+    Require(packedOrmGeometry.indices.size() == 6U);
+    const std::size_t packedFirstVertex = 3U;
     Require(packedOrmGeometry.vertices[packedFirstVertex].material[3] == 180.0F);
     Require(packedOrmGeometry.draws.back().material.packedMetallicRoughness);
 

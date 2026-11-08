@@ -1732,7 +1732,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
             for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
                 SceneConstants constants{};
-                constants.world = Mat4::Identity();
+                constants.world = draw.world;
                 constants.lightViewProjection[0] = lightViewProjections[cascade];
                 D3D11_MAPPED_SUBRESOURCE mapped{};
                 if (FAILED(m_context->Map(m_sceneConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -1919,8 +1919,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             };
             m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(materialViews)), materialViews);
             SceneConstants constants{};
-            constants.worldViewProjection = projection * view;
-            constants.world = Mat4::Identity();
+            constants.world = draw.world;
+            constants.worldViewProjection = projection * view * draw.world;
             constants.useTexture = material.diffuse ? 1U : 0U;
             constants.cameraPosition[0] = cameraX;
             constants.cameraPosition[1] = cameraY;

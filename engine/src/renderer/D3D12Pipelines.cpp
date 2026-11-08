@@ -35,6 +35,7 @@ Texture2DArray submittedNormalTexture : register(t13);
 Texture2DArray submittedRoughnessTexture : register(t14);
 Texture2DArray submittedMetallicTexture : register(t15);
 Texture2DArray submittedOcclusionTexture : register(t16);
+cbuffer InstanceConstants : register(b1) { float4x4 instanceWorld; };
 SamplerState linearClamp : register(s0);
 SamplerState linearWrap : register(s1);
 struct VSInput { float3 position : POSITION; float3 normal : NORMAL; float4 color : COLOR; float2 uv : TEXCOORD0; float4 material : TEXCOORD1; };
@@ -42,7 +43,7 @@ struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0
 PSInput VSMain(VSInput input)
 {
     PSInput o;
-    float3 worldPosition = input.position;
+    float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
     // Wind only affects green-dominant foliage. Trunks, buildings, rocks, and terrain
     // remain rigid. The height weight keeps grass motion subtle and tree crowns flexible.
     float foliageMask = step(input.color.r * 1.28, input.color.g) *
@@ -61,7 +62,7 @@ PSInput VSMain(VSInput input)
     worldPosition.z += waveB * windStrength * windDirection.y * foliageMask * heightWeight;
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
-    o.normal = normalize(input.normal);
+    o.normal = normalize(mul((float3x3)transpose(inverse(instanceWorld)), input.normal));
     o.color = input.color;
     o.uv = input.uv;
     o.material = input.material;
@@ -403,7 +404,7 @@ bool D3D12Renderer::CreatePipeline()
     srvRanges[1].BaseShaderRegister = 12;
     srvRanges[1].RegisterSpace = 0;
     srvRanges[1].OffsetInDescriptorsFromTableStart = D3D12Renderer::kSubmittedMaterialBaseSrvIndex;
-    D3D12_ROOT_PARAMETER rootParameters[3]{};
+    D3D12_ROOT_PARAMETER rootParameters[4]{};
     rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[0].Descriptor.ShaderRegister = 0;
     rootParameters[0].Descriptor.RegisterSpace = 0;
@@ -416,6 +417,11 @@ bool D3D12Renderer::CreatePipeline()
     rootParameters[2].Descriptor.ShaderRegister = 1;
     rootParameters[2].Descriptor.RegisterSpace = 0;
     rootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    rootParameters[3].Constants.ShaderRegister = 1;
+    rootParameters[3].Constants.RegisterSpace = 0;
+    rootParameters[3].Constants.Num32BitValues = 16;
+    rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
     D3D12_STATIC_SAMPLER_DESC staticSamplers[2]{};
     staticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     staticSamplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -438,7 +444,7 @@ bool D3D12Renderer::CreatePipeline()
     staticSamplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     staticSamplers[1].ShaderRegister = 1;
     D3D12_ROOT_SIGNATURE_DESC rootDescription{};
-    rootDescription.NumParameters = 3;
+    rootDescription.NumParameters = 4;
     rootDescription.pParameters = rootParameters;
     rootDescription.NumStaticSamplers = 2;
     rootDescription.pStaticSamplers = staticSamplers;
@@ -513,10 +519,11 @@ bool D3D12Renderer::CreateShadowPipeline()
 {
     constexpr char shader[] = R"(
 cbuffer ShadowConstants : register(b0) { float4x4 lightViewProjection; float windTime; };
+cbuffer InstanceConstants : register(b1) { float4x4 instanceWorld; };
 struct VSInput { float3 position : POSITION; float4 color : COLOR; };
 float4 VSMain(VSInput input) : SV_POSITION
 {
-    float3 worldPosition = input.position;
+    float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
     float foliageMask = step(input.color.r * 1.28, input.color.g) *
                         step(input.color.b * 1.20, input.color.g) *
                         step(0.105, input.color.g);

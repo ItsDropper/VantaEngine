@@ -32,10 +32,21 @@ struct SubmittedDrawRange
     MaterialDescription material;
 };
 
+struct SubmittedSceneBatch
+{
+    std::uint32_t firstVertex = 0;
+    std::uint32_t vertexCount = 0;
+    std::uint32_t firstIndex = 0;
+    std::uint32_t indexCount = 0;
+    std::vector<std::uint32_t> drawIndices;
+};
+
 struct SubmittedSceneGeometry
 {
     std::vector<SubmittedSceneVertex> vertices;
     std::vector<std::uint32_t> indices;
+    // One batch per unique mesh/material pair; instances reference draws by stable index.
+    std::vector<SubmittedSceneBatch> batches;
     std::vector<SubmittedDrawRange> draws;
     // Texture arrays contain unique texture sets, not one layer per draw call.
     std::vector<MaterialDescription> materialLayers;

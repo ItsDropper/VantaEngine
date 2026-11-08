@@ -1703,25 +1703,26 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         return;
     }
 
-    renderer::SubmittedSceneGeometry submittedGeometry;
     const bool hasSubmittedScene = submittedScene != nullptr;
     D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
     D3D12_INDEX_BUFFER_VIEW submittedIndexView{};
     if (hasSubmittedScene) {
         std::string geometryError;
-        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, m_submittedGeometryCache, geometryError)) {
             m_lastRenderError = geometryError;
             m_lastRenderError = geometryError;
             LogError(geometryError.c_str());
             return;
         }
+        const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
         if (!PrepareSubmittedMaterialTextures(submittedGeometry, geometryError)) {
             m_lastRenderError = "Direct3D 12 submitted-material preparation failed: " +
                 (geometryError.empty() ? std::string("unspecified failure") : geometryError);
             LogError(m_lastRenderError.c_str());
             return;
         }
-        if (!submittedGeometry.vertices.empty()) {
+        if (m_submittedGeometryUploadedRevision[m_frameIndex] != m_submittedGeometryCache.revision &&
+            !submittedGeometry.vertices.empty()) {
             const std::size_t vertexBytes = submittedGeometry.vertices.size() *
                 sizeof(renderer::SubmittedSceneVertex);
             const std::size_t indexBytes = submittedGeometry.indices.size() * sizeof(std::uint32_t);
@@ -1799,6 +1800,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 m_submittedIndexBuffers[m_frameIndex]->GetGPUVirtualAddress();
             submittedIndexView.SizeInBytes = static_cast<UINT>(indexBytes);
             submittedIndexView.Format = DXGI_FORMAT_R32_UINT;
+            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
+        } else if (submittedGeometry.vertices.empty()) {
+            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
         }
     }
 

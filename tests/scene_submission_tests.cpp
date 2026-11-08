@@ -146,7 +146,15 @@ int main()
     SubmittedDrawRange outsideFrustum = normalGeometry.draws[0];
     outsideFrustum.world = math::Mat4::Translation({4.0F, 0.0F, 0.0F});
     Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
+    outsideFrustum.world = math::Mat4::Translation({1.5F, 0.0F, 0.0F});
+    Require(IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
+    outsideFrustum.world = math::Mat4::Translation({2.01F, 0.0F, 0.0F});
+    Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
     outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, -4.0F});
+    Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
+    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 1.5F});
+    Require(IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
+    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, 2.01F});
     Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
 
     SceneSubmission texturedScene;

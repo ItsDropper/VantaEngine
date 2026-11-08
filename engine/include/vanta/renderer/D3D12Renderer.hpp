@@ -3,7 +3,7 @@
 #include "vanta/math/Math.hpp"
 
 #include "vanta/renderer/AdaptiveWorldBudget.hpp"
-#include "vanta/renderer/SceneSubmission.hpp"
+#include "vanta/renderer/SceneGeometry.hpp"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -111,6 +111,8 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndexBuffers;
     std::array<UINT64, kFrameCount> m_submittedVertexBufferCapacities{};
     std::array<UINT64, kFrameCount> m_submittedIndexBufferCapacities{};
+    renderer::SubmittedSceneGeometryCache m_submittedGeometryCache;
+    std::array<std::uint64_t, kFrameCount> m_submittedGeometryUploadedRevision{};
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyDepthTextures;
     std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> m_historyColorRtvs{};

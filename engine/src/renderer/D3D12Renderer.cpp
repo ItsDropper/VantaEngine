@@ -88,9 +88,9 @@ static_assert(sizeof(GpuCullConstants) == 160);
 
 struct SubmittedInstanceData
 {
-    float worldRows[4][4]{};
+    float worldRows[3][4]{};
 };
-static_assert(sizeof(SubmittedInstanceData) == 64);
+static_assert(sizeof(SubmittedInstanceData) == 48);
 
 struct SubmittedBatchDraw
 {
@@ -102,7 +102,7 @@ struct SubmittedBatchDraw
 SubmittedInstanceData MakeSubmittedInstance(const Mat4& world) noexcept
 {
     SubmittedInstanceData instance{};
-    for (UINT row = 0; row < 4; ++row)
+    for (UINT row = 0; row < 3; ++row)
         for (UINT column = 0; column < 4; ++column)
             instance.worldRows[row][column] = world.At(static_cast<int>(row), static_cast<int>(column));
     return instance;

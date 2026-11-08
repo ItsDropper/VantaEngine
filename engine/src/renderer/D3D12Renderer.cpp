@@ -598,9 +598,9 @@ D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
-        if (m_mappedSubmittedIndirectBuffers[frame] != nullptr && m_submittedIndirectBuffers[frame]) {
-            m_submittedIndirectBuffers[frame]->Unmap(0, nullptr);
-            m_mappedSubmittedIndirectBuffers[frame] = nullptr;
+        if (m_mappedSubmittedInstanceBuffers[frame] != nullptr && m_submittedInstanceBuffers[frame]) {
+            m_submittedInstanceBuffers[frame]->Unmap(0, nullptr);
+            m_mappedSubmittedInstanceBuffers[frame] = nullptr;
         }
     }
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
@@ -1732,8 +1732,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
 
     const bool hasSubmittedScene = submittedScene != nullptr;
-    SubmittedIndirectCommand* submittedCommands = nullptr;
-    UINT64 submittedSceneIndirectOffset = 0U;
 
     const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
     D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
@@ -1844,64 +1842,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         }
     }
 
-    if (submittedScene != nullptr) {
-        if (m_submittedGeometryCache.geometry.draws.size() > std::numeric_limits<UINT>::max()) {
-            m_lastRenderError = "D3D12 imported scene exceeds the indirect command-count limit.";
-            LogError(m_lastRenderError.c_str());
-            return;
-        }
-        const UINT64 commandBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
-            sizeof(SubmittedIndirectCommand);
-        if (commandBytes > std::numeric_limits<UINT64>::max() / 2U) {
-            m_lastRenderError = "D3D12 imported-scene indirect argument size overflow.";
-            LogError(m_lastRenderError.c_str());
-            return;
-        }
-        const UINT64 requiredBytes = commandBytes * 2U;
-        submittedSceneIndirectOffset = commandBytes;
-        if (commandBytes > 0U) {
-            auto& buffer = m_submittedIndirectBuffers[m_frameIndex];
-            if (!buffer || m_submittedIndirectBufferCapacities[m_frameIndex] < requiredBytes) {
-                if (m_mappedSubmittedIndirectBuffers[m_frameIndex] != nullptr) {
-                    buffer->Unmap(0, nullptr);
-                    m_mappedSubmittedIndirectBuffers[m_frameIndex] = nullptr;
-                }
-                buffer.Reset();
-                m_submittedIndirectBufferCapacities[m_frameIndex] = 0U;
-                D3D12_HEAP_PROPERTIES heap{};
-                heap.Type = D3D12_HEAP_TYPE_UPLOAD;
-                heap.CreationNodeMask = 1;
-                heap.VisibleNodeMask = 1;
-                D3D12_RESOURCE_DESC description{};
-                description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-                description.Width = requiredBytes;
-                description.Height = 1;
-                description.DepthOrArraySize = 1;
-                description.MipLevels = 1;
-                description.SampleDesc.Count = 1;
-                description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-                const HRESULT createResult = m_device->CreateCommittedResource(&heap,
-                    D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
-                    nullptr, IID_PPV_ARGS(buffer.ReleaseAndGetAddressOf()));
-                if (FAILED(createResult)) {
-                    m_lastRenderError = "D3D12 imported-scene indirect argument allocation failed.";
-                    LogError(m_lastRenderError.c_str());
-                    return;
-                }
-                m_submittedIndirectBufferCapacities[m_frameIndex] = requiredBytes;
-                const D3D12_RANGE noRead{0, 0};
-                void* mapped = nullptr;
-                if (FAILED(buffer->Map(0, &noRead, &mapped)) || mapped == nullptr) {
-                    m_lastRenderError = "D3D12 imported-scene indirect argument mapping failed.";
-                    LogError(m_lastRenderError.c_str());
-                    return;
-                }
-                m_mappedSubmittedIndirectBuffers[m_frameIndex] = mapped;
-            }
-            submittedCommands = static_cast<SubmittedIndirectCommand*>(
-                m_mappedSubmittedIndirectBuffers[m_frameIndex]);
-        }
-    }
+
 
     // Timestamp readback is consumed only after this frame's fence completes.
     // Prefer measured GPU work; use CPU cadence only when timestamp profiling is unavailable.

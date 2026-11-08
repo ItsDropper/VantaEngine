@@ -109,6 +109,10 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_renderTargets;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedVertexBuffers;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndexBuffers;
+    // Persistently mapped, frame-local instance streams; each pass owns a disjoint region.
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedInstanceBuffers;
+    std::array<void*, kFrameCount> m_mappedSubmittedInstanceBuffers{};
+    std::array<UINT64, kFrameCount> m_submittedInstanceBufferCapacities{};
     // CPU-built imported-scene commands are consumed in one ExecuteIndirect call per pass.
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_submittedIndirectBuffers;
     std::array<void*, kFrameCount> m_mappedSubmittedIndirectBuffers{};

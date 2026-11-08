@@ -311,6 +311,16 @@ float4 PSMain(PSInput input) : SV_TARGET
         ? environmentSunColor.rgb
         : lerp(float3(1.9, 0.62, 0.28), float3(4.2, 3.85, 3.45), smoothstep(0.02, 0.48, lighting.y));
     float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
+    // Snow is a translucent dielectric: add restrained forward-scattering and
+    // back-lit transmission only to bright, rough, non-metallic surfaces.
+    float snowSubsurfaceMask = saturate((min(albedo.r, min(albedo.g, albedo.b)) - 0.70) * 5.0) *
+        saturate((roughness - 0.58) * 2.4) * (1.0 - metallic);
+    float wrappedSnowDiffuse = saturate((dot(n, l) + 0.32) / 1.32);
+    float snowBackScatter = pow(saturate(dot(-l, v)), 3.0);
+    float3 snowTransmission = albedo * daylightColor * lighting.w *
+        (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
+        snowSubsurfaceMask * (1.0 - shadow * 0.35);
+    direct += snowTransmission;
     float3 sky = environmentSunColor.w > 0.5
         ? lerp(environmentAmbient.rgb * 0.18, environmentAmbient.rgb, saturate(n.y * 0.5 + 0.5))
         : lerp(float3(0.025, 0.032, 0.055), float3(0.20, 0.30, 0.43), saturate(n.y * 0.5 + 0.5));

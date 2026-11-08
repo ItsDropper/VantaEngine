@@ -333,14 +333,38 @@ float4 PSMain(PSInput input) : SV_TARGET
         : lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25),
             saturate(reflect(-v, n).y * 0.5 + 0.5));
     ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
-    float distanceToCamera = distance(cameraPosition.xyz, input.worldPosition);
+    float3 cameraToSurface = input.worldPosition - cameraPosition.xyz;
+    float distanceToCamera = length(cameraToSurface);
+    float3 viewRay = cameraToSurface / max(distanceToCamera, 1.0e-4);
     float fogStart = environmentFogParameters.y > 0.5 ? environmentFogParameters.x : 18.0;
     float fogDensity = environmentFogParameters.y > 0.5 ? environmentFog.w : 0.018;
-    float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
+    float fogBaseHeight = environmentFogParameters.y > 0.5 ? environmentFogParameters.z : -1.5;
+    float heightFalloff = environmentFogParameters.y > 0.5 ? environmentFogParameters.w : 0.075;
+    float fogLength = max(distanceToCamera - fogStart, 0.0);
+    // Four stratified integration samples approximate the extinction integral along
+    // the camera ray. Density increases in cold air pooled between snow-covered trees.
+    float opticalDepth = 0.0;
+    [unroll] for (int sampleIndex = 0; sampleIndex < 4; ++sampleIndex)
+    {
+        float sampleDistance = fogStart + fogLength * ((sampleIndex + 0.5) * 0.25);
+        float sampleHeight = cameraPosition.y + viewRay.y * sampleDistance;
+        float localDensity = fogDensity * exp(-max(sampleHeight - fogBaseHeight, 0.0) * heightFalloff);
+        opticalDepth += localDensity * fogLength * 0.25;
+    }
+    float fog = saturate(1.0 - exp(-opticalDepth));
     float3 fogColor = environmentFogParameters.y > 0.5 ? environmentFog.rgb
         : lerp(float3(0.025, 0.032, 0.055), float3(0.56, 0.66, 0.76), saturate(lighting.w * 0.85));
-    // Preserve material colors. Channel-biased grading tints every surface.
-    float3 litColor = max(lerp(direct + ambient, fogColor * 1.05, fog), 0.0);
+    // Henyey-Greenstein forward scattering gives the low winter sun a restrained
+    // luminous shaft contribution without bleaching the scene's diffuse materials.
+    float phaseCosine = dot(-viewRay, l);
+    const float anisotropy = 0.32;
+    float phaseDenominator = pow(max(1.0 + anisotropy * anisotropy -
+        2.0 * anisotropy * phaseCosine, 0.08), 1.5);
+    float phase = (1.0 - anisotropy * anisotropy) /
+        (12.5663706 * phaseDenominator);
+    float3 inScattering = daylightColor * phase * lighting.w * fog * 0.22;
+    fogColor = max(fogColor + inScattering, 0.0);
+    float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
     return float4(litColor, 1.0);
 }
 )";

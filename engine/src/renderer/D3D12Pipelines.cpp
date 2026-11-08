@@ -57,14 +57,13 @@ struct VSInput
     float4 worldRow0 : INSTANCEWORLD0;
     float4 worldRow1 : INSTANCEWORLD1;
     float4 worldRow2 : INSTANCEWORLD2;
-    float4 worldRow3 : INSTANCEWORLD3;
 };
 struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
 PSInput VSMain(VSInput input)
 {
     PSInput o;
     const float4x4 instanceWorld = float4x4(input.worldRow0, input.worldRow1,
-        input.worldRow2, input.worldRow3);
+        input.worldRow2, float4(0.0F, 0.0F, 0.0F, 1.0F));
     float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
     // Wind only affects green-dominant foliage. Trunks, buildings, rocks, and terrain
     // remain rigid. The height weight keeps grass motion subtle and tree crowns flexible.
@@ -620,7 +619,6 @@ bool D3D12Renderer::CreatePipeline()
         {"INSTANCEWORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
         {"INSTANCEWORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
         {"INSTANCEWORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
-        {"INSTANCEWORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();

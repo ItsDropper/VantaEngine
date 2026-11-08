@@ -1506,15 +1506,15 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         lightViewProjections[cascade] = lightProjection * lightView;
     }
 
-    renderer::SubmittedSceneGeometry submittedGeometry;
     const bool hasSubmittedScene = submittedScene != nullptr;
-    std::vector<GpuModelMaterial> submittedMaterials;
     if (hasSubmittedScene) {
         std::string geometryError;
-        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, submittedGeometry, geometryError)) {
+        if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, m_submittedGeometryCache, geometryError)) {
             LogError(geometryError.c_str());
             return;
         }
+        const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
+        if (m_submittedGeometryUploadedRevision != m_submittedGeometryCache.revision) {
         const auto loadSubmittedTexture = [this](const std::filesystem::path& path, const bool srgb,
             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination) {
             if (path.empty())
@@ -1556,7 +1556,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             m_context->GenerateMips(destination.Get());
             return true;
         };
-        submittedMaterials.reserve(submittedGeometry.draws.size());
+        m_submittedMaterials.clear();
+        m_submittedMaterials.reserve(submittedGeometry.draws.size());
         for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
             GpuModelMaterial material;
             material.baseColor[0] = draw.material.baseColor.x;
@@ -1580,7 +1581,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             material.textureFlags[2] = material.metallic
                 ? (draw.material.packedMetallicRoughness ? 2U : 1U) : 0U;
             material.textureFlags[3] = material.ambientOcclusion ? 1U : 0U;
-            submittedMaterials.push_back(std::move(material));
+            m_submittedMaterials.push_back(std::move(material));
         }
         if (!submittedGeometry.vertices.empty()) {
             const std::size_t vertexBytes = submittedGeometry.vertices.size() *
@@ -1654,6 +1655,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             }
             std::memcpy(indexMapped.pData, submittedGeometry.indices.data(), indexBytes);
             m_context->Unmap(m_submittedIndexBuffer.Get(), 0);
+        }
+        m_submittedGeometryUploadedRevision = m_submittedGeometryCache.revision;
         }
     }
 
@@ -1933,7 +1936,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
         for (std::size_t drawIndex = 0; drawIndex < submittedGeometry.draws.size(); ++drawIndex) {
             const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
-            const GpuModelMaterial& material = submittedMaterials[drawIndex];
+            const GpuModelMaterial& material = m_submittedMaterials[drawIndex];
             ID3D11ShaderResourceView* materialViews[] = {
                 material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),
                 material.roughness.Get(), material.metallic.Get(), material.ambientOcclusion.Get()

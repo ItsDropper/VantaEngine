@@ -676,12 +676,11 @@ struct VSInput
     float4 worldRow0 : INSTANCEWORLD0;
     float4 worldRow1 : INSTANCEWORLD1;
     float4 worldRow2 : INSTANCEWORLD2;
-    float4 worldRow3 : INSTANCEWORLD3;
 };
 float4 VSMain(VSInput input) : SV_POSITION
 {
     const float4x4 instanceWorld = float4x4(input.worldRow0, input.worldRow1,
-        input.worldRow2, input.worldRow3);
+        input.worldRow2, float4(0.0F, 0.0F, 0.0F, 1.0F));
     float3 worldPosition = mul(instanceWorld, float4(input.position, 1.0F)).xyz;
     float foliageMask = step(input.color.r * 1.28, input.color.g) *
                         step(input.color.b * 1.20, input.color.g) *
@@ -714,7 +713,6 @@ float4 VSMain(VSInput input) : SV_POSITION
         {"INSTANCEWORLD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
         {"INSTANCEWORLD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
         {"INSTANCEWORLD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1},
-        {"INSTANCEWORLD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1}
     };
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
     pso.pRootSignature = m_rootSignature.Get();

@@ -1636,7 +1636,7 @@ void D3D12Renderer::ConsumeGpuProfile(UINT frameIndex) noexcept
     m_profileAccumulatedMs[6] += totalGpuMilliseconds;
     ++m_profileSampleCount;
     m_profilePending[frameIndex] = false;
-    if (m_profileSampleCount >= 120U) {
+    if (m_profileSampleCount >= 15U) {
         char message[420]{};
         const double divisor = static_cast<double>(m_profileSampleCount);
         std::snprintf(message, sizeof(message),

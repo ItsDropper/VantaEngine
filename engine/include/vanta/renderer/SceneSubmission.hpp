@@ -102,6 +102,8 @@ struct SceneFrame
 {
     FrameView view;
     std::vector<DrawItem> draws;
+    // Changes only when mesh/material resources are created, destroyed, or cleared.
+    std::uint64_t resourceRevision = 0;
 };
 
 // Game-owned, renderer-independent render submission. Meshes and materials are immutable
@@ -110,6 +112,8 @@ struct SceneFrame
 class SceneSubmission final
 {
 public:
+    SceneSubmission();
+
     [[nodiscard]] MeshHandle CreateMesh(MeshDescription description);
     [[nodiscard]] bool DestroyMesh(MeshHandle handle) noexcept;
     [[nodiscard]] bool Contains(MeshHandle handle) const noexcept;
@@ -172,5 +176,6 @@ private:
     std::size_t m_materialCount = 0;
     std::size_t m_instanceCount = 0;
     std::uint32_t m_freeInstanceHead = InstanceHandle::kInvalidIndex;
+    std::uint64_t m_resourceRevision = 0;
 };
 } // namespace vanta::renderer

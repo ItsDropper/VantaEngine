@@ -55,7 +55,14 @@ struct SubmittedSceneGeometry
 struct SubmittedSceneGeometryCache
 {
     SubmittedSceneGeometry geometry;
+    // Current visible draw sequence; changes do not invalidate immutable geometry.
     std::vector<std::pair<const MeshResource*, const MaterialResource*>> drawKey;
+    // Stable unique mesh/material pairs, one per geometry batch/template.
+    std::vector<std::pair<const MeshResource*, const MaterialResource*>> geometryKey;
+    std::vector<SubmittedDrawRange> geometryTemplates;
+    // Kept in the same order as geometry.materialLayers to preserve texture-array indices.
+    std::vector<std::string> materialTextureKeys;
+    std::uint64_t resourceRevision = 0;
     std::uint64_t revision = 0;
 };
 

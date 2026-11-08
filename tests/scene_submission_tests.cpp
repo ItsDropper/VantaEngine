@@ -300,6 +300,70 @@ int main()
     Require(geometryCache.geometry.batches.size() == 1U);
     Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
 
+    // Changing only the visible instance set must not rebuild immutable mesh data.
+    const InstanceHandle cachedInstanceB = cachedScene.CreateInstance(
+        cachedMesh, cachedMaterial, math::Mat4::Translation({24.0F, 0.0F, 0.0F}));
+    Require(cachedInstanceB.IsValid());
+    const SceneFrame bothCachedFrame = cachedScene.BuildFrame(view);
+    Require(bothCachedFrame.resourceRevision == cachedFrameB.resourceRevision);
+    Require(BuildSubmittedSceneGeometry(bothCachedFrame, geometryCache, geometryError));
+    const std::uint64_t visibilityCacheRevision = geometryCache.revision;
+    const auto* visibilityVertexStorage = geometryCache.geometry.vertices.data();
+    const auto* visibilityIndexStorage = geometryCache.geometry.indices.data();
+    Require(cachedScene.SetVisible(cachedInstance, false));
+    const SceneFrame oneVisibleFrame = cachedScene.BuildFrame(view);
+    Require(oneVisibleFrame.draws.size() == 1U);
+    Require(BuildSubmittedSceneGeometry(oneVisibleFrame, geometryCache, geometryError));
+    Require(geometryCache.revision == visibilityCacheRevision);
+    Require(geometryCache.geometry.vertices.data() == visibilityVertexStorage);
+    Require(geometryCache.geometry.indices.data() == visibilityIndexStorage);
+    Require(geometryCache.geometry.draws.size() == 1U);
+    Require(geometryCache.geometry.batches.size() == 1U);
+    Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
+    Require(geometryCache.geometry.batches[0].drawIndices[0] == 0U);
+    Require(geometryCache.geometry.draws[0].world.At(0, 3) == 24.0F);
+
+    Require(cachedScene.SetVisible(cachedInstance, true));
+    Require(cachedScene.SetVisible(cachedInstanceB, false));
+    const SceneFrame swappedVisibleFrame = cachedScene.BuildFrame(view);
+    Require(swappedVisibleFrame.draws.size() == 1U);
+    Require(BuildSubmittedSceneGeometry(swappedVisibleFrame, geometryCache, geometryError));
+    Require(geometryCache.revision == visibilityCacheRevision);
+    Require(geometryCache.geometry.vertices.data() == visibilityVertexStorage);
+    Require(geometryCache.geometry.indices.data() == visibilityIndexStorage);
+    Require(geometryCache.geometry.draws[0].world.At(0, 3) == 12.0F);
+
+    // Creating a mesh/material changes the resource revision and must invalidate old static data.
+    const MeshHandle addedMesh = cachedScene.CreateMesh(Triangle());
+    MaterialDescription addedMaterialDescription;
+    addedMaterialDescription.baseColor = {0.7F, 0.8F, 0.9F};
+    const MaterialHandle addedMaterial = cachedScene.CreateMaterial(addedMaterialDescription);
+    const InstanceHandle addedInstance = cachedScene.CreateInstance(
+        addedMesh, addedMaterial, math::Mat4::Translation({36.0F, 0.0F, 0.0F}));
+    Require(addedMesh.IsValid() && addedMaterial.IsValid() && addedInstance.IsValid());
+    const std::uint64_t previousResourceCacheRevision = geometryCache.revision;
+    const SceneFrame expandedResourceFrame = cachedScene.BuildFrame(view);
+    Require(BuildSubmittedSceneGeometry(expandedResourceFrame, geometryCache, geometryError));
+    Require(geometryCache.revision != previousResourceCacheRevision);
+    Require(geometryCache.geometry.vertices.size() == 6U);
+    Require(geometryCache.geometry.indices.size() == 6U);
+    Require(geometryCache.geometry.batches.size() == 2U);
+    Require(geometryCache.geometry.draws.size() == 2U);
+    Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
+    Require(geometryCache.geometry.batches[1].drawIndices.size() == 1U);
+
+    Require(cachedScene.DestroyInstance(addedInstance));
+    Require(cachedScene.DestroyMesh(addedMesh));
+    Require(cachedScene.DestroyMaterial(addedMaterial));
+    const std::uint64_t beforeDestroyCacheRevision = geometryCache.revision;
+    const SceneFrame reducedResourceFrame = cachedScene.BuildFrame(view);
+    Require(BuildSubmittedSceneGeometry(reducedResourceFrame, geometryCache, geometryError));
+    Require(geometryCache.revision != beforeDestroyCacheRevision);
+    Require(geometryCache.geometry.vertices.size() == 3U);
+    Require(geometryCache.geometry.indices.size() == 3U);
+    Require(geometryCache.geometry.batches.size() == 1U);
+    Require(geometryCache.geometry.draws.size() == 1U);
+
     MaterialDescription unresolvedTextureDescription;
     unresolvedTextureDescription.normalTexture = "textures/normal.png";
     Require(!texturedScene.CreateMaterial(unresolvedTextureDescription).IsValid());

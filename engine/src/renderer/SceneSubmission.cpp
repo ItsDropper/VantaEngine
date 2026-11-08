@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <exception>
 #include <limits>
@@ -11,6 +12,16 @@ namespace vanta::renderer
 {
 namespace
 {
+std::atomic<std::uint64_t> g_nextResourceRevision{1U};
+
+std::uint64_t NextResourceRevision() noexcept
+{
+    std::uint64_t revision = g_nextResourceRevision.fetch_add(1U, std::memory_order_relaxed);
+    if (revision == 0U)
+        revision = g_nextResourceRevision.fetch_add(1U, std::memory_order_relaxed);
+    return revision;
+}
+
 template <typename Slots>
 std::uint32_t FindFreeSlot(const Slots& slots)
 {
@@ -32,6 +43,11 @@ void AdvanceGeneration(Slot& slot) noexcept
         slot.generation = 1U;
 }
 } // namespace
+
+SceneSubmission::SceneSubmission()
+    : m_resourceRevision(NextResourceRevision())
+{
+}
 
 bool SceneSubmission::IsFinite(const math::Mat4& matrix) noexcept
 {
@@ -146,6 +162,7 @@ MeshHandle SceneSubmission::CreateMesh(MeshDescription description)
     auto& slot = m_meshes[index];
     slot.resource = std::move(resource);
     ++m_meshCount;
+    m_resourceRevision = NextResourceRevision();
     return {index, slot.generation};
 }
 
@@ -166,6 +183,7 @@ bool SceneSubmission::DestroyMesh(const MeshHandle handle) noexcept
     slot.resource.reset();
     AdvanceGeneration(slot);
     --m_meshCount;
+    m_resourceRevision = NextResourceRevision();
     return true;
 }
 
@@ -190,6 +208,7 @@ MaterialHandle SceneSubmission::CreateMaterial(MaterialDescription description)
     auto& slot = m_materials[index];
     slot.resource = std::move(resource);
     ++m_materialCount;
+    m_resourceRevision = NextResourceRevision();
     return {index, slot.generation};
 }
 
@@ -210,6 +229,7 @@ bool SceneSubmission::DestroyMaterial(const MaterialHandle handle) noexcept
     slot.resource.reset();
     AdvanceGeneration(slot);
     --m_materialCount;
+    m_resourceRevision = NextResourceRevision();
     return true;
 }
 
@@ -346,6 +366,7 @@ SceneFrame SceneSubmission::BuildFrame(const FrameView& view) const
 {
     SceneFrame frame;
     frame.view = view;
+    frame.resourceRevision = m_resourceRevision;
     if (!IsFinite(view.view) || !IsFinite(view.projection) ||
         !std::isfinite(view.cameraPosition.x) || !std::isfinite(view.cameraPosition.y) ||
         !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds))
@@ -411,5 +432,6 @@ void SceneSubmission::Clear() noexcept
     m_meshCount = 0;
     m_materialCount = 0;
     m_instanceCount = 0;
+    m_resourceRevision = NextResourceRevision();
 }
 } // namespace vanta::renderer

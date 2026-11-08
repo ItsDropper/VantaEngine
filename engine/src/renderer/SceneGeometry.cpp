@@ -13,6 +13,25 @@ namespace vanta::renderer
 {
 namespace
 {
+bool IsValidSubmittedWorldTransform(const math::Mat4& world) noexcept
+{
+    for (const float value : world.elements)
+    {
+        if (!std::isfinite(value))
+            return false;
+    }
+    const float a = world.At(0, 0), b = world.At(0, 1), c = world.At(0, 2);
+    const float d = world.At(1, 0), e = world.At(1, 1), f = world.At(1, 2);
+    const float g = world.At(2, 0), h = world.At(2, 1), i = world.At(2, 2);
+    const float determinant = a * (e * i - f * h) - b * (d * i - f * g) +
+        c * (d * h - e * g);
+    return std::isfinite(determinant) && std::abs(determinant) > 1.0e-8F &&
+        std::abs(world.At(3, 0)) <= 1.0e-6F &&
+        std::abs(world.At(3, 1)) <= 1.0e-6F &&
+        std::abs(world.At(3, 2)) <= 1.0e-6F &&
+        std::abs(world.At(3, 3) - 1.0F) <= 1.0e-6F;
+}
+
 std::string MaterialTextureKey(const MaterialDescription& material)
 {
     const std::array<const std::filesystem::path*, 5> paths = {
@@ -292,36 +311,49 @@ bool BuildSubmittedSceneGeometry(
 bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometryCache& cache, std::string& error)
 {
-    std::vector<std::pair<const MeshResource*, const MaterialResource*>> key;
-    key.reserve(frame.draws.size());
-    for (const DrawItem& draw : frame.draws) {
-        if (!draw.mesh || !draw.material) {
+    using GeometryKey = std::pair<const MeshResource*, const MaterialResource*>;
+    struct GeometryKeyHash
+    {
+        std::size_t operator()(const GeometryKey& key) const noexcept
+        {
+            const std::size_t meshHash = std::hash<const void*>{}(key.first);
+            const std::size_t materialHash = std::hash<const void*>{}(key.second);
+            return meshHash ^ (materialHash + 0x9e3779b9U + (meshHash << 6U) + (meshHash >> 2U));
+        }
+    };
+
+    const bool resourceGenerationChanged = cache.resourceRevision != frame.resourceRevision;
+    if (resourceGenerationChanged)
+    {
+        cache.geometry = {};
+        cache.drawKey.clear();
+        cache.geometryKey.clear();
+        cache.geometryTemplates.clear();
+        cache.materialTextureKeys.clear();
+        cache.resourceRevision = frame.resourceRevision;
+    }
+
+    std::vector<GeometryKey> drawKey;
+    drawKey.reserve(frame.draws.size());
+    for (const DrawItem& draw : frame.draws)
+    {
+        if (!draw.mesh || !draw.material)
+        {
             error = "Scene frame contains a draw with a missing mesh or material.";
             return false;
         }
-        key.emplace_back(draw.mesh.get(), draw.material.get());
+        drawKey.emplace_back(draw.mesh.get(), draw.material.get());
     }
 
-    if (key == cache.drawKey && cache.geometry.draws.size() == frame.draws.size()) {
-        for (std::size_t index = 0; index < frame.draws.size(); ++index) {
+    if (!resourceGenerationChanged && drawKey == cache.drawKey &&
+        cache.geometry.draws.size() == frame.draws.size())
+    {
+        for (std::size_t index = 0; index < frame.draws.size(); ++index)
+        {
             const math::Mat4& world = frame.draws[index].world;
-            for (const float value : world.elements) {
-                if (!std::isfinite(value)) {
-                    error = "Submitted instance has a non-finite world transform.";
-                    return false;
-                }
-            }
-            const float a = world.At(0, 0), b = world.At(0, 1), c = world.At(0, 2);
-            const float d = world.At(1, 0), e = world.At(1, 1), f = world.At(1, 2);
-            const float g = world.At(2, 0), h = world.At(2, 1), i = world.At(2, 2);
-            const float determinant = a * (e * i - f * h) - b * (d * i - f * g) +
-                c * (d * h - e * g);
-            if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-8F ||
-                std::abs(world.At(3, 0)) > 1.0e-6F ||
-                std::abs(world.At(3, 1)) > 1.0e-6F ||
-                std::abs(world.At(3, 2)) > 1.0e-6F ||
-                std::abs(world.At(3, 3) - 1.0F) > 1.0e-6F) {
-                error = "Submitted instance has a singular or non-affine world transform.";
+            if (!IsValidSubmittedWorldTransform(world))
+            {
+                error = "Submitted instance has a singular, non-finite, or non-affine world transform.";
                 return false;
             }
             cache.geometry.draws[index].world = world;
@@ -330,12 +362,159 @@ bool BuildSubmittedSceneGeometry(
         return true;
     }
 
-    if (!BuildSubmittedSceneGeometry(frame, cache.geometry, error))
+    if (frame.draws.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        error = "Submitted scene exceeds the 32-bit draw range limits.";
         return false;
-    cache.drawKey = std::move(key);
-    ++cache.revision;
-    if (cache.revision == 0U)
+    }
+    for (const DrawItem& draw : frame.draws)
+    {
+        if (!IsValidSubmittedWorldTransform(draw.world))
+        {
+            error = "Submitted instance has a singular, non-finite, or non-affine world transform.";
+            return false;
+        }
+    }
+
+    const std::size_t pendingReserve = std::min<std::size_t>(frame.draws.size(), 128U);
+    std::unordered_map<GeometryKey, std::uint32_t, GeometryKeyHash> geometryIndexByKey;
+    geometryIndexByKey.reserve(cache.geometryKey.size() + pendingReserve);
+    for (std::size_t index = 0; index < cache.geometryKey.size(); ++index)
+        geometryIndexByKey.emplace(cache.geometryKey[index], static_cast<std::uint32_t>(index));
+
+    struct PendingGeometry
+    {
+        GeometryKey key{};
+        SubmittedSceneGeometry geometry;
+    };
+    std::vector<PendingGeometry> pendingGeometry;
+    pendingGeometry.reserve(pendingReserve);
+    std::unordered_map<GeometryKey, std::size_t, GeometryKeyHash> pendingIndexByKey;
+    pendingIndexByKey.reserve(pendingReserve);
+
+    for (const DrawItem& draw : frame.draws)
+    {
+        const GeometryKey key{draw.mesh.get(), draw.material.get()};
+        if (geometryIndexByKey.contains(key) || pendingIndexByKey.contains(key))
+            continue;
+
+        SceneFrame singleDrawFrame;
+        singleDrawFrame.view = frame.view;
+        singleDrawFrame.resourceRevision = frame.resourceRevision;
+        singleDrawFrame.draws.push_back(draw);
+        SubmittedSceneGeometry singleDrawGeometry;
+        if (!BuildSubmittedSceneGeometry(singleDrawFrame, singleDrawGeometry, error))
+            return false;
+        if (singleDrawGeometry.draws.size() != 1U || singleDrawGeometry.batches.size() != 1U ||
+            singleDrawGeometry.materialLayers.size() != 1U)
+        {
+            error = "Single submitted geometry cache entry did not produce exactly one draw, batch, and material layer.";
+            return false;
+        }
+        pendingIndexByKey.emplace(key, pendingGeometry.size());
+        pendingGeometry.push_back({key, std::move(singleDrawGeometry)});
+    }
+
+    std::uint64_t totalVertexCount = cache.geometry.vertices.size();
+    std::uint64_t totalIndexCount = cache.geometry.indices.size();
+    for (const PendingGeometry& pending : pendingGeometry)
+    {
+        if (pending.geometry.vertices.size() > std::numeric_limits<std::uint32_t>::max() - totalVertexCount ||
+            pending.geometry.indices.size() > std::numeric_limits<std::uint32_t>::max() - totalIndexCount)
+        {
+            error = "Submitted scene exceeds the 32-bit draw range limits.";
+            return false;
+        }
+        totalVertexCount += pending.geometry.vertices.size();
+        totalIndexCount += pending.geometry.indices.size();
+    }
+
+    std::unordered_map<std::string, std::uint32_t> materialLayerByTextureKey;
+    materialLayerByTextureKey.reserve(cache.materialTextureKeys.size() + pendingReserve);
+    for (std::size_t index = 0; index < cache.materialTextureKeys.size(); ++index)
+        materialLayerByTextureKey.emplace(cache.materialTextureKeys[index], static_cast<std::uint32_t>(index));
+
+    for (PendingGeometry& pending : pendingGeometry)
+    {
+        const SubmittedDrawRange& sourceRange = pending.geometry.draws.front();
+        const std::string textureKey = MaterialTextureKey(sourceRange.material);
+        auto layer = materialLayerByTextureKey.find(textureKey);
+        std::uint32_t materialLayer = 0U;
+        if (layer == materialLayerByTextureKey.end())
+        {
+            if (cache.geometry.materialLayers.size() >= std::numeric_limits<std::uint32_t>::max())
+            {
+                error = "Submitted scene exceeds the 32-bit material layer limit.";
+                return false;
+            }
+            materialLayer = static_cast<std::uint32_t>(cache.geometry.materialLayers.size());
+            cache.geometry.materialLayers.push_back(sourceRange.material);
+            cache.materialTextureKeys.push_back(textureKey);
+            materialLayerByTextureKey.emplace(textureKey, materialLayer);
+        }
+        else
+        {
+            materialLayer = layer->second;
+        }
+
+        const std::uint32_t firstVertex = static_cast<std::uint32_t>(cache.geometry.vertices.size());
+        const std::uint32_t firstIndex = static_cast<std::uint32_t>(cache.geometry.indices.size());
+        for (SubmittedSceneVertex vertex : pending.geometry.vertices)
+        {
+            vertex.color[3] = static_cast<float>(materialLayer);
+            cache.geometry.vertices.push_back(vertex);
+        }
+        cache.geometry.indices.insert(cache.geometry.indices.end(),
+            pending.geometry.indices.begin(), pending.geometry.indices.end());
+
+        SubmittedDrawRange geometryTemplate = sourceRange;
+        geometryTemplate.firstVertex = firstVertex;
+        geometryTemplate.firstIndex = firstIndex;
+        geometryTemplate.materialLayer = materialLayer;
+        geometryTemplate.world = math::Mat4::Identity();
+        SubmittedSceneBatch batch;
+        batch.firstVertex = firstVertex;
+        batch.vertexCount = geometryTemplate.vertexCount;
+        batch.firstIndex = firstIndex;
+        batch.indexCount = geometryTemplate.indexCount;
+        const std::uint32_t batchIndex = static_cast<std::uint32_t>(cache.geometry.batches.size());
+        cache.geometry.batches.push_back(std::move(batch));
+        cache.geometryKey.push_back(pending.key);
+        cache.geometryTemplates.push_back(std::move(geometryTemplate));
+        geometryIndexByKey.emplace(pending.key, batchIndex);
+    }
+
+    for (SubmittedSceneBatch& batch : cache.geometry.batches)
+        batch.drawIndices.clear();
+    cache.geometry.draws.clear();
+    cache.geometry.draws.reserve(frame.draws.size());
+
+    for (std::size_t index = 0; index < frame.draws.size(); ++index)
+    {
+        const DrawItem& draw = frame.draws[index];
+        const GeometryKey key{draw.mesh.get(), draw.material.get()};
+        const auto geometry = geometryIndexByKey.find(key);
+        if (geometry == geometryIndexByKey.end())
+        {
+            error = "Submitted scene cache lost a mesh/material geometry entry.";
+            return false;
+        }
+        const std::uint32_t batchIndex = geometry->second;
+        SubmittedDrawRange range = cache.geometryTemplates[batchIndex];
+        range.world = draw.world;
+        const std::uint32_t drawIndex = static_cast<std::uint32_t>(cache.geometry.draws.size());
+        cache.geometry.draws.push_back(std::move(range));
+        cache.geometry.batches[batchIndex].drawIndices.push_back(drawIndex);
+    }
+
+    cache.drawKey = std::move(drawKey);
+    if (resourceGenerationChanged || !pendingGeometry.empty())
+    {
         ++cache.revision;
+        if (cache.revision == 0U)
+            ++cache.revision;
+    }
+    error.clear();
     return true;
 }
 } // namespace vanta::renderer

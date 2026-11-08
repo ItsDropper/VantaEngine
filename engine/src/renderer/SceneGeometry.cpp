@@ -144,7 +144,9 @@ bool BuildSubmittedSceneGeometry(
         if (!range.material.metallicTexture.empty()) materialFlags |= 8U;
         if (!range.material.ambientOcclusionTexture.empty()) materialFlags |= 16U;
         if (range.material.packedMetallicRoughness) materialFlags |= 32U;
+        if (range.material.terrain) materialFlags |= 64U;
         if (materialFlags != 0U) materialFlags |= 128U;
+        if (range.material.snowSurface) materialFlags |= 256U;
 
         for (const assets::ModelVertex& source : draw.mesh->vertices)
         {

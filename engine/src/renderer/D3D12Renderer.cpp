@@ -1982,6 +1982,97 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.environmentSunColor[1] = environment.sunColor.y;
     temporalConstants.environmentSunColor[2] = environment.sunColor.z;
     temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
+    std::vector<SubmittedInstanceData> shadowInstances;
+    std::vector<SubmittedInstanceData> sceneInstances;
+    std::vector<SubmittedBatchDraw> shadowBatchDraws;
+    std::vector<SubmittedBatchDraw> sceneBatchDraws;
+    const SubmittedInstanceData identityInstance = MakeSubmittedInstance(Mat4::Identity());
+    shadowInstances.push_back(identityInstance);
+    sceneInstances.push_back(identityInstance);
+    if (hasSubmittedScene) {
+        shadowInstances.reserve(submittedGeometry.draws.size() + 1U);
+        sceneInstances.reserve(submittedGeometry.draws.size() + 1U);
+        shadowBatchDraws.reserve(submittedGeometry.batches.size());
+        sceneBatchDraws.reserve(submittedGeometry.batches.size());
+        for (UINT batchIndex = 0; batchIndex < submittedGeometry.batches.size(); ++batchIndex) {
+            const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[batchIndex];
+            const UINT shadowFirstInstance = static_cast<UINT>(shadowInstances.size());
+            for (const std::uint32_t drawIndex : batch.drawIndices) {
+                const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
+                if (renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[0]))
+                    shadowInstances.push_back(MakeSubmittedInstance(draw.world));
+            }
+            const UINT shadowInstanceCount = static_cast<UINT>(shadowInstances.size()) - shadowFirstInstance;
+            if (shadowInstanceCount != 0U)
+                shadowBatchDraws.push_back({batchIndex, shadowFirstInstance, shadowInstanceCount});
+
+            const UINT sceneFirstInstance = static_cast<UINT>(sceneInstances.size());
+            for (const std::uint32_t drawIndex : batch.drawIndices) {
+                const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
+                if (renderer::IsSubmittedDrawVisible(draw, constants.viewProjection))
+                    sceneInstances.push_back(MakeSubmittedInstance(draw.world));
+            }
+            const UINT sceneInstanceCount = static_cast<UINT>(sceneInstances.size()) - sceneFirstInstance;
+            if (sceneInstanceCount != 0U)
+                sceneBatchDraws.push_back({batchIndex,
+                    static_cast<UINT>(shadowInstances.size()) + sceneFirstInstance, sceneInstanceCount});
+        }
+    }
+    const UINT64 shadowInstanceBytes = static_cast<UINT64>(shadowInstances.size()) * sizeof(SubmittedInstanceData);
+    const UINT64 sceneInstanceBytes = static_cast<UINT64>(sceneInstances.size()) * sizeof(SubmittedInstanceData);
+    if (shadowInstanceBytes > std::numeric_limits<UINT64>::max() - sceneInstanceBytes ||
+        shadowInstanceBytes + sceneInstanceBytes > UINT_MAX) {
+        m_lastRenderError = "D3D12 imported-scene instance stream exceeds the vertex-buffer view limit.";
+        LogError(m_lastRenderError.c_str());
+        return;
+    }
+    const UINT64 submittedInstanceBytes = shadowInstanceBytes + sceneInstanceBytes;
+    auto& submittedInstanceBuffer = m_submittedInstanceBuffers[m_frameIndex];
+    if (!submittedInstanceBuffer || m_submittedInstanceBufferCapacities[m_frameIndex] < submittedInstanceBytes) {
+        if (m_mappedSubmittedInstanceBuffers[m_frameIndex] != nullptr) {
+            submittedInstanceBuffer->Unmap(0, nullptr);
+            m_mappedSubmittedInstanceBuffers[m_frameIndex] = nullptr;
+        }
+        submittedInstanceBuffer.Reset();
+        m_submittedInstanceBufferCapacities[m_frameIndex] = 0U;
+        D3D12_HEAP_PROPERTIES heap{};
+        heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+        heap.CreationNodeMask = 1;
+        heap.VisibleNodeMask = 1;
+        D3D12_RESOURCE_DESC description{};
+        description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        description.Width = std::max<UINT64>(65536U, submittedInstanceBytes);
+        description.Height = 1;
+        description.DepthOrArraySize = 1;
+        description.MipLevels = 1;
+        description.SampleDesc.Count = 1;
+        description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        const HRESULT createResult = m_device->CreateCommittedResource(&heap,
+            D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, IID_PPV_ARGS(submittedInstanceBuffer.ReleaseAndGetAddressOf()));
+        if (FAILED(createResult)) {
+            m_lastRenderError = "D3D12 imported-scene instance buffer allocation failed.";
+            LogError(m_lastRenderError.c_str());
+            return;
+        }
+        m_submittedInstanceBufferCapacities[m_frameIndex] = description.Width;
+        const D3D12_RANGE noRead{0, 0};
+        void* mapped = nullptr;
+        if (FAILED(submittedInstanceBuffer->Map(0, &noRead, &mapped)) || mapped == nullptr) {
+            m_lastRenderError = "D3D12 imported-scene instance buffer mapping failed.";
+            LogError(m_lastRenderError.c_str());
+            return;
+        }
+        m_mappedSubmittedInstanceBuffers[m_frameIndex] = mapped;
+    }
+    auto* mappedInstances = static_cast<SubmittedInstanceData*>(m_mappedSubmittedInstanceBuffers[m_frameIndex]);
+    std::memcpy(mappedInstances, shadowInstances.data(), static_cast<std::size_t>(shadowInstanceBytes));
+    std::memcpy(reinterpret_cast<unsigned char*>(mappedInstances) + shadowInstanceBytes,
+        sceneInstances.data(), static_cast<std::size_t>(sceneInstanceBytes));
+    D3D12_VERTEX_BUFFER_VIEW submittedInstanceView{};
+    submittedInstanceView.BufferLocation = submittedInstanceBuffer->GetGPUVirtualAddress();
+    submittedInstanceView.SizeInBytes = static_cast<UINT>(submittedInstanceBytes);
+    submittedInstanceView.StrideInBytes = sizeof(SubmittedInstanceData);
     std::memcpy(m_mappedTemporalConstants[m_frameIndex], &temporalConstants, sizeof(temporalConstants));
     std::memcpy(m_mappedConstants[m_frameIndex], &constants, sizeof(constants));
     for (UINT cascade = 0; cascade < 3; ++cascade) {

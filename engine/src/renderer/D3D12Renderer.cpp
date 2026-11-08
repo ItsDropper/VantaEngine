@@ -2189,6 +2189,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             static_cast<UINT64>(stream) * sizeof(UINT) * 3U, counter.Get(), 0, sizeof(UINT) * 3U);
     };
     for (UINT cascade = 0; cascade < 3; ++cascade) {
+        // Imported batches change slot 1; restore the identity instance for procedural
+        // chunks at the beginning of every cascade.
+        m_commandList->IASetVertexBuffers(0, 2, worldVertexViews);
         const UINT cascadeResolution = cascade == 0 ? kShadowResolution : kShadowResolution / 2U;
         const float cascadeResolutionF = static_cast<float>(cascadeResolution);
         const D3D12_VIEWPORT shadowViewport{0.0F, 0.0F, cascadeResolutionF, cascadeResolutionF, 0.0F, 1.0F};

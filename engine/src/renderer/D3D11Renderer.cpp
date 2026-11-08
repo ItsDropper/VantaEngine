@@ -1254,10 +1254,11 @@ bool D3D11Renderer::CreatePipeline()
     }
 
     D3D11_SAMPLER_DESC samplerDescription{};
-    samplerDescription.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    samplerDescription.Filter = D3D11_FILTER_ANISOTROPIC;
     samplerDescription.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
     samplerDescription.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
     samplerDescription.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    samplerDescription.MaxAnisotropy = 16U;
     samplerDescription.MaxLOD = D3D11_FLOAT32_MAX;
     if (FAILED(m_device->CreateSamplerState(&samplerDescription, m_textureSampler.GetAddressOf()))) {
         LogError("Could not create the material texture sampler.");

@@ -195,6 +195,45 @@ int main()
     Require(packedOrmGeometry.vertices[packedFirstVertex].material[3] == 180.0F);
     Require(packedOrmGeometry.draws.back().material.packedMetallicRoughness);
 
+    MaterialDescription snowTerrainDescription;
+    snowTerrainDescription.baseColorTexture = textureRoot / "snow-albedo.png";
+    snowTerrainDescription.normalTexture = textureRoot / "snow-normal.png";
+    snowTerrainDescription.terrain = true;
+    snowTerrainDescription.snowSurface = true;
+    const MaterialHandle snowTerrainMaterial = texturedScene.CreateMaterial(snowTerrainDescription);
+    Require(snowTerrainMaterial.IsValid());
+    Require(texturedScene.CreateInstance(texturedMesh, snowTerrainMaterial,
+        math::Mat4::Identity()).IsValid());
+    const SceneFrame snowTerrainFrame = texturedScene.BuildFrame(view);
+    SubmittedSceneGeometry snowTerrainGeometry;
+    Require(BuildSubmittedSceneGeometry(snowTerrainFrame, snowTerrainGeometry, geometryError));
+    const auto snowTerrainFlags = static_cast<std::uint32_t>(
+        snowTerrainGeometry.vertices.back().material[3]);
+    Require((snowTerrainFlags & 64U) != 0U);
+    Require((snowTerrainFlags & 128U) != 0U);
+    Require((snowTerrainFlags & 256U) != 0U);
+
+    SceneSubmission cachedScene;
+    const MeshHandle cachedMesh = cachedScene.CreateMesh(Triangle());
+    const MaterialHandle cachedMaterial = cachedScene.CreateMaterial({});
+    const InstanceHandle cachedInstance = cachedScene.CreateInstance(
+        cachedMesh, cachedMaterial, math::Mat4::Identity());
+    Require(cachedInstance.IsValid());
+    SubmittedSceneGeometryCache geometryCache;
+    const SceneFrame cachedFrameA = cachedScene.BuildFrame(view);
+    Require(BuildSubmittedSceneGeometry(cachedFrameA, geometryCache, geometryError));
+    const std::uint64_t cachedRevision = geometryCache.revision;
+    const auto* cachedVertexStorage = geometryCache.geometry.vertices.data();
+    const math::Mat4 movedTransform = math::Mat4::Translation({12.0F, 3.0F, -7.0F});
+    Require(cachedScene.SetTransform(cachedInstance, movedTransform));
+    const SceneFrame cachedFrameB = cachedScene.BuildFrame(view);
+    Require(BuildSubmittedSceneGeometry(cachedFrameB, geometryCache, geometryError));
+    Require(geometryCache.revision == cachedRevision);
+    Require(geometryCache.geometry.vertices.data() == cachedVertexStorage);
+    Require(geometryCache.geometry.draws[0].world.At(0, 3) == 12.0F);
+    Require(geometryCache.geometry.draws[0].world.At(1, 3) == 3.0F);
+    Require(geometryCache.geometry.draws[0].world.At(2, 3) == -7.0F);
+
     MaterialDescription unresolvedTextureDescription;
     unresolvedTextureDescription.normalTexture = "textures/normal.png";
     Require(!texturedScene.CreateMaterial(unresolvedTextureDescription).IsValid());

@@ -246,6 +246,8 @@ InstanceHandle SceneSubmission::CreateInstance(
     slot.world = world;
     slot.visible = true;
     slot.occupied = true;
+    slot.visiblePosition = static_cast<std::uint32_t>(m_visibleInstances.size());
+    m_visibleInstances.push_back(index);
     ++m_instanceCount;
     return {static_cast<std::uint32_t>(index), slot.generation};
 }
@@ -255,8 +257,17 @@ bool SceneSubmission::DestroyInstance(const InstanceHandle handle) noexcept
     InstanceSlot* slot = Find(handle);
     if (slot == nullptr)
         return false;
+    if (slot->visible)
+    {
+        const std::uint32_t position = slot->visiblePosition;
+        const std::uint32_t lastIndex = m_visibleInstances.back();
+        m_visibleInstances[position] = lastIndex;
+        m_instances[lastIndex].visiblePosition = position;
+        m_visibleInstances.pop_back();
+    }
     slot->occupied = false;
     slot->visible = false;
+    slot->visiblePosition = InstanceHandle::kInvalidIndex;
     slot->mesh = {};
     slot->material = {};
     slot->world = math::Mat4::Identity();
@@ -293,7 +304,24 @@ bool SceneSubmission::SetVisible(const InstanceHandle handle, const bool visible
     InstanceSlot* slot = Find(handle);
     if (slot == nullptr)
         return false;
-    slot->visible = visible;
+    if (slot->visible == visible)
+        return true;
+
+    if (visible)
+    {
+        slot->visiblePosition = static_cast<std::uint32_t>(m_visibleInstances.size());
+        m_visibleInstances.push_back(handle.index);
+        slot->visible = true;
+        return true;
+    }
+
+    const std::uint32_t position = slot->visiblePosition;
+    const std::uint32_t lastIndex = m_visibleInstances.back();
+    m_visibleInstances[position] = lastIndex;
+    m_instances[lastIndex].visiblePosition = position;
+    m_visibleInstances.pop_back();
+    slot->visible = false;
+    slot->visiblePosition = InstanceHandle::kInvalidIndex;
     return true;
 }
 
@@ -311,9 +339,10 @@ SceneFrame SceneSubmission::BuildFrame(const FrameView& view) const
         !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds))
         return frame;
 
-    frame.draws.reserve(m_instanceCount);
-    for (const InstanceSlot& instance : m_instances)
+    frame.draws.reserve(m_visibleInstances.size());
+    for (const std::uint32_t instanceIndex : m_visibleInstances)
     {
+        const InstanceSlot& instance = m_instances[instanceIndex];
         if (!instance.occupied || !instance.visible)
             continue;
         const auto* meshSlot = instance.mesh.index < m_meshes.size()
@@ -350,6 +379,7 @@ void SceneSubmission::Clear() noexcept
         }
     }
     m_freeInstanceHead = InstanceHandle::kInvalidIndex;
+    m_visibleInstances.clear();
     for (std::size_t index = 0; index < m_instances.size(); ++index)
     {
         auto& slot = m_instances[index];
@@ -357,6 +387,7 @@ void SceneSubmission::Clear() noexcept
         {
             slot.occupied = false;
             slot.visible = false;
+            slot.visiblePosition = InstanceHandle::kInvalidIndex;
             slot.mesh = {};
             slot.material = {};
             slot.world = math::Mat4::Identity();

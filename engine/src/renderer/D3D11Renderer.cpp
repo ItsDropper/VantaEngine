@@ -1507,13 +1507,13 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
     }
 
     const bool hasSubmittedScene = submittedScene != nullptr;
+    const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, m_submittedGeometryCache, geometryError)) {
             LogError(geometryError.c_str());
             return;
         }
-        const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
         if (m_submittedGeometryUploadedRevision != m_submittedGeometryCache.revision) {
         const auto loadSubmittedTexture = [this](const std::filesystem::path& path, const bool srgb,
             Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& destination) {

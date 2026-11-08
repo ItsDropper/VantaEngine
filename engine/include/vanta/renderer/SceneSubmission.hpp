@@ -133,6 +133,7 @@ public:
     [[nodiscard]] std::size_t MeshCount() const noexcept { return m_meshCount; }
     [[nodiscard]] std::size_t MaterialCount() const noexcept { return m_materialCount; }
     [[nodiscard]] std::size_t InstanceCount() const noexcept { return m_instanceCount; }
+    [[nodiscard]] std::size_t VisibleInstanceCount() const noexcept { return m_visibleInstances.size(); }
 
 private:
     template <typename Resource>
@@ -150,6 +151,7 @@ private:
         std::uint32_t generation = 1;
         bool occupied = false;
         bool visible = true;
+        std::uint32_t visiblePosition = InstanceHandle::kInvalidIndex;
         std::uint32_t nextFreeIndex = InstanceHandle::kInvalidIndex;
     };
 
@@ -164,6 +166,8 @@ private:
     std::deque<ResourceSlot<MeshResource>> m_meshes;
     std::deque<ResourceSlot<MaterialResource>> m_materials;
     std::deque<InstanceSlot> m_instances;
+    // Dense list of occupied, visible instance indices. Visibility changes use swap-remove.
+    std::vector<std::uint32_t> m_visibleInstances;
     std::size_t m_meshCount = 0;
     std::size_t m_materialCount = 0;
     std::size_t m_instanceCount = 0;

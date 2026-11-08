@@ -2141,7 +2141,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             // Restrict their shadow work to the near cascade until this path
             // has true GPU instancing and per-cascade instance culling.
             if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-                if (!renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
+                if (!renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[cascade])) continue;
                 m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
                 m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                     static_cast<INT>(draw.firstVertex), 0U);

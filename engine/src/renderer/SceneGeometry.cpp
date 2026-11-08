@@ -200,4 +200,54 @@ bool BuildSubmittedSceneGeometry(
     error.clear();
     return true;
 }
+
+bool BuildSubmittedSceneGeometry(
+    const SceneFrame& frame, SubmittedSceneGeometryCache& cache, std::string& error)
+{
+    std::vector<std::pair<const MeshResource*, const MaterialResource*>> key;
+    key.reserve(frame.draws.size());
+    for (const DrawItem& draw : frame.draws) {
+        if (!draw.mesh || !draw.material) {
+            error = "Scene frame contains a draw with a missing mesh or material.";
+            return false;
+        }
+        key.emplace_back(draw.mesh.get(), draw.material.get());
+    }
+
+    if (key == cache.drawKey && cache.geometry.draws.size() == frame.draws.size()) {
+        for (std::size_t index = 0; index < frame.draws.size(); ++index) {
+            const math::Mat4& world = frame.draws[index].world;
+            for (const float value : world.elements) {
+                if (!std::isfinite(value)) {
+                    error = "Submitted instance has a non-finite world transform.";
+                    return false;
+                }
+            }
+            const float a = world.At(0, 0), b = world.At(0, 1), c = world.At(0, 2);
+            const float d = world.At(1, 0), e = world.At(1, 1), f = world.At(1, 2);
+            const float g = world.At(2, 0), h = world.At(2, 1), i = world.At(2, 2);
+            const float determinant = a * (e * i - f * h) - b * (d * i - f * g) +
+                c * (d * h - e * g);
+            if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-8F ||
+                std::abs(world.At(3, 0)) > 1.0e-6F ||
+                std::abs(world.At(3, 1)) > 1.0e-6F ||
+                std::abs(world.At(3, 2)) > 1.0e-6F ||
+                std::abs(world.At(3, 3) - 1.0F) > 1.0e-6F) {
+                error = "Submitted instance has a singular or non-affine world transform.";
+                return false;
+            }
+            cache.geometry.draws[index].world = world;
+        }
+        error.clear();
+        return true;
+    }
+
+    if (!BuildSubmittedSceneGeometry(frame, cache.geometry, error))
+        return false;
+    cache.drawKey = std::move(key);
+    ++cache.revision;
+    if (cache.revision == 0U)
+        ++cache.revision;
+    return true;
+}
 } // namespace vanta::renderer

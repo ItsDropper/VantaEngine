@@ -2137,7 +2137,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->SetPipelineState(m_shadowPipelineState.Get());
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
-            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            // Imported scene submissions currently use one draw per instance.
+            // Restrict their shadow work to the near cascade until this path
+            // has true GPU instancing and per-cascade instance culling.
+            if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
                 m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
                 m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
                     static_cast<INT>(draw.firstVertex), 0U);

@@ -817,7 +817,7 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 defaultHorizon = lerp(lerp(nightHorizon, sunsetHorizon,
             saturate(sunParameters.w * (1.0 - daylight))), dayHorizon, daylight);
         float3 horizonColor = lerp(defaultHorizon, skyHorizonColor.rgb, customEnvironment);
-        float3 sky = lerp(zenith, horizonColor, pow(saturate(1.0 - input.uv.y), 0.72));
+        float3 sky = lerp(zenith, horizonColor, smoothstep(0.12, 0.58, input.uv.y));
         float horizonScattering = exp(-abs(input.uv.y - 0.52) * 8.0);
         sky += horizonColor * horizonScattering * (0.035 + 0.045 * daylight);
         float2 sunUv = input.uv - sunParameters.xy;

@@ -2361,4 +2361,145 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
     m_lastFrameSucceeded = true;
 }
+
+bool D3D12Renderer::ReadbackPresentedFrame(std::vector<std::uint8_t>& bgra,
+    UINT& width, UINT& height, std::string& error)
+{
+    bgra.clear();
+    width = 0U;
+    height = 0U;
+    if (!m_device || !m_commandQueue || !m_swapChain || !m_fence ||
+        m_width == 0U || m_height == 0U) {
+        error = "D3D12 framebuffer readback requires an initialized renderer.";
+        return false;
+    }
+    if (!WaitForGpu()) {
+        error = "D3D12 framebuffer readback could not synchronize with the render queue.";
+        return false;
+    }
+
+    const UINT backBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+    Microsoft::WRL::ComPtr<ID3D12Resource> backBuffer;
+    HRESULT hr = m_swapChain->GetBuffer(backBufferIndex, IID_PPV_ARGS(backBuffer.GetAddressOf()));
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback could not acquire the presented swap-chain buffer.";
+        return false;
+    }
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT rows = 0U;
+    UINT64 rowSize = 0U;
+    UINT64 totalBytes = 0U;
+    m_device->GetCopyableFootprints(&backBuffer->GetDesc(), 0U, 1U, 0U,
+        &footprint, &rows, &rowSize, &totalBytes);
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_READBACK;
+    heap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heap.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heap.CreationNodeMask = 1U;
+    heap.VisibleNodeMask = 1U;
+    D3D12_RESOURCE_DESC readbackDesc{};
+    readbackDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    readbackDesc.Width = totalBytes;
+    readbackDesc.Height = 1U;
+    readbackDesc.DepthOrArraySize = 1U;
+    readbackDesc.MipLevels = 1U;
+    readbackDesc.SampleDesc.Count = 1U;
+    readbackDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    Microsoft::WRL::ComPtr<ID3D12Resource> readback;
+    hr = m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(readback.GetAddressOf()));
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback could not allocate a CPU-visible readback buffer.";
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+    hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+        IID_PPV_ARGS(allocator.GetAddressOf()));
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback could not create a command allocator.";
+        return false;
+    }
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
+    hr = m_device->CreateCommandList(0U, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(),
+        nullptr, IID_PPV_ARGS(list.GetAddressOf()));
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback could not create a command list.";
+        return false;
+    }
+    D3D12_RESOURCE_BARRIER toCopy{};
+    toCopy.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    toCopy.Transition.pResource = backBuffer.Get();
+    toCopy.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    toCopy.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    toCopy.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    list->ResourceBarrier(1U, &toCopy);
+    D3D12_TEXTURE_COPY_LOCATION source{};
+    source.pResource = backBuffer.Get();
+    source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    source.SubresourceIndex = 0U;
+    D3D12_TEXTURE_COPY_LOCATION destination{};
+    destination.pResource = readback.Get();
+    destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    destination.PlacedFootprint = footprint;
+    list->CopyTextureRegion(&destination, 0U, 0U, 0U, &source, nullptr);
+    std::swap(toCopy.Transition.StateBefore, toCopy.Transition.StateAfter);
+    list->ResourceBarrier(1U, &toCopy);
+    hr = list->Close();
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback command list could not be closed.";
+        return false;
+    }
+    ID3D12CommandList* commandLists[] = {list.Get()};
+    m_commandQueue->ExecuteCommandLists(1U, commandLists);
+    Microsoft::WRL::ComPtr<ID3D12Fence> readbackFence;
+    hr = m_device->CreateFence(0U, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(readbackFence.GetAddressOf()));
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback could not create a synchronization fence.";
+        return false;
+    }
+    HANDLE eventHandle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (eventHandle == nullptr) {
+        error = "D3D12 framebuffer readback could not create a synchronization event.";
+        return false;
+    }
+    hr = m_commandQueue->Signal(readbackFence.Get(), 1U);
+    if (SUCCEEDED(hr)) hr = readbackFence->SetEventOnCompletion(1U, eventHandle);
+    if (SUCCEEDED(hr)) {
+        const DWORD waitResult = WaitForSingleObject(eventHandle, 10000U);
+        if (waitResult != WAIT_OBJECT_0) hr = HRESULT_FROM_WIN32(waitResult == WAIT_TIMEOUT
+            ? WAIT_TIMEOUT : GetLastError());
+    }
+    CloseHandle(eventHandle);
+    if (FAILED(hr)) {
+        error = "D3D12 framebuffer readback GPU copy did not complete (HRESULT " +
+            std::to_string(static_cast<unsigned long>(hr)) + ").";
+        return false;
+    }
+
+    const std::size_t outputStride = static_cast<std::size_t>(m_width) * 4U;
+    bgra.resize(outputStride * static_cast<std::size_t>(m_height));
+    void* mapped = nullptr;
+    D3D12_RANGE readRange{0U, static_cast<SIZE_T>(totalBytes)};
+    hr = readback->Map(0U, &readRange, &mapped);
+    if (FAILED(hr) || mapped == nullptr) {
+        bgra.clear();
+        error = "D3D12 framebuffer readback buffer could not be mapped.";
+        return false;
+    }
+    const auto* sourceBytes = static_cast<const std::uint8_t*>(mapped);
+    for (UINT row = 0U; row < m_height; ++row) {
+        std::memcpy(bgra.data() + static_cast<std::size_t>(row) * outputStride,
+            sourceBytes + footprint.Offset + static_cast<std::size_t>(row) * footprint.Footprint.RowPitch,
+            outputStride);
+    }
+    D3D12_RANGE writtenRange{0U, 0U};
+    readback->Unmap(0U, &writtenRange);
+    width = m_width;
+    height = m_height;
+    error.clear();
+    return true;
+}
+
 } // namespace vanta

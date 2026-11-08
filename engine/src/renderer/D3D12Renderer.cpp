@@ -1889,6 +1889,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.environmentFog[3] = environment.fogDensity;
     constants.environmentFogParameters[0] = environment.fogStart;
     constants.environmentFogParameters[1] = environment.enabled ? 1.0F : 0.0F;
+    // Karelian winter air: denser suspended moisture close to snow level,
+    // thinning with height instead of applying a uniform distance-only haze.
+    constants.environmentFogParameters[2] = -1.5F;
+    constants.environmentFogParameters[3] = 0.075F;
     constants.environmentWind[0] = environment.windDirectionX;
     constants.environmentWind[1] = environment.windDirectionZ;
     constants.environmentWind[2] = environment.windStrength;

@@ -70,8 +70,73 @@ int main()
     Check(!vanta::assets::WriteProcessedTexture(directory / "invalid.ttex", invalid,
           vanta::assets::TextureColorSpace::Linear, error) && !error.empty(),
           "rejects incomplete mip chains");
+
+    vanta::assets::CpuTexture normalSource;
+    normalSource.width = 2U;
+    normalSource.height = 2U;
+    normalSource.rgba = {
+        128U,128U,255U,0U, 128U,128U,255U,64U,
+        128U,128U,255U,128U, 128U,128U,255U,255U
+    };
+    std::vector<vanta::assets::TextureMip> normalMips;
+    Check(vanta::assets::BuildNormalMapMipChain(normalSource, normalMips, error),
+          "builds tangent-space normal mip chains");
+    Check(normalMips.size() == 2U && normalMips.back().width == 1U &&
+          normalMips.back().height == 1U,
+          "normal mip chain terminates at 1x1");
+    Check(normalMips.front().rgba[0] == 128U && normalMips.front().rgba[1] == 128U &&
+          normalMips.front().rgba[2] == 255U,
+          "normalizes source-level tangent vectors");
+    Check(normalMips.back().rgba == std::vector<std::uint8_t>({128U,128U,255U,112U}),
+          "renormalizes filtered normals and averages alpha linearly");
+
+    vanta::assets::CpuTexture opposingNormals;
+    opposingNormals.width = 2U;
+    opposingNormals.height = 2U;
+    opposingNormals.rgba = {
+        255U,128U,128U,255U, 0U,127U,127U,255U,
+        128U,255U,128U,255U, 127U,0U,127U,255U
+    };
+    std::vector<vanta::assets::TextureMip> opposingMips;
+    Check(vanta::assets::BuildNormalMapMipChain(opposingNormals, opposingMips, error) &&
+          opposingMips.back().rgba == std::vector<std::uint8_t>({128U,128U,255U,255U}),
+          "uses a stable +Z fallback when opposing normals cancel");
+
+    vanta::assets::CpuTexture oddNormalSource;
+    oddNormalSource.width = 3U;
+    oddNormalSource.height = 1U;
+    oddNormalSource.rgba = {
+        128U,128U,255U,255U, 255U,128U,128U,255U, 128U,255U,128U,255U
+    };
+    std::vector<vanta::assets::TextureMip> oddNormalMips;
+    Check(vanta::assets::BuildNormalMapMipChain(oddNormalSource, oddNormalMips, error) &&
+          oddNormalMips.size() == 3U && oddNormalMips[1].width == 2U &&
+          oddNormalMips[2].width == 1U,
+          "handles odd-width normal maps through a complete mip chain");
+
+    std::vector<vanta::assets::TextureMip> preservedNormalOutput{
+        {1U,1U,std::vector<std::uint8_t>{1U,2U,3U,4U}}
+    };
+    vanta::assets::CpuTexture invalidNormalSource;
+    invalidNormalSource.width = 2U;
+    invalidNormalSource.height = 2U;
+    Check(!vanta::assets::BuildNormalMapMipChain(invalidNormalSource,
+          preservedNormalOutput, error) && !error.empty() &&
+          preservedNormalOutput.size() == 1U &&
+          preservedNormalOutput.front().rgba == std::vector<std::uint8_t>({1U,2U,3U,4U}),
+          "rejects inconsistent normal-map storage without changing output");
+
+    Check(vanta::assets::WriteProcessedTexture(directory / "normal.ttex", normalMips,
+          vanta::assets::TextureColorSpace::Linear, error),
+          "writes normal mip data as linear processed texture");
+    vanta::assets::ProcessedTexture loadedNormal;
+    Check(vanta::assets::LoadProcessedTexture(directory / "normal.ttex", loadedNormal, error) &&
+          loadedNormal.colorSpace == vanta::assets::TextureColorSpace::Linear &&
+          loadedNormal.mipChain.size() == normalMips.size() &&
+          loadedNormal.mipChain.back().rgba == normalMips.back().rgba,
+          "round-trips normalized normal-map mip pixels as linear data");
     std::error_code ignored;
     std::filesystem::remove_all(directory, ignored);
-    std::cout << (failures == 0 ? "11/11" : "Some") << " texture processing checks passed.\n";
+    std::cout << (failures == 0 ? "All" : "Some") << " texture processing checks passed.\n";
     return failures == 0 ? 0 : 1;
 }

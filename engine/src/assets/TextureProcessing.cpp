@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <atomic>
 #include <fstream>
 #include <limits>
@@ -42,6 +43,44 @@ void AppendU32(std::vector<std::uint8_t>& bytes, const std::uint32_t value)
 {
     for (unsigned shift = 0U; shift < 32U; shift += 8U)
         bytes.push_back(static_cast<std::uint8_t>((value >> shift) & 0xffU));
+}
+
+struct NormalVector final
+{
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 1.0F;
+};
+
+[[nodiscard]] NormalVector NormalizeNormal(const NormalVector value) noexcept
+{
+    const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
+    if (!(lengthSquared > 1.0e-12F))
+        return {};
+    const float inverseLength = 1.0F / std::sqrt(lengthSquared);
+    return {value.x * inverseLength, value.y * inverseLength, value.z * inverseLength};
+}
+
+[[nodiscard]] NormalVector DecodeNormal(const std::uint8_t* rgba) noexcept
+{
+    constexpr float inverseByteMidpoint = 1.0F / 127.5F;
+    return NormalizeNormal({
+        static_cast<float>(rgba[0]) * inverseByteMidpoint - 1.0F,
+        static_cast<float>(rgba[1]) * inverseByteMidpoint - 1.0F,
+        static_cast<float>(rgba[2]) * inverseByteMidpoint - 1.0F
+    });
+}
+
+void EncodeNormal(const NormalVector normal, std::uint8_t* rgba) noexcept
+{
+    const auto encode = [](const float component) noexcept
+    {
+        const long value = std::lround((component * 0.5F + 0.5F) * 255.0F);
+        return static_cast<std::uint8_t>(std::clamp(value, 0L, 255L));
+    };
+    rgba[0] = encode(normal.x);
+    rgba[1] = encode(normal.y);
+    rgba[2] = encode(normal.z);
 }
 } // namespace
 
@@ -119,6 +158,77 @@ bool BuildTextureMipChain(const CpuTexture& source, const TextureColorSpace colo
     return true;
 }
 
+
+bool BuildNormalMapMipChain(const CpuTexture& source,
+                            std::vector<TextureMip>& output, std::string& error)
+{
+    error.clear();
+    const std::uint64_t expectedSourceBytes =
+        static_cast<std::uint64_t>(source.width) * source.height * 4ULL;
+    if (source.width == 0U || source.height == 0U ||
+        expectedSourceBytes > MaximumMipBytes || source.rgba.size() != expectedSourceBytes)
+    {
+        error = "Source normal map dimensions and RGBA8 storage are inconsistent or exceed the 768 MiB safety limit.";
+        return false;
+    }
+
+    std::vector<TextureMip> candidate;
+    TextureMip base{source.width, source.height, source.rgba};
+    for (std::size_t offset = 0U; offset < base.rgba.size(); offset += 4U)
+        EncodeNormal(DecodeNormal(base.rgba.data() + offset), base.rgba.data() + offset);
+    candidate.push_back(std::move(base));
+
+    std::uint64_t totalBytes = expectedSourceBytes;
+    while (candidate.back().width > 1U || candidate.back().height > 1U)
+    {
+        const TextureMip& previous = candidate.back();
+        TextureMip next;
+        next.width = std::max(1U, (previous.width + 1U) / 2U);
+        next.height = std::max(1U, (previous.height + 1U) / 2U);
+        const std::uint64_t nextBytes =
+            static_cast<std::uint64_t>(next.width) * next.height * 4ULL;
+        if (nextBytes > MaximumMipBytes - totalBytes)
+        {
+            error = "Complete normal-map mip chain exceeds the 768 MiB processing safety limit.";
+            return false;
+        }
+        next.rgba.resize(static_cast<std::size_t>(nextBytes));
+        for (std::uint32_t y = 0U; y < next.height; ++y)
+        {
+            for (std::uint32_t x = 0U; x < next.width; ++x)
+            {
+                NormalVector sum{0.0F, 0.0F, 0.0F};
+                std::uint32_t alphaSum = 0U;
+                for (std::uint32_t dy = 0U; dy < 2U; ++dy)
+                {
+                    const std::uint32_t sourceY = std::min(previous.height - 1U, y * 2U + dy);
+                    for (std::uint32_t dx = 0U; dx < 2U; ++dx)
+                    {
+                        const std::uint32_t sourceX = std::min(previous.width - 1U, x * 2U + dx);
+                        const std::size_t sourceOffset =
+                            (static_cast<std::size_t>(sourceY) * previous.width + sourceX) * 4U;
+                        const NormalVector normal = DecodeNormal(previous.rgba.data() + sourceOffset);
+                        sum.x += normal.x;
+                        sum.y += normal.y;
+                        sum.z += normal.z;
+                        alphaSum += previous.rgba[sourceOffset + 3U];
+                    }
+                }
+
+                const std::size_t destination =
+                    (static_cast<std::size_t>(y) * next.width + x) * 4U;
+                EncodeNormal(NormalizeNormal(sum), next.rgba.data() + destination);
+                next.rgba[destination + 3U] =
+                    static_cast<std::uint8_t>((alphaSum + 2U) / 4U);
+            }
+        }
+        totalBytes += nextBytes;
+        candidate.push_back(std::move(next));
+    }
+
+    output = std::move(candidate);
+    return true;
+}
 
 bool ReadProcessedTexture(std::span<const std::uint8_t> source,
                           ProcessedTexture& output, std::string& error)

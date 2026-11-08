@@ -34,6 +34,11 @@ struct ProcessedTexture final
                                         TextureColorSpace colorSpace,
                                         std::vector<TextureMip>& output,
                                         std::string& error);
+// Builds tangent-space normal mips by averaging decoded unit vectors and renormalizing.
+// Alpha is filtered linearly. Output is unchanged on failure.
+[[nodiscard]] bool BuildNormalMapMipChain(const CpuTexture& source,
+                                          std::vector<TextureMip>& output,
+                                          std::string& error);
 
 // Reads and validates the complete TVTTEX01 container. Output is unchanged on failure.
 [[nodiscard]] bool ReadProcessedTexture(std::span<const std::uint8_t> source,

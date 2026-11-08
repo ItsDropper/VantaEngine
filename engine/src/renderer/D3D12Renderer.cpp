@@ -581,13 +581,13 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
 
 D3D12Renderer::~D3D12Renderer()
 {
+    (void)WaitForGpu();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
         if (m_mappedSubmittedIndirectBuffers[frame] != nullptr && m_submittedIndirectBuffers[frame]) {
             m_submittedIndirectBuffers[frame]->Unmap(0, nullptr);
             m_mappedSubmittedIndirectBuffers[frame] = nullptr;
         }
     }
-    (void)WaitForGpu();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
         for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
             if (m_mappedIndirectArguments[frame][stream] != nullptr && m_indirectArgumentBuffers[frame][stream]) {
@@ -1830,6 +1830,11 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
 
     if (submittedScene != nullptr) {
+        if (m_submittedGeometryCache.geometry.draws.size() > std::numeric_limits<UINT>::max()) {
+            m_lastRenderError = "D3D12 imported scene exceeds the indirect command-count limit.";
+            LogError(m_lastRenderError.c_str());
+            return;
+        }
         const UINT64 commandBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
             sizeof(SubmittedIndirectCommand);
         if (commandBytes > std::numeric_limits<UINT64>::max() / 2U) {

@@ -1,5 +1,7 @@
 #include "vanta/renderer/SceneGeometry.hpp"
 
+#include <array>
+
 #include <cmath>
 #include <limits>
 #include <string>

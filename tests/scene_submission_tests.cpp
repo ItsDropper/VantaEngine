@@ -178,6 +178,10 @@ int main()
     SubmittedSceneGeometry texturedGeometry;
     Require(BuildSubmittedSceneGeometry(texturedFrame, texturedGeometry, geometryError));
     Require(texturedGeometry.draws.size() == 2051U);
+    Require(texturedGeometry.batches.size() == 1U);
+    Require(texturedGeometry.batches[0].drawIndices.size() == 2051U);
+    Require(texturedGeometry.batches[0].firstIndex == texturedGeometry.draws[0].firstIndex);
+    Require(texturedGeometry.batches[0].indexCount == texturedGeometry.draws[0].indexCount);
     Require(texturedGeometry.vertices.size() == 3U);
     Require(texturedGeometry.indices.size() == 3U);
     Require(texturedGeometry.draws[0].firstVertex == texturedGeometry.draws[2050].firstVertex);
@@ -203,6 +207,9 @@ int main()
     SubmittedSceneGeometry packedOrmGeometry;
     Require(BuildSubmittedSceneGeometry(packedOrmFrame, packedOrmGeometry, geometryError));
     Require(packedOrmGeometry.draws.size() == 2052U);
+    Require(packedOrmGeometry.batches.size() == 2U);
+    Require(packedOrmGeometry.batches[0].drawIndices.size() == 2051U);
+    Require(packedOrmGeometry.batches[1].drawIndices.size() == 1U);
     Require(packedOrmGeometry.materialLayers.size() == 2U);
     Require(packedOrmGeometry.draws.back().materialLayer == 1U);
     Require(packedOrmGeometry.vertices.size() == 6U);
@@ -249,6 +256,8 @@ int main()
     Require(geometryCache.geometry.draws[0].world.At(0, 3) == 12.0F);
     Require(geometryCache.geometry.draws[0].world.At(1, 3) == 3.0F);
     Require(geometryCache.geometry.draws[0].world.At(2, 3) == -7.0F);
+    Require(geometryCache.geometry.batches.size() == 1U);
+    Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
 
     MaterialDescription unresolvedTextureDescription;
     unresolvedTextureDescription.normalTexture = "textures/normal.png";

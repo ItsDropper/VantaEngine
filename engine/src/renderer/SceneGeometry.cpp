@@ -92,7 +92,13 @@ bool BuildSubmittedSceneGeometry(
         }
     };
 
-    std::unordered_map<GeometryKey, std::pair<std::uint32_t, std::uint32_t>, GeometryKeyHash> geometryRanges;
+    struct GeometryRange
+    {
+        std::uint32_t firstVertex = 0;
+        std::uint32_t firstIndex = 0;
+        std::uint32_t batchIndex = 0;
+    };
+    std::unordered_map<GeometryKey, GeometryRange, GeometryKeyHash> geometryRanges;
     std::unordered_map<const MeshResource*, std::pair<math::Vec3, math::Vec3>> meshBounds;
     std::unordered_map<std::string, std::uint32_t> materialLayerByTextureSet;
     geometryRanges.reserve(frame.draws.size());
@@ -183,11 +189,13 @@ bool BuildSubmittedSceneGeometry(
         const auto cachedGeometry = geometryRanges.find(geometryKey);
         if (cachedGeometry != geometryRanges.end())
         {
-            range.firstVertex = cachedGeometry->second.first;
+            range.firstVertex = cachedGeometry->second.firstVertex;
             range.vertexCount = static_cast<std::uint32_t>(draw.mesh->vertices.size());
-            range.firstIndex = cachedGeometry->second.second;
+            range.firstIndex = cachedGeometry->second.firstIndex;
             range.indexCount = static_cast<std::uint32_t>(draw.mesh->indices.size());
+            const std::uint32_t drawIndex = static_cast<std::uint32_t>(output.draws.size());
             output.draws.push_back(std::move(range));
+            output.batches[cachedGeometry->second.batchIndex].drawIndices.push_back(drawIndex);
             continue;
         }
 
@@ -262,7 +270,17 @@ bool BuildSubmittedSceneGeometry(
             output.indices.push_back(index);
         }
 
-        geometryRanges.emplace(geometryKey, std::pair{range.firstVertex, range.firstIndex});
+        const std::uint32_t drawIndex = static_cast<std::uint32_t>(output.draws.size());
+        SubmittedSceneBatch batch;
+        batch.firstVertex = range.firstVertex;
+        batch.vertexCount = range.vertexCount;
+        batch.firstIndex = range.firstIndex;
+        batch.indexCount = range.indexCount;
+        batch.drawIndices.push_back(drawIndex);
+        const std::uint32_t batchIndex = static_cast<std::uint32_t>(output.batches.size());
+        output.batches.push_back(std::move(batch));
+        geometryRanges.emplace(geometryKey,
+            GeometryRange{range.firstVertex, range.firstIndex, batchIndex});
         output.draws.push_back(std::move(range));
     }
 

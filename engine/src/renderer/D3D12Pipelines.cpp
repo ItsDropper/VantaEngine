@@ -598,6 +598,22 @@ bool D3D12Renderer::CreatePipeline()
         return false;
     }
 
+    D3D12_INDIRECT_ARGUMENT_DESC submittedArguments[2]{};
+    submittedArguments[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+    submittedArguments[0].Constant.RootParameterIndex = 3;
+    submittedArguments[0].Constant.DestOffsetIn32BitValues = 0;
+    submittedArguments[0].Constant.Num32BitValuesToSet = 16;
+    submittedArguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+    D3D12_COMMAND_SIGNATURE_DESC submittedSignature{};
+    submittedSignature.ByteStride = 84;
+    submittedSignature.NumArgumentDescs = static_cast<UINT>(std::size(submittedArguments));
+    submittedSignature.pArgumentDescs = submittedArguments;
+    if (FAILED(m_device->CreateCommandSignature(&submittedSignature, m_rootSignature.Get(),
+            IID_PPV_ARGS(m_submittedDrawCommandSignature.GetAddressOf())))) {
+        LogError("Direct3D 12: imported-scene indirect command signature creation failed.");
+        return false;
+    }
+
     const D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},

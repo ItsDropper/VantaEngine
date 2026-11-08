@@ -1718,6 +1718,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
 
     const bool hasSubmittedScene = submittedScene != nullptr;
     SubmittedIndirectCommand* submittedCommands = nullptr;
+    SubmittedIndirectCommand* submittedCommands = nullptr;
     if (submittedScene != nullptr) {
         const UINT64 requiredBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
             sizeof(SubmittedIndirectCommand);

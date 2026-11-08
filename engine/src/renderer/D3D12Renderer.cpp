@@ -1792,6 +1792,16 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 LogError(m_lastRenderError.c_str());
                 return;
             }
+            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
+        } else if (submittedGeometry.vertices.empty()) {
+            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
+        }
+        if (!submittedGeometry.vertices.empty()) {
+            // Buffer views are frame-local values; rebuild them even when the underlying
+            // per-frame upload allocation already contains this immutable geometry.
+            const std::size_t vertexBytes = submittedGeometry.vertices.size() *
+                sizeof(renderer::SubmittedSceneVertex);
+            const std::size_t indexBytes = submittedGeometry.indices.size() * sizeof(std::uint32_t);
             submittedVertexView.BufferLocation =
                 m_submittedVertexBuffers[m_frameIndex]->GetGPUVirtualAddress();
             submittedVertexView.SizeInBytes = static_cast<UINT>(vertexBytes);
@@ -1800,9 +1810,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 m_submittedIndexBuffers[m_frameIndex]->GetGPUVirtualAddress();
             submittedIndexView.SizeInBytes = static_cast<UINT>(indexBytes);
             submittedIndexView.Format = DXGI_FORMAT_R32_UINT;
-            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
-        } else if (submittedGeometry.vertices.empty()) {
-            m_submittedGeometryUploadedRevision[m_frameIndex] = m_submittedGeometryCache.revision;
         }
     }
 

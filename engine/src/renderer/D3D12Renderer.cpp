@@ -86,6 +86,13 @@ struct GpuCullConstants
 };
 static_assert(sizeof(GpuCullConstants) == 160);
 
+struct SubmittedIndirectCommand
+{
+    UINT instanceWorld[16]{};
+    D3D12_DRAW_INDEXED_ARGUMENTS draw{};
+};
+static_assert(sizeof(SubmittedIndirectCommand) == 80);
+
 struct HiZBuildConstants
 {
     UINT sourceWidth = 0;
@@ -574,6 +581,12 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
 
 D3D12Renderer::~D3D12Renderer()
 {
+    for (UINT frame = 0; frame < kFrameCount; ++frame) {
+        if (m_mappedSubmittedIndirectBuffers[frame] != nullptr && m_submittedIndirectBuffers[frame]) {
+            m_submittedIndirectBuffers[frame]->Unmap(0, nullptr);
+            m_mappedSubmittedIndirectBuffers[frame] = nullptr;
+        }
+    }
     (void)WaitForGpu();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
         for (UINT stream = 0; stream < kIndirectStreamCount; ++stream) {
@@ -1704,6 +1717,53 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
 
     const bool hasSubmittedScene = submittedScene != nullptr;
+    SubmittedIndirectCommand* submittedCommands = nullptr;
+    if (submittedScene != nullptr) {
+        const UINT64 requiredBytes = static_cast<UINT64>(m_submittedGeometryCache.geometry.draws.size()) *
+            sizeof(SubmittedIndirectCommand);
+        if (requiredBytes > 0U) {
+            auto& buffer = m_submittedIndirectBuffers[m_frameIndex];
+            if (!buffer || m_submittedIndirectBufferCapacities[m_frameIndex] < requiredBytes) {
+                if (m_mappedSubmittedIndirectBuffers[m_frameIndex] != nullptr) {
+                    buffer->Unmap(0, nullptr);
+                    m_mappedSubmittedIndirectBuffers[m_frameIndex] = nullptr;
+                }
+                buffer.Reset();
+                m_submittedIndirectBufferCapacities[m_frameIndex] = 0U;
+                D3D12_HEAP_PROPERTIES heap{};
+                heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+                heap.CreationNodeMask = 1;
+                heap.VisibleNodeMask = 1;
+                D3D12_RESOURCE_DESC description{};
+                description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+                description.Width = requiredBytes;
+                description.Height = 1;
+                description.DepthOrArraySize = 1;
+                description.MipLevels = 1;
+                description.SampleDesc.Count = 1;
+                description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+                const HRESULT createResult = m_device->CreateCommittedResource(&heap,
+                    D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr, IID_PPV_ARGS(buffer.ReleaseAndGetAddressOf()));
+                if (FAILED(createResult)) {
+                    m_lastRenderError = "D3D12 imported-scene indirect argument allocation failed.";
+                    LogError(m_lastRenderError.c_str());
+                    return;
+                }
+                m_submittedIndirectBufferCapacities[m_frameIndex] = requiredBytes;
+                const D3D12_RANGE noRead{0, 0};
+                void* mapped = nullptr;
+                if (FAILED(buffer->Map(0, &noRead, &mapped)) || mapped == nullptr) {
+                    m_lastRenderError = "D3D12 imported-scene indirect argument mapping failed.";
+                    LogError(m_lastRenderError.c_str());
+                    return;
+                }
+                m_mappedSubmittedIndirectBuffers[m_frameIndex] = mapped;
+            }
+            submittedCommands = static_cast<SubmittedIndirectCommand*>(
+                m_mappedSubmittedIndirectBuffers[m_frameIndex]);
+        }
+    }
     const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
     D3D12_VERTEX_BUFFER_VIEW submittedVertexView{};
     D3D12_INDEX_BUFFER_VIEW submittedIndexView{};
@@ -2140,11 +2200,18 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             // Imported scene submissions currently use one draw per instance.
             // Restrict their shadow work to the near cascade until this path
             // has true GPU instancing and per-cascade instance culling.
-            if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-                if (!renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[cascade])) continue;
-                m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
-                m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
-                    static_cast<INT>(draw.firstVertex), 0U);
+            if (cascade == 0U && submittedCommands != nullptr) {
+                UINT commandCount = 0U;
+                for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                    if (!renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[cascade])) continue;
+                    SubmittedIndirectCommand& command = submittedCommands[commandCount++];
+                    std::memcpy(command.instanceWorld, draw.world.elements, sizeof(command.instanceWorld));
+                    command.draw = {draw.indexCount, 1U, draw.firstIndex,
+                        static_cast<INT>(draw.firstVertex), 0U};
+                }
+                if (commandCount != 0U)
+                    m_commandList->ExecuteIndirect(m_submittedDrawCommandSignature.Get(), commandCount,
+                        m_submittedIndirectBuffers[m_frameIndex].Get(), 0, nullptr, 0);
             }
         }
         if (m_timestampFrequency != 0)
@@ -2251,13 +2318,18 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
-        std::uint64_t visibleSubmittedDraws = 0U;
-        for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-            if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
-            m_commandList->SetGraphicsRoot32BitConstants(3, 16, draw.world.elements, 0);
-            m_commandList->DrawIndexedInstanced(draw.indexCount, 1U, draw.firstIndex,
-                static_cast<INT>(draw.firstVertex), 0U);
-            ++visibleSubmittedDraws;
+        UINT visibleSubmittedDraws = 0U;
+        if (submittedCommands != nullptr) {
+            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+                if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
+                SubmittedIndirectCommand& command = submittedCommands[visibleSubmittedDraws++];
+                std::memcpy(command.instanceWorld, draw.world.elements, sizeof(command.instanceWorld));
+                command.draw = {draw.indexCount, 1U, draw.firstIndex,
+                    static_cast<INT>(draw.firstVertex), 0U};
+            }
+            if (visibleSubmittedDraws != 0U)
+                m_commandList->ExecuteIndirect(m_submittedDrawCommandSignature.Get(), visibleSubmittedDraws,
+                    m_submittedIndirectBuffers[m_frameIndex].Get(), 0, nullptr, 0);
         }
         m_sceneDrawCallsAccumulated += visibleSubmittedDraws;
     }

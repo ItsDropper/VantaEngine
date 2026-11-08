@@ -140,6 +140,14 @@ int main()
     Require(std::abs(normalGeometry.vertices[0].normal[0] - 0.70710678F) < 0.0001F);
     Require(std::abs(normalGeometry.vertices[0].normal[1] - 0.70710678F) < 0.0001F);
     Require(normalGeometry.draws[0].world.At(0, 0) == 2.0F);
+    Require(normalGeometry.draws[0].localBoundsMin.x == -1.0F);
+    Require(normalGeometry.draws[0].localBoundsMax.x == 1.0F);
+    Require(IsSubmittedDrawVisible(normalGeometry.draws[0], math::Mat4::Identity()));
+    SubmittedDrawRange outsideFrustum = normalGeometry.draws[0];
+    outsideFrustum.world = math::Mat4::Translation({4.0F, 0.0F, 0.0F});
+    Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
+    outsideFrustum.world = math::Mat4::Translation({0.0F, 0.0F, -4.0F});
+    Require(!IsSubmittedDrawVisible(outsideFrustum, math::Mat4::Identity()));
 
     SceneSubmission texturedScene;
     const MeshHandle texturedMesh = texturedScene.CreateMesh(Triangle());

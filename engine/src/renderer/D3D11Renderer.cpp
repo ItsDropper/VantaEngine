@@ -409,7 +409,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float snowBackScatter = pow(saturate(dot(-l, v)), 3.0);
     float3 snowTransmission = albedo * radiance *
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
-        snowSubsurfaceMask * (1.0 - shadow * 0.35);
+        snowSubsurfaceMask * lerp(0.35, 1.0, shadow);
     direct += snowTransmission;
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
@@ -437,6 +437,8 @@ float4 PSMain(PixelInput input) : SV_TARGET
     }
     // Keep scene shading in linear HDR. Tone mapping and display transfer happen once
     // after the full scene has been composited, so bright highlights can bloom correctly.
+    // Directional shadowing also attenuates environment fill so bright snow does not wash out cast shadows.
+    ambient *= lerp(0.42, 1.0, shadow);
     float3 color = direct + ambient;
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));

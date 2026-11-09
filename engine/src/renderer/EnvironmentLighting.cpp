@@ -36,7 +36,8 @@ Float3 Radiance(Float3 direction, const EnvironmentSettings& e) noexcept
     const Float3 ground{ambient.x*0.42F,ambient.y*0.43F,ambient.z*0.48F};
     Float3 color = Add(Mul(ground,1.0F-up),Mul(sky,up));
     color = Add(color,Mul(sky,horizon*0.22F));
-    color = Add(color,Mul(ambient,std::max(0.0F,e.ambientIntensity)*0.22F));
+    color = Mul(color,std::max(0.0F,e.ambientIntensity));
+    color = Add(color,Mul(ambient,0.22F));
     const float sunDot = std::max(0.0F,direction.x*sun.x+direction.y*sun.y+direction.z*sun.z);
     const float disc = std::pow(sunDot,1024.0F);
     const float halo = std::pow(sunDot,24.0F);

@@ -31,6 +31,22 @@ namespace
 using math::Mat4;
 using math::Vec3;
 
+bool SameEnvironmentSettings(const renderer::EnvironmentSettings& a,
+                             const renderer::EnvironmentSettings& b) noexcept
+{
+    return a.enabled == b.enabled &&
+        a.sunDirection.x == b.sunDirection.x && a.sunDirection.y == b.sunDirection.y &&
+        a.sunDirection.z == b.sunDirection.z &&
+        a.sunColor.x == b.sunColor.x && a.sunColor.y == b.sunColor.y &&
+        a.sunColor.z == b.sunColor.z && a.sunIntensity == b.sunIntensity &&
+        a.ambientColor.x == b.ambientColor.x && a.ambientColor.y == b.ambientColor.y &&
+        a.ambientColor.z == b.ambientColor.z && a.ambientIntensity == b.ambientIntensity &&
+        a.fogColor.x == b.fogColor.x && a.fogColor.y == b.fogColor.y &&
+        a.fogColor.z == b.fogColor.z && a.fogDensity == b.fogDensity &&
+        a.fogStart == b.fogStart && a.windDirectionX == b.windDirectionX &&
+        a.windDirectionZ == b.windDirectionZ && a.windStrength == b.windStrength;
+}
+
 struct D3D12WorldVertex
 {
     float position[3];
@@ -1976,8 +1992,15 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.environmentWind[1] = environment.windDirectionZ;
     constants.environmentWind[2] = environment.windStrength;
     constants.environmentWind[3] = environment.enabled ? 1.0F : 0.0F;
-    const renderer::EnvironmentLighting environmentLighting = environment.enabled
-        ? renderer::BuildEnvironmentLighting(environment) : renderer::EnvironmentLighting{};
+    if (environment.enabled &&
+        (!m_environmentLightingCacheValid ||
+         !SameEnvironmentSettings(environment, m_cachedEnvironmentSettings))) {
+        m_cachedEnvironmentLighting = renderer::BuildEnvironmentLighting(environment);
+        m_cachedEnvironmentSettings = environment;
+        m_environmentLightingCacheValid = true;
+    }
+    const renderer::EnvironmentLighting& environmentLighting = environment.enabled
+        ? m_cachedEnvironmentLighting : m_emptyEnvironmentLighting;
     std::memcpy(constants.diffuseIrradianceSH, environmentLighting.diffuse.data(), sizeof(constants.diffuseIrradianceSH));
     std::memcpy(constants.specularPrefilterSH, environmentLighting.specular.data(), sizeof(constants.specularPrefilterSH));
     const float cameraDeltaX = cameraX - m_previousCameraX;

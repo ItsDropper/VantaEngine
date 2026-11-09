@@ -449,20 +449,33 @@ bool BuildSubmittedSceneGeometry(
         cache.resourceRevision = frame.resourceRevision;
     }
 
-    std::vector<GeometryKey> drawKey;
-    drawKey.reserve(frame.draws.size());
-    for (const DrawItem& draw : frame.draws)
+    if (frame.draws.size() > std::numeric_limits<std::uint32_t>::max())
     {
+        error = "Submitted scene exceeds the 32-bit draw range limits.";
+        return false;
+    }
+
+    // The common case changes only instance transforms. Compare resource pointers
+    // directly against the cached key instead of allocating and filling a temporary
+    // vector of 8624 mesh/material pairs on every frame.
+    bool cachedDrawSequenceMatches = !resourceGenerationChanged &&
+        cache.drawKey.size() == frame.draws.size() &&
+        cache.geometry.draws.size() == frame.draws.size();
+    for (std::size_t index = 0; index < frame.draws.size(); ++index)
+    {
+        const DrawItem& draw = frame.draws[index];
         if (!draw.mesh || !draw.material)
         {
             error = "Scene frame contains a draw with a missing mesh or material.";
             return false;
         }
-        drawKey.emplace_back(draw.mesh.get(), draw.material.get());
+        if (cachedDrawSequenceMatches &&
+            (cache.drawKey[index].first != draw.mesh.get() ||
+             cache.drawKey[index].second != draw.material.get()))
+            cachedDrawSequenceMatches = false;
     }
 
-    if (!resourceGenerationChanged && drawKey == cache.drawKey &&
-        cache.geometry.draws.size() == frame.draws.size())
+    if (cachedDrawSequenceMatches)
     {
         for (std::size_t index = 0; index < frame.draws.size(); ++index)
         {
@@ -478,11 +491,8 @@ bool BuildSubmittedSceneGeometry(
         return true;
     }
 
-    if (frame.draws.size() > std::numeric_limits<std::uint32_t>::max())
-    {
-        error = "Submitted scene exceeds the 32-bit draw range limits.";
-        return false;
-    }
+    std::vector<GeometryKey> drawKey;
+    drawKey.reserve(frame.draws.size());
     for (const DrawItem& draw : frame.draws)
     {
         if (!IsValidSubmittedWorldTransform(draw.world))
@@ -490,6 +500,7 @@ bool BuildSubmittedSceneGeometry(
             error = "Submitted instance has a singular, non-finite, or non-affine world transform.";
             return false;
         }
+        drawKey.emplace_back(draw.mesh.get(), draw.material.get());
     }
 
     const std::size_t pendingReserve = std::min<std::size_t>(frame.draws.size(), 128U);

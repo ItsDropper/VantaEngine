@@ -3,6 +3,7 @@
 #include "vanta/math/Math.hpp"
 
 #include "vanta/renderer/AdaptiveWorldBudget.hpp"
+#include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 
 #include <Windows.h>
@@ -116,6 +117,10 @@ private:
     std::array<UINT64, kFrameCount> m_submittedVertexBufferCapacities{};
     std::array<UINT64, kFrameCount> m_submittedIndexBufferCapacities{};
     renderer::SubmittedSceneGeometryCache m_submittedGeometryCache;
+    renderer::EnvironmentSettings m_cachedEnvironmentSettings{};
+    renderer::EnvironmentLighting m_cachedEnvironmentLighting{};
+    renderer::EnvironmentLighting m_emptyEnvironmentLighting{};
+    bool m_environmentLightingCacheValid = false;
     std::array<std::uint64_t, kFrameCount> m_submittedGeometryUploadedRevision{};
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyColorTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> m_historyDepthTextures;

@@ -56,6 +56,7 @@ struct SceneConstants
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
+static_assert(sizeof(SceneConstants) == 1248);
 
 struct TemporalConstants
 {

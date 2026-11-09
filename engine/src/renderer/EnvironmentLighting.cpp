@@ -53,7 +53,6 @@ void Store(std::array<float,4>& out, Float3 v, float weight) noexcept
 EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings) noexcept
 {
     EnvironmentLighting result{};
-    if (!settings.enabled) return result;
     constexpr unsigned int sampleCount = 2048;
     // Fibonacci sphere gives uniform solid-angle coverage without face seams.
     constexpr float goldenAngle = 2.39996322972865332F;

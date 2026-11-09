@@ -714,7 +714,6 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         return false;
     }
 
-    bool usingWarpAdapter = false;
     for (UINT index = 0; ; ++index) {
         Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
         if (m_factory->EnumAdapters1(index, adapter.GetAddressOf()) == DXGI_ERROR_NOT_FOUND) break;
@@ -744,7 +743,6 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
             LogError("Direct3D 12: no compatible hardware or WARP device was found.");
             return false;
         }
-        usingWarpAdapter = true;
         LogInfo(DescribeD3D12Adapter(warp1.Get(), true));
     }
 

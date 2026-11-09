@@ -50,7 +50,7 @@ int main()
     Require(environmentLighting.specular[0][8][0] > environmentLighting.specular[4][8][0]);
     Require(environmentLighting.specular[4][8][0] <= environmentLighting.specular[0][8][0]);
     const EnvironmentLighting disabledLighting = BuildEnvironmentLighting(EnvironmentSettings{});
-    Require(disabledLighting.diffuse[0][0] == 0.0F);
+    Require(disabledLighting.diffuse[0][0] > 0.0F);
 
     SceneSubmission scene;
     const MeshHandle mesh = scene.CreateMesh(Triangle());

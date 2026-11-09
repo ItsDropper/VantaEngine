@@ -97,7 +97,8 @@ struct SubmittedSceneGeometryCache
     const math::Mat4& shadowViewProjection,
     const math::Mat4& sceneViewProjection,
     SubmittedInstanceStreams& output,
-    std::string& error);
+    std::string& error,
+    bool includeSceneInstances = true);
 
 // Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.

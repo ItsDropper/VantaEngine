@@ -471,7 +471,8 @@ float4 PSMain(PSInput input) : SV_TARGET
     const float rayStartHeight = cameraPosition.y + viewRay.y * fogStart;
     const float rayHeightDelta = rayStartHeight - fogBaseHeight;
     const float rayHeightSlope = viewRay.y;
-    const float fogFalloff = max(heightFalloff, 1.0e-5);
+    const float fogFalloff = abs(heightFalloff) < 1.0e-5
+        ? (heightFalloff < 0.0 ? -1.0e-5 : 1.0e-5) : heightFalloff;
     if (fogLength > 0.0 && fogDensity > 0.0)
     {
         if (abs(rayHeightSlope) < 1.0e-4)

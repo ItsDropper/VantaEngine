@@ -51,6 +51,13 @@ int main()
     Require(environmentLighting.specular[4][8][0] <= environmentLighting.specular[0][8][0]);
     const EnvironmentLighting disabledLighting = BuildEnvironmentLighting(EnvironmentSettings{});
     Require(disabledLighting.diffuse[0][0] > 0.0F);
+    EnvironmentSettings rotatedSun = lightingSettings;
+    rotatedSun.sunDirection = {0.85F, 0.28F, -0.45F};
+    const EnvironmentLighting rotatedLighting = BuildEnvironmentLighting(rotatedSun);
+    Require(std::abs(rotatedLighting.specular[0][3][0] - environmentLighting.specular[0][3][0]) > 0.001F);
+    for (const auto& coefficient : environmentLighting.diffuse)
+        for (const float channel : coefficient)
+            Require(std::isfinite(channel));
 
     SceneSubmission scene;
     const MeshHandle mesh = scene.CreateMesh(Triangle());

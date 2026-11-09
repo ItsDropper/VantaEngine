@@ -31,6 +31,27 @@ namespace
 using math::Mat4;
 using math::Vec3;
 
+Vec3 ComputeAtmosphericDaylightColor(const float lightElevation) noexcept
+{
+    const float solarElevation = std::max(std::clamp(lightElevation, 0.0F, 1.0F), 0.015F);
+    constexpr float kRadiansToDegrees = 57.29577951308232F;
+    const float solarZenithDegrees = 90.0F - std::asin(solarElevation) * kRadiansToDegrees;
+    const float airMass = std::min(1.0F / std::max(solarElevation + 0.50572F *
+        std::pow(std::max(96.07995F - solarZenithDegrees, 0.1F), -1.6364F), 0.02F), 12.0F);
+    const Vec3 solarTransmittance{
+        std::exp(-0.105F * airMass),
+        std::exp(-0.041F * airMass),
+        std::exp(-0.018F * airMass)};
+    const Vec3 atmosphericSolar{
+        solarTransmittance.x * 5.25F,
+        solarTransmittance.y * 5.05F,
+        solarTransmittance.z * 4.72F};
+    const float blend = std::clamp((solarElevation - 0.015F) / (0.30F - 0.015F), 0.0F, 1.0F);
+    const float smoothBlend = blend * blend * (3.0F - 2.0F * blend);
+    const Vec3 warm{1.55F, 0.46F, 0.18F};
+    return warm * (1.0F - smoothBlend) + atmosphericSolar * smoothBlend;
+}
+
 bool SameEnvironmentSettings(const renderer::EnvironmentSettings& a,
                              const renderer::EnvironmentSettings& b) noexcept
 {
@@ -1970,9 +1991,11 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.lighting[1] = lightDirection.y;
     constants.lighting[2] = lightDirection.z;
     constants.lighting[3] = sunIntensity;
-    constants.environmentSunColor[0] = environment.enabled ? environment.sunColor.x : 0.0F;
-    constants.environmentSunColor[1] = environment.enabled ? environment.sunColor.y : 0.0F;
-    constants.environmentSunColor[2] = environment.enabled ? environment.sunColor.z : 0.0F;
+    const Vec3 daylightColor = environment.enabled
+        ? environment.sunColor : ComputeAtmosphericDaylightColor(lightDirection.y);
+    constants.environmentSunColor[0] = daylightColor.x;
+    constants.environmentSunColor[1] = daylightColor.y;
+    constants.environmentSunColor[2] = daylightColor.z;
     constants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
     constants.environmentAmbient[0] = environment.ambientColor.x;
     constants.environmentAmbient[1] = environment.ambientColor.y;

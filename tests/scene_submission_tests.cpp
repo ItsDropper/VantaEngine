@@ -147,6 +147,17 @@ int main()
     Require(instanceStreams.sceneTransforms[2].At(0, 3) == 0.2F);
     Require(instanceStreams.sceneTransforms[3].At(0, 3) == -0.1F);
     Require(instanceStreams.sceneTransforms[4].At(0, 3) == 0.1F);
+    SubmittedInstanceStreams shadowOnlyStreams;
+    Require(BuildSubmittedInstanceStreams(batchedGeometry, math::Mat4::Identity(),
+        math::Mat4::Identity(), shadowOnlyStreams, geometryError, false));
+    Require(shadowOnlyStreams.shadowTransforms.size() == 5U);
+    Require(shadowOnlyStreams.shadowBatches.size() == 2U);
+    Require(shadowOnlyStreams.sceneTransforms.empty());
+    Require(shadowOnlyStreams.sceneBatches.empty());
+    Require(shadowOnlyStreams.shadowBatches[0].firstInstance == 1U);
+    Require(shadowOnlyStreams.shadowBatches[0].instanceCount == 2U);
+    Require(shadowOnlyStreams.shadowBatches[1].firstInstance == 3U);
+    Require(shadowOnlyStreams.shadowBatches[1].instanceCount == 2U);
 
     Require(!scene.DestroyMesh(mesh));
     Require(!scene.DestroyMaterial(material));

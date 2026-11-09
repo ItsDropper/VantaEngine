@@ -85,6 +85,49 @@ int main()
     Require(submitted.vertices[0].color[0] == 1.0F);
     Require(submitted.vertices[0].material[0] == 0.8F);
 
+    // D3D12 stores every shadow transform before every color transform. Verify
+    // multi-material batches use absolute offsets into that final concatenation.
+    SceneSubmission batchedScene;
+    const MeshHandle batchedMesh = batchedScene.CreateMesh(Triangle());
+    MaterialDescription firstBatchMaterial;
+    firstBatchMaterial.baseColor = {0.9F, 0.8F, 0.7F};
+    MaterialDescription secondBatchMaterial;
+    secondBatchMaterial.baseColor = {0.4F, 0.5F, 0.6F};
+    const MaterialHandle firstBatchHandle = batchedScene.CreateMaterial(firstBatchMaterial);
+    const MaterialHandle secondBatchHandle = batchedScene.CreateMaterial(secondBatchMaterial);
+    Require(batchedMesh.IsValid() && firstBatchHandle.IsValid() && secondBatchHandle.IsValid());
+    const math::Mat4 firstBatchTransformA = math::Mat4::Translation({-0.2F, 0.0F, 0.5F});
+    const math::Mat4 firstBatchTransformB = math::Mat4::Translation({0.2F, 0.0F, 0.5F});
+    const math::Mat4 secondBatchTransformA = math::Mat4::Translation({-0.1F, 0.0F, 0.6F});
+    const math::Mat4 secondBatchTransformB = math::Mat4::Translation({0.1F, 0.0F, 0.6F});
+    Require(batchedScene.CreateInstance(batchedMesh, firstBatchHandle, firstBatchTransformA).IsValid());
+    Require(batchedScene.CreateInstance(batchedMesh, firstBatchHandle, firstBatchTransformB).IsValid());
+    Require(batchedScene.CreateInstance(batchedMesh, secondBatchHandle, secondBatchTransformA).IsValid());
+    Require(batchedScene.CreateInstance(batchedMesh, secondBatchHandle, secondBatchTransformB).IsValid());
+    const SceneFrame batchedFrame = batchedScene.BuildFrame(view);
+    SubmittedSceneGeometry batchedGeometry;
+    Require(BuildSubmittedSceneGeometry(batchedFrame, batchedGeometry, geometryError));
+    Require(batchedGeometry.batches.size() == 2U);
+    SubmittedInstanceStreams instanceStreams;
+    Require(BuildSubmittedInstanceStreams(batchedGeometry, math::Mat4::Identity(),
+        math::Mat4::Identity(), instanceStreams, geometryError));
+    Require(instanceStreams.shadowTransforms.size() == 5U);
+    Require(instanceStreams.sceneTransforms.size() == 5U);
+    Require(instanceStreams.shadowBatches.size() == 2U);
+    Require(instanceStreams.sceneBatches.size() == 2U);
+    Require(instanceStreams.shadowBatches[0].firstInstance == 1U);
+    Require(instanceStreams.shadowBatches[0].instanceCount == 2U);
+    Require(instanceStreams.shadowBatches[1].firstInstance == 3U);
+    Require(instanceStreams.shadowBatches[1].instanceCount == 2U);
+    Require(instanceStreams.sceneBatches[0].firstInstance == 6U);
+    Require(instanceStreams.sceneBatches[0].instanceCount == 2U);
+    Require(instanceStreams.sceneBatches[1].firstInstance == 8U);
+    Require(instanceStreams.sceneBatches[1].instanceCount == 2U);
+    Require(instanceStreams.sceneTransforms[1].At(0, 3) == -0.2F);
+    Require(instanceStreams.sceneTransforms[2].At(0, 3) == 0.2F);
+    Require(instanceStreams.sceneTransforms[3].At(0, 3) == -0.1F);
+    Require(instanceStreams.sceneTransforms[4].At(0, 3) == 0.1F);
+
     Require(!scene.DestroyMesh(mesh));
     Require(!scene.DestroyMaterial(material));
     const MaterialHandle replacementMaterial = scene.CreateMaterial(

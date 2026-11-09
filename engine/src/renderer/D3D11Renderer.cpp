@@ -1,4 +1,5 @@
 #include "vanta/renderer/D3D11Renderer.hpp"
+#include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 
 #include "vanta/core/Log.hpp"
@@ -70,6 +71,8 @@ struct SceneConstants
     float environmentAmbient[4];
     float environmentFogColor[4];
     float environmentWind[4];
+    float diffuseIrradianceSH[9][4];
+    float specularPrefilterSH[45][4];
 };
 
 constexpr Vertex kCubeVertices[] = {
@@ -161,6 +164,23 @@ struct PixelInput
     float3 worldPosition : TEXCOORD1;
     float4 shadowPosition : TEXCOORD2;
 };
+
+float3 EvaluateEnvironmentSH(float3 direction, bool diffuse, float roughness)
+{
+    float3 d = normalize(direction);
+    float basis[9] = {
+        0.282095,
+        0.488603 * d.y, 0.488603 * d.z, 0.488603 * d.x,
+        1.092548 * d.x * d.y, 1.092548 * d.y * d.z,
+        0.315392 * (3.0 * d.z * d.z - 1.0),
+        1.092548 * d.x * d.z, 0.546274 * (d.x * d.x - d.y * d.y)
+    };
+    float3 result = 0.0;
+    uint level = (uint)round(saturate(roughness) * 4.0);
+    [unroll] for (uint i = 0; i < 9; ++i)
+        result += (diffuse ? diffuseIrradianceSH[i].rgb : specularPrefilterSH[level * 9 + i].rgb) * basis[i];
+    return max(result, 0.0);
+}
 
 float3 TransformWorldNormal(float3 normal)
 {
@@ -368,19 +388,8 @@ float4 PSMain(PixelInput input) : SV_TARGET
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
         snowSubsurfaceMask * (1.0 - shadow * 0.35);
     direct += snowTransmission;
-    // Analytic environment lighting approximates a prefiltered sky environment:
-    // diffuse irradiance follows the normal hemisphere; roughness broadens reflections.
-    float3 skyZenith = environmentFogColor.w > 0.5
-        ? environmentAmbient.rgb : float3(0.18, 0.29, 0.43);
-    float3 skyGround = environmentFogColor.w > 0.5
-        ? environmentAmbient.rgb * 0.20 : float3(0.055, 0.052, 0.045);
-    float3 diffuseIrradiance = lerp(skyGround, skyZenith, saturate(n.y * 0.5 + 0.5));
-    float3 reflectionDirection = reflect(-v, n);
-    float environmentHorizon = pow(saturate(1.0 - abs(reflectionDirection.y)), 1.6);
-    float3 environmentReflection = lerp(
-        lerp(skyGround, skyZenith, saturate(reflectionDirection.y * 0.5 + 0.5)),
-        float3(0.78, 0.47, 0.29), environmentHorizon * 0.32);
-    environmentReflection = lerp(environmentReflection, diffuseIrradiance, roughness * roughness);
+    float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+    float3 environmentReflection = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
     float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * ambientOcclusion;
@@ -1508,6 +1517,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     const bool hasSubmittedScene = submittedScene != nullptr;
     const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
+    const renderer::EnvironmentLighting environmentLighting = submittedScene != nullptr
+        ? renderer::BuildEnvironmentLighting(submittedScene->view.environment)
+        : renderer::EnvironmentLighting{};
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, m_submittedGeometryCache, geometryError)) {
@@ -1956,6 +1968,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.cameraPosition[1] = cameraY;
             constants.cameraPosition[2] = cameraZ;
             const auto& environment = submittedScene->view.environment;
+            std::memcpy(constants.diffuseIrradianceSH, environmentLighting.diffuse.data(), sizeof(constants.diffuseIrradianceSH));
+            std::memcpy(constants.specularPrefilterSH, environmentLighting.specular.data(), sizeof(constants.specularPrefilterSH));
             constants.fogDensity = environment.enabled ? environment.fogDensity : 0.018F;
             constants.lightDirection[0] = environment.enabled ? -environment.sunDirection.x : -0.45F;
             constants.lightDirection[1] = environment.enabled ? -environment.sunDirection.y : -0.8F;

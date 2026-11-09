@@ -158,6 +158,17 @@ int main()
     Require(shadowOnlyStreams.shadowBatches[0].instanceCount == 2U);
     Require(shadowOnlyStreams.shadowBatches[1].firstInstance == 3U);
     Require(shadowOnlyStreams.shadowBatches[1].instanceCount == 2U);
+    auto rebasedSceneBatches = instanceStreams.sceneBatches;
+    Require(RebaseSubmittedSceneBatchOffsets(rebasedSceneBatches,
+        instanceStreams.shadowTransforms.size(), instanceStreams.shadowTransforms.size() - 1U,
+        instanceStreams.sceneTransforms.size(), geometryError));
+    Require(rebasedSceneBatches[0].firstInstance == 5U);
+    Require(rebasedSceneBatches[1].firstInstance == 7U);
+    auto invalidSceneBatches = instanceStreams.sceneBatches;
+    invalidSceneBatches[0].firstInstance = 4U;
+    Require(!RebaseSubmittedSceneBatchOffsets(invalidSceneBatches,
+        instanceStreams.shadowTransforms.size(), instanceStreams.shadowTransforms.size() - 1U,
+        instanceStreams.sceneTransforms.size(), geometryError));
 
     Require(!scene.DestroyMesh(mesh));
     Require(!scene.DestroyMaterial(material));

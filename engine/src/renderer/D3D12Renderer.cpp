@@ -2033,7 +2033,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         for (UINT cascade = 0; cascade < 3; ++cascade) {
             if (!renderer::BuildSubmittedInstanceStreams(submittedGeometry,
                     constants.lightViewProjection[cascade], constants.viewProjection,
-                    cascadeStreams[cascade], instanceError)) {
+                    cascadeStreams[cascade], instanceError, cascade == 0U)) {
                 m_lastRenderError = instanceError;
                 LogError(instanceError.c_str());
                 return;

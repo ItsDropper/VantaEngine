@@ -423,19 +423,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 specular = d * g * f / max(4.0 * ndv * max(ndl, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
     float shadow = CalculateShadow(input.worldPosition, n, l);
-    // Approximate clear-sky solar transmittance. The longer atmospheric path at
-    // low elevation preferentially removes blue wavelengths, warming sunrise/sunset
-    // light without applying a global color grade to materials.
-    float solarElevation = max(saturate(lighting.y), 0.015);
-    float solarZenithDegrees = 90.0 - degrees(asin(solarElevation));
-    float airMass = min(1.0 / max(solarElevation + 0.50572 *
-        pow(max(96.07995 - solarZenithDegrees, 0.1), -1.6364), 0.02), 12.0);
-    float3 solarTransmittance = exp(-float3(0.105, 0.041, 0.018) * airMass);
-    float3 atmosphericSolar = solarTransmittance * float3(5.25, 5.05, 4.72);
-    float3 daylightColor = environmentSunColor.w > 0.5
-        ? environmentSunColor.rgb
-        : lerp(float3(1.55, 0.46, 0.18), atmosphericSolar,
-            smoothstep(0.015, 0.30, solarElevation));
+    // Atmospheric transmittance is constant for the frame and is precomputed
+    // on the CPU; avoid asin/pow/exp in every shaded pixel.
+    float3 daylightColor = environmentSunColor.rgb;
     float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
     // Snow is a translucent dielectric: add restrained forward-scattering and
     // back-lit transmission only to bright, rough, non-metallic surfaces.

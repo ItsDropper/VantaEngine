@@ -2045,7 +2045,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 shadowInstances.push_back(MakeSubmittedInstance(transforms[index]));
             shadowBatchDraws[cascade] = std::move(cascadeStreams[cascade].shadowBatches);
             for (auto& draw : shadowBatchDraws[cascade])
-                draw.firstInstance += cascadeBase - 1U;
+                draw.firstInstance = cascadeBase + draw.firstInstance - 1U;
         }
         sceneInstances.reserve(cascadeStreams[0].sceneTransforms.size());
         for (const Mat4& transform : cascadeStreams[0].sceneTransforms)

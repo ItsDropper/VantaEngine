@@ -1,4 +1,5 @@
 #include "vanta/renderer/D3D12Renderer.hpp"
+#include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 
 #include "vanta/core/Log.hpp"
@@ -52,8 +53,9 @@ struct SceneConstants
     float environmentFog[4];
     float environmentFogParameters[4];
     float environmentWind[4];
+    float diffuseIrradianceSH[9][4];
+    float specularPrefilterSH[45][4];
 };
-static_assert(sizeof(SceneConstants) == 384);
 
 struct TemporalConstants
 {
@@ -1973,6 +1975,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.environmentWind[1] = environment.windDirectionZ;
     constants.environmentWind[2] = environment.windStrength;
     constants.environmentWind[3] = environment.enabled ? 1.0F : 0.0F;
+    const renderer::EnvironmentLighting environmentLighting = renderer::BuildEnvironmentLighting(environment);
+    std::memcpy(constants.diffuseIrradianceSH, environmentLighting.diffuse.data(), sizeof(constants.diffuseIrradianceSH));
+    std::memcpy(constants.specularPrefilterSH, environmentLighting.specular.data(), sizeof(constants.specularPrefilterSH));
     const float cameraDeltaX = cameraX - m_previousCameraX;
     const float cameraDeltaY = cameraY - m_previousCameraY;
     const float cameraDeltaZ = cameraZ - m_previousCameraZ;

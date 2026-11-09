@@ -52,6 +52,22 @@ struct SubmittedSceneGeometry
     std::vector<MaterialDescription> materialLayers;
 };
 
+struct SubmittedInstanceBatchDraw
+{
+    std::uint32_t batchIndex = 0;
+    std::uint32_t firstInstance = 0;
+    std::uint32_t instanceCount = 0;
+};
+
+struct SubmittedInstanceStreams
+{
+    // Each stream reserves element zero for the identity transform.
+    std::vector<math::Mat4> shadowTransforms;
+    std::vector<math::Mat4> sceneTransforms;
+    std::vector<SubmittedInstanceBatchDraw> shadowBatches;
+    std::vector<SubmittedInstanceBatchDraw> sceneBatches;
+};
+
 struct SubmittedSceneGeometryCache
 {
     SubmittedSceneGeometry geometry;
@@ -72,6 +88,16 @@ struct SubmittedSceneGeometryCache
 
 [[nodiscard]] bool IsSubmittedDrawVisible(
     const SubmittedDrawRange& draw, const math::Mat4& viewProjection) noexcept;
+
+// Builds the two instance streams in their final GPU-buffer order: all shadow
+// transforms first, followed by all scene transforms. Scene batch offsets are
+// absolute offsets into that concatenated buffer.
+[[nodiscard]] bool BuildSubmittedInstanceStreams(
+    const SubmittedSceneGeometry& geometry,
+    const math::Mat4& shadowViewProjection,
+    const math::Mat4& sceneViewProjection,
+    SubmittedInstanceStreams& output,
+    std::string& error);
 
 // Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.

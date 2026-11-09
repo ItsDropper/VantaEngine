@@ -2074,15 +2074,15 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         for (const Mat4& transform : cascadeStreams[0].sceneTransforms)
             sceneInstances.push_back(MakeSubmittedInstance(transform));
         sceneBatchDraws = std::move(cascadeStreams[0].sceneBatches);
-        const std::uint32_t additionalShadowInstances = static_cast<std::uint32_t>(
-            shadowInstances.size() - (cascadeStreams[0].shadowTransforms.size() - 1U));
-        for (auto& draw : sceneBatchDraws) {
-            // BuildSubmittedInstanceStreams includes a dummy element at index 0 in
-            // both streams. The combined GPU buffer strips the shadow dummy, so
-            // translate the scene offset by the actual scene-stream base rather
-            // than retaining the old dummy-inclusive absolute offset.
-            draw.firstInstance = static_cast<std::uint32_t>(shadowInstances.size()) +
-                (draw.firstInstance - static_cast<std::uint32_t>(cascadeStreams[0].shadowTransforms.size()));
+        // BuildSubmittedInstanceStreams uses a dummy element in each source stream.
+        // The GPU upload strips only the shadow dummy; validate and rebase every
+        // scene batch against the exact uploaded stream lengths before issuing draws.
+        if (!renderer::RebaseSubmittedSceneBatchOffsets(sceneBatchDraws,
+                cascadeStreams[0].shadowTransforms.size(), shadowInstances.size(),
+                sceneInstances.size(), instanceError)) {
+            m_lastRenderError = instanceError;
+            LogError(instanceError.c_str());
+            return;
         }
     }
     const UINT64 shadowInstanceBytes = static_cast<UINT64>(shadowInstances.size()) * sizeof(SubmittedInstanceData);

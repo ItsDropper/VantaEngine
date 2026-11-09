@@ -131,13 +131,6 @@ struct SubmittedInstanceData
 };
 static_assert(sizeof(SubmittedInstanceData) == 48);
 
-struct SubmittedBatchDraw
-{
-    UINT batchIndex = 0;
-    UINT firstInstance = 0;
-    UINT instanceCount = 0;
-};
-
 SubmittedInstanceData MakeSubmittedInstance(const Mat4& world) noexcept
 {
     SubmittedInstanceData instance{};
@@ -2037,8 +2030,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             LogError(instanceError.c_str());
             return;
         }
-        const std::size_t initialInstanceCapacity =
-            std::min<std::size_t>(submittedGeometry.draws.size() + 1U, 32768U);
         shadowInstances.reserve(instanceStreams.shadowTransforms.size());
         sceneInstances.reserve(instanceStreams.sceneTransforms.size());
         for (const Mat4& transform : instanceStreams.shadowTransforms)

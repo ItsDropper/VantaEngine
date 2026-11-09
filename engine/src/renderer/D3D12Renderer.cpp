@@ -2051,6 +2051,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         for (const Mat4& transform : cascadeStreams[0].sceneTransforms)
             sceneInstances.push_back(MakeSubmittedInstance(transform));
         sceneBatchDraws = std::move(cascadeStreams[0].sceneBatches);
+        const std::uint32_t additionalShadowInstances = static_cast<std::uint32_t>(
+            shadowInstances.size() - (cascadeStreams[0].shadowTransforms.size() - 1U));
+        for (auto& draw : sceneBatchDraws)
+            draw.firstInstance += additionalShadowInstances;
     }
     const UINT64 shadowInstanceBytes = static_cast<UINT64>(shadowInstances.size()) * sizeof(SubmittedInstanceData);
     const UINT64 sceneInstanceBytes = static_cast<UINT64>(sceneInstances.size()) * sizeof(SubmittedInstanceData);

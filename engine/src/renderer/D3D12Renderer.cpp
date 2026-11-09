@@ -1976,7 +1976,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.environmentWind[1] = environment.windDirectionZ;
     constants.environmentWind[2] = environment.windStrength;
     constants.environmentWind[3] = environment.enabled ? 1.0F : 0.0F;
-    const renderer::EnvironmentLighting environmentLighting = renderer::BuildEnvironmentLighting(environment);
+    const renderer::EnvironmentLighting environmentLighting = environment.enabled
+        ? renderer::BuildEnvironmentLighting(environment) : renderer::EnvironmentLighting{};
     std::memcpy(constants.diffuseIrradianceSH, environmentLighting.diffuse.data(), sizeof(constants.diffuseIrradianceSH));
     std::memcpy(constants.specularPrefilterSH, environmentLighting.specular.data(), sizeof(constants.specularPrefilterSH));
     const float cameraDeltaX = cameraX - m_previousCameraX;

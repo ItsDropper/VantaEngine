@@ -2025,26 +2025,32 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
     std::vector<SubmittedInstanceData> shadowInstances;
     std::vector<SubmittedInstanceData> sceneInstances;
-    std::vector<renderer::SubmittedInstanceBatchDraw> shadowBatchDraws;
+    std::array<std::vector<renderer::SubmittedInstanceBatchDraw>, 3> shadowBatchDraws;
     std::vector<renderer::SubmittedInstanceBatchDraw> sceneBatchDraws;
     if (hasSubmittedScene) {
-        renderer::SubmittedInstanceStreams instanceStreams;
+        std::array<renderer::SubmittedInstanceStreams, 3> cascadeStreams;
         std::string instanceError;
-        if (!renderer::BuildSubmittedInstanceStreams(submittedGeometry,
-                constants.lightViewProjection[0], constants.viewProjection,
-                instanceStreams, instanceError)) {
-            m_lastRenderError = instanceError;
-            LogError(instanceError.c_str());
-            return;
+        for (UINT cascade = 0; cascade < 3; ++cascade) {
+            if (!renderer::BuildSubmittedInstanceStreams(submittedGeometry,
+                    constants.lightViewProjection[cascade], constants.viewProjection,
+                    cascadeStreams[cascade], instanceError)) {
+                m_lastRenderError = instanceError;
+                LogError(instanceError.c_str());
+                return;
+            }
+            const std::uint32_t cascadeBase = static_cast<std::uint32_t>(shadowInstances.size());
+            const auto& transforms = cascadeStreams[cascade].shadowTransforms;
+            shadowInstances.reserve(shadowInstances.size() + transforms.size() - 1U);
+            for (std::size_t index = 1; index < transforms.size(); ++index)
+                shadowInstances.push_back(MakeSubmittedInstance(transforms[index]));
+            shadowBatchDraws[cascade] = std::move(cascadeStreams[cascade].shadowBatches);
+            for (auto& draw : shadowBatchDraws[cascade])
+                draw.firstInstance += cascadeBase - 1U;
         }
-        shadowInstances.reserve(instanceStreams.shadowTransforms.size());
-        sceneInstances.reserve(instanceStreams.sceneTransforms.size());
-        for (const Mat4& transform : instanceStreams.shadowTransforms)
-            shadowInstances.push_back(MakeSubmittedInstance(transform));
-        for (const Mat4& transform : instanceStreams.sceneTransforms)
+        sceneInstances.reserve(cascadeStreams[0].sceneTransforms.size());
+        for (const Mat4& transform : cascadeStreams[0].sceneTransforms)
             sceneInstances.push_back(MakeSubmittedInstance(transform));
-        shadowBatchDraws = std::move(instanceStreams.shadowBatches);
-        sceneBatchDraws = std::move(instanceStreams.sceneBatches);
+        sceneBatchDraws = std::move(cascadeStreams[0].sceneBatches);
     }
     const UINT64 shadowInstanceBytes = static_cast<UINT64>(shadowInstances.size()) * sizeof(SubmittedInstanceData);
     const UINT64 sceneInstanceBytes = static_cast<UINT64>(sceneInstances.size()) * sizeof(SubmittedInstanceData);
@@ -2295,8 +2301,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->SetPipelineState(m_shadowPipelineState.Get());
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
-            if (cascade == 0U) {
-                for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : shadowBatchDraws) {
+            {
+                for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : shadowBatchDraws[cascade]) {
                     const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
                     D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
                     instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *

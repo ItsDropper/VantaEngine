@@ -2025,41 +2025,28 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
     std::vector<SubmittedInstanceData> shadowInstances;
     std::vector<SubmittedInstanceData> sceneInstances;
-    std::vector<SubmittedBatchDraw> shadowBatchDraws;
-    std::vector<SubmittedBatchDraw> sceneBatchDraws;
-    const SubmittedInstanceData identityInstance = MakeSubmittedInstance(Mat4::Identity());
-    shadowInstances.push_back(identityInstance);
-    sceneInstances.push_back(identityInstance);
+    std::vector<renderer::SubmittedInstanceBatchDraw> shadowBatchDraws;
+    std::vector<renderer::SubmittedInstanceBatchDraw> sceneBatchDraws;
     if (hasSubmittedScene) {
+        renderer::SubmittedInstanceStreams instanceStreams;
+        std::string instanceError;
+        if (!renderer::BuildSubmittedInstanceStreams(submittedGeometry,
+                constants.lightViewProjection[0], constants.viewProjection,
+                instanceStreams, instanceError)) {
+            m_lastRenderError = instanceError;
+            LogError(instanceError.c_str());
+            return;
+        }
         const std::size_t initialInstanceCapacity =
             std::min<std::size_t>(submittedGeometry.draws.size() + 1U, 32768U);
-        shadowInstances.reserve(initialInstanceCapacity);
-        sceneInstances.reserve(initialInstanceCapacity);
-        shadowBatchDraws.reserve(submittedGeometry.batches.size());
-        sceneBatchDraws.reserve(submittedGeometry.batches.size());
-        for (UINT batchIndex = 0; batchIndex < submittedGeometry.batches.size(); ++batchIndex) {
-            const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[batchIndex];
-            const UINT shadowFirstInstance = static_cast<UINT>(shadowInstances.size());
-            for (const std::uint32_t drawIndex : batch.drawIndices) {
-                const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
-                if (renderer::IsSubmittedDrawVisible(draw, constants.lightViewProjection[0]))
-                    shadowInstances.push_back(MakeSubmittedInstance(draw.world));
-            }
-            const UINT shadowInstanceCount = static_cast<UINT>(shadowInstances.size()) - shadowFirstInstance;
-            if (shadowInstanceCount != 0U)
-                shadowBatchDraws.push_back({batchIndex, shadowFirstInstance, shadowInstanceCount});
-
-            const UINT sceneFirstInstance = static_cast<UINT>(sceneInstances.size());
-            for (const std::uint32_t drawIndex : batch.drawIndices) {
-                const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
-                if (renderer::IsSubmittedDrawVisible(draw, constants.viewProjection))
-                    sceneInstances.push_back(MakeSubmittedInstance(draw.world));
-            }
-            const UINT sceneInstanceCount = static_cast<UINT>(sceneInstances.size()) - sceneFirstInstance;
-            if (sceneInstanceCount != 0U)
-                sceneBatchDraws.push_back({batchIndex,
-                    static_cast<UINT>(shadowInstances.size()) + sceneFirstInstance, sceneInstanceCount});
-        }
+        shadowInstances.reserve(instanceStreams.shadowTransforms.size());
+        sceneInstances.reserve(instanceStreams.sceneTransforms.size());
+        for (const Mat4& transform : instanceStreams.shadowTransforms)
+            shadowInstances.push_back(MakeSubmittedInstance(transform));
+        for (const Mat4& transform : instanceStreams.sceneTransforms)
+            sceneInstances.push_back(MakeSubmittedInstance(transform));
+        shadowBatchDraws = std::move(instanceStreams.shadowBatches);
+        sceneBatchDraws = std::move(instanceStreams.sceneBatches);
     }
     const UINT64 shadowInstanceBytes = static_cast<UINT64>(shadowInstances.size()) * sizeof(SubmittedInstanceData);
     const UINT64 sceneInstanceBytes = static_cast<UINT64>(sceneInstances.size()) * sizeof(SubmittedInstanceData);

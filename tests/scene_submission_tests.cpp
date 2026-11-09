@@ -1,5 +1,6 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
+#include "vanta/renderer/EnvironmentLighting.hpp"
 
 #include <cstdlib>
 #include <cmath>
@@ -41,6 +42,16 @@ MeshDescription Triangle()
 
 int main()
 {
+    EnvironmentSettings lightingSettings{};
+    lightingSettings.enabled = true;
+    const EnvironmentLighting environmentLighting = BuildEnvironmentLighting(lightingSettings);
+    Require(environmentLighting.diffuse[0][0] > 0.0F);
+    Require(environmentLighting.diffuse[0][1] > 0.0F);
+    Require(environmentLighting.specular[0][0][0] > environmentLighting.specular[4][0][0]);
+    Require(environmentLighting.specular[4][8][0] <= environmentLighting.specular[0][8][0]);
+    const EnvironmentLighting disabledLighting = BuildEnvironmentLighting(EnvironmentSettings{});
+    Require(disabledLighting.diffuse[0][0] == 0.0F);
+
     SceneSubmission scene;
     const MeshHandle mesh = scene.CreateMesh(Triangle());
     const MaterialHandle material = scene.CreateMaterial({});

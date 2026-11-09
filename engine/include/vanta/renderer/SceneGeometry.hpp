@@ -100,6 +100,13 @@ struct SubmittedSceneGeometryCache
     std::string& error,
     bool includeSceneInstances = true);
 
+[[nodiscard]] bool RebaseSubmittedSceneBatchOffsets(
+    std::vector<SubmittedInstanceBatchDraw>& sceneBatches,
+    std::size_t sourceSceneStreamBase,
+    std::size_t destinationSceneStreamBase,
+    std::size_t sceneStreamSize,
+    std::string& error);
+
 // Builds backend-neutral local-space geometry and per-instance draw transforms.
 // The caller owns the resulting arrays until its GPU upload/fence lifecycle ends.
 [[nodiscard]] bool BuildSubmittedSceneGeometry(

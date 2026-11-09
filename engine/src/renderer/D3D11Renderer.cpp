@@ -391,14 +391,30 @@ float4 PSMain(PixelInput input) : SV_TARGET
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
         snowSubsurfaceMask * (1.0 - shadow * 0.35);
     direct += snowTransmission;
-    float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
-    float3 environmentReflection = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
-    float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * (1.0 / 3.14159265) * ambientOcclusion;
-    float3 specularAmbient = environmentReflection * f * (1.0 - roughness * 0.72) * ambientOcclusion;
-    float ambientIntensity = environmentFogColor.w > 0.5 ? environmentAmbient.w : 1.0;
-    float3 ambient = (diffuseAmbient * 0.72 + specularAmbient * 0.85) * ambientIntensity;
+    float3 ambient;
+    if (environmentFogColor.w > 0.5)
+    {
+        float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+        float3 environmentReflection = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
+        float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) *
+            (1.0 / 3.14159265) * ambientOcclusion;
+        float3 specularAmbient = environmentReflection * f * ambientOcclusion;
+        ambient = (diffuseAmbient * 0.72 + specularAmbient * 0.85) * environmentAmbient.w;
+    }
+    else
+    {
+        float3 skyZenith = float3(0.18, 0.29, 0.43);
+        float3 skyGround = float3(0.055, 0.052, 0.045);
+        float3 diffuseFallback = lerp(skyGround, skyZenith, saturate(n.y * 0.5 + 0.5));
+        float3 reflectedFallback = lerp(
+            lerp(skyGround, skyZenith, saturate(reflect(-v, n).y * 0.5 + 0.5)),
+            float3(0.78, 0.47, 0.29), pow(saturate(1.0 - abs(reflect(-v, n).y)), 1.6) * 0.32);
+        reflectedFallback = lerp(reflectedFallback, diffuseFallback, roughness * roughness);
+        ambient = (diffuseFallback * albedo * (1.0 - metallic) * ambientOcclusion * 0.72
+            + reflectedFallback * f * (1.0 - roughness * 0.72) * ambientOcclusion * 0.85);
+    }
     // Keep scene shading in linear HDR. Tone mapping and display transfer happen once
     // after the full scene has been composited, so bright highlights can bloom correctly.
     float3 color = direct + ambient;

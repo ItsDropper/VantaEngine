@@ -439,7 +439,7 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
         float3 reflectedEnvironment = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
         ambient = (diffuseIrradiance * albedo * (1.0 - metallic) / 3.14159265
-            + reflectedEnvironment * f) * environmentAmbient.w * ambientOcclusion;
+            + reflectedEnvironment * f) * ambientOcclusion;
     }
     else
     {

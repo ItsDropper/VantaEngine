@@ -134,6 +134,8 @@ cbuffer SceneConstants : register(b0)
     float4 environmentAmbient;
     float4 environmentFogColor;
     float4 environmentWind;
+    float4 diffuseIrradianceSH[9];
+    float4 specularPrefilterSH[45];
 };
 Texture2D diffuseTexture : register(t0);
 Texture2DArray<float> shadowMap : register(t1);

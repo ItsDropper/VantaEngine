@@ -44,10 +44,6 @@ Float3 Radiance(Float3 direction, const EnvironmentSettings& e) noexcept
     color = Add(color,Mul(sunColor,std::max(0.0F,e.sunIntensity)*(disc*8.0F+halo*0.12F)));
     return color;
 }
-void Store(std::array<float,4>& out, Float3 v, float weight) noexcept
-{
-    out[0]+=v.x*weight; out[1]+=v.y*weight; out[2]+=v.z*weight;
-}
 }
 
 EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings) noexcept

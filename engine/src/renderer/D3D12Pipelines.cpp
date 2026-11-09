@@ -464,15 +464,50 @@ float4 PSMain(PSInput input) : SV_TARGET
     float fogBaseHeight = environmentFogParameters.y > 0.5 ? environmentFogParameters.z : -1.5;
     float heightFalloff = environmentFogParameters.y > 0.5 ? environmentFogParameters.w : 0.075;
     float fogLength = max(distanceToCamera - fogStart, 0.0);
-    // Four stratified integration samples approximate the extinction integral along
-    // the camera ray. Density increases in cold air pooled between snow-covered trees.
+    // Integrate the exponential height-density profile analytically. This is
+    // exact for the clamped linear camera ray and replaces four per-pixel exp()
+    // evaluations plus the sample loop with at most two exponentials.
     float opticalDepth = 0.0;
-    [unroll] for (int sampleIndex = 0; sampleIndex < 4; ++sampleIndex)
+    const float rayHeightDelta = cameraPosition.y - fogBaseHeight;
+    const float rayHeightSlope = viewRay.y;
+    const float fogFalloff = max(heightFalloff, 1.0e-5);
+    if (fogLength > 0.0 && fogDensity > 0.0)
     {
-        float sampleDistance = fogStart + fogLength * ((sampleIndex + 0.5) * 0.25);
-        float sampleHeight = cameraPosition.y + viewRay.y * sampleDistance;
-        float localDensity = fogDensity * exp(-max(sampleHeight - fogBaseHeight, 0.0) * heightFalloff);
-        opticalDepth += localDensity * fogLength * 0.25;
+        if (abs(rayHeightSlope) < 1.0e-4)
+        {
+            opticalDepth = fogDensity * fogLength *
+                exp(-max(rayHeightDelta, 0.0) * fogFalloff);
+        }
+        else if (rayHeightSlope > 0.0)
+        {
+            if (rayHeightDelta >= 0.0)
+            {
+                const float exponent = rayHeightSlope * fogFalloff * fogLength;
+                opticalDepth = fogDensity * exp(-rayHeightDelta * fogFalloff) *
+                    (1.0 - exp(-exponent)) / (rayHeightSlope * fogFalloff);
+            }
+            else
+            {
+                const float belowLength = min(fogLength, -rayHeightDelta / rayHeightSlope);
+                const float aboveLength = fogLength - belowLength;
+                const float exponent = rayHeightSlope * fogFalloff * aboveLength;
+                opticalDepth = fogDensity * (belowLength +
+                    (1.0 - exp(-exponent)) / (rayHeightSlope * fogFalloff));
+            }
+        }
+        else if (rayHeightDelta <= 0.0)
+        {
+            opticalDepth = fogDensity * fogLength;
+        }
+        else
+        {
+            const float downwardSlope = -rayHeightSlope;
+            const float aboveLength = min(fogLength, rayHeightDelta / downwardSlope);
+            const float exponent = downwardSlope * fogFalloff * aboveLength;
+            const float aboveIntegral = exp(-rayHeightDelta * fogFalloff) *
+                (exp(exponent) - 1.0) / (downwardSlope * fogFalloff);
+            opticalDepth = fogDensity * (aboveIntegral + fogLength - aboveLength);
+        }
     }
     float fog = saturate(1.0 - exp(-opticalDepth));
     float3 fogColor = environmentFogParameters.y > 0.5 ? environmentFog.rgb

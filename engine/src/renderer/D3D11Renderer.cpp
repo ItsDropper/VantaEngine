@@ -74,6 +74,7 @@ struct SceneConstants
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
+static_assert(sizeof(SceneConstants) == 1248);
 
 constexpr Vertex kCubeVertices[] = {
     // Front (+Z)
@@ -394,7 +395,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 environmentReflection = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
     float ambientOcclusion = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
-    float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * ambientOcclusion;
+    float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) * (1.0 / 3.14159265) * ambientOcclusion;
     float3 specularAmbient = environmentReflection * f * (1.0 - roughness * 0.72) * ambientOcclusion;
     float ambientIntensity = environmentFogColor.w > 0.5 ? environmentAmbient.w : 1.0;
     float3 ambient = (diffuseAmbient * 0.72 + specularAmbient * 0.85) * ambientIntensity;

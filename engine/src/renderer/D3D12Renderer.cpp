@@ -19,6 +19,9 @@
 #include <d3dcompiler.h>
 #include <d3d12sdklayers.h>
 #include <array>
+#include <sstream>
+#include <iomanip>
+
 
 namespace vanta
 {
@@ -85,6 +88,42 @@ struct GpuCullConstants
     UINT padding[2]{};
 };
 static_assert(sizeof(GpuCullConstants) == 160);
+
+std::string DescribeD3D12Adapter(IDXGIAdapter1* adapter, const bool warp)
+{
+    if (adapter == nullptr)
+        return "Direct3D 12 adapter: unavailable.";
+
+    DXGI_ADAPTER_DESC1 description{};
+    if (FAILED(adapter->GetDesc1(&description)))
+        return "Direct3D 12 adapter: GetDesc1 failed.";
+
+    char name[256]{};
+    const int nameLength = WideCharToMultiByte(
+        CP_UTF8, 0, description.Description, -1, name,
+        static_cast<int>(sizeof(name)), nullptr, nullptr);
+    if (nameLength <= 0)
+        std::snprintf(name, sizeof(name), "%s", "Unknown adapter");
+
+    std::ostringstream message;
+    message << "Direct3D 12 adapter: " << name
+            << "; type=" << (warp ? "WARP software" : "hardware")
+            << "; vendorId=0x" << std::hex << description.VendorId
+            << "; deviceId=0x" << description.DeviceId
+            << "; subsystemId=0x" << description.SubSysId
+            << "; revision=0x" << description.Revision
+            << "; dedicatedVideoMemoryMiB=" << std::dec
+            << (description.DedicatedVideoMemory / (1024ULL * 1024ULL))
+            << "; dedicatedSystemMemoryMiB="
+            << (description.DedicatedSystemMemory / (1024ULL * 1024ULL))
+            << "; sharedSystemMemoryMiB="
+            << (description.SharedSystemMemory / (1024ULL * 1024ULL))
+            << "; luid=" << std::hex << std::setfill('0')
+            << std::setw(8) << static_cast<std::uint32_t>(description.AdapterLuid.HighPart)
+            << ':' << std::setw(8) << description.AdapterLuid.LowPart
+            << "; flags=0x" << description.Flags;
+    return message.str();
+}
 
 struct SubmittedInstanceData
 {
@@ -675,13 +714,14 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         return false;
     }
 
+    bool usingWarpAdapter = false;
     for (UINT index = 0; ; ++index) {
         Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
         if (m_factory->EnumAdapters1(index, adapter.GetAddressOf()) == DXGI_ERROR_NOT_FOUND) break;
         DXGI_ADAPTER_DESC1 description{};
         if (FAILED(adapter->GetDesc1(&description)) || (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) continue;
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
-            LogInfo("Direct3D 12 hardware adapter selected.");
+            LogInfo(DescribeD3D12Adapter(adapter.Get(), false));
             break;
         }
     }
@@ -697,12 +737,15 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
 #endif
     if (!m_device) {
         Microsoft::WRL::ComPtr<IDXGIAdapter> warp;
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> warp1;
         if (FAILED(m_factory->EnumWarpAdapter(IID_PPV_ARGS(warp.GetAddressOf()))) ||
+            FAILED(warp.As(&warp1)) ||
             FAILED(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
             LogError("Direct3D 12: no compatible hardware or WARP device was found.");
             return false;
         }
-        LogInfo("Direct3D 12: using the WARP software adapter.");
+        usingWarpAdapter = true;
+        LogInfo(DescribeD3D12Adapter(warp1.Get(), true));
     }
 
     D3D12_COMMAND_QUEUE_DESC queueDescription{};

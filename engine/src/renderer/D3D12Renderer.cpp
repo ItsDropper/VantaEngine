@@ -2345,10 +2345,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                     m_commandList->IASetVertexBuffers(0, 2, vertexViews);
                     m_commandList->DrawIndexedInstanced(batch.indexCount, submittedDraw.instanceCount,
                         batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
-                    m_shadowTrianglesAccumulated[0] +=
+                    m_shadowTrianglesAccumulated[cascade] +=
                         static_cast<std::uint64_t>(batch.indexCount / 3U) * submittedDraw.instanceCount;
                 }
-                m_shadowDrawCallsAccumulated[0] += shadowBatchDraws.size();
+                m_shadowDrawCallsAccumulated[cascade] += shadowBatchDraws[cascade].size();
             }
         }
         if (m_timestampFrequency != 0)

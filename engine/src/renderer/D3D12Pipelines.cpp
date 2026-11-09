@@ -433,11 +433,23 @@ float4 PSMain(PSInput input) : SV_TARGET
     direct += snowTransmission;
     // Hemispherical sky irradiance: the horizon carries atmospheric haze while
     // the upper hemisphere retains the colder blue skylight of a clear winter day.
-    float ambientIntensity = environmentSunColor.w > 0.5 ? environmentAmbient.w : 1.05;
-    float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
-    float3 reflectedEnvironment = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
-    float3 ambient = (diffuseIrradiance * albedo * (1.0 - metallic) / 3.14159265
-        + reflectedEnvironment * f) * ambientIntensity * ambientOcclusion;
+    float3 ambient;
+    if (environmentSunColor.w > 0.5)
+    {
+        float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+        float3 reflectedEnvironment = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
+        ambient = (diffuseIrradiance * albedo * (1.0 - metallic) / 3.14159265
+            + reflectedEnvironment * f) * environmentAmbient.w * ambientOcclusion;
+    }
+    else
+    {
+        float skyElevation = saturate(n.y * 0.5 + 0.5);
+        float3 fallbackSky = lerp(float3(0.29, 0.35, 0.40), float3(0.075, 0.145, 0.245), skyElevation);
+        float3 fallbackReflection = lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25),
+            saturate(reflect(-v, n).y * 0.5 + 0.5));
+        ambient = (fallbackSky * albedo * (1.0 - metallic) * ambientOcclusion
+            + fallbackReflection * f * (1.0 - roughness * 0.7) * 0.45) * 1.05;
+    }
     float3 cameraToSurface = input.worldPosition - cameraPosition.xyz;
     float distanceToCamera = length(cameraToSurface);
     float3 viewRay = cameraToSurface / max(distanceToCamera, 1.0e-4);

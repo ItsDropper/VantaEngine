@@ -111,6 +111,7 @@ add_executable(VantaEngineSceneSubmissionTests
     scene_submission_tests.cpp
     ../engine/src/renderer/SceneSubmission.cpp
     ../engine/src/renderer/SceneGeometry.cpp
+    ../engine/src/renderer/EnvironmentLighting.cpp
 )
 vanta_configure_test(VantaEngineSceneSubmissionTests)
 add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissionTests)

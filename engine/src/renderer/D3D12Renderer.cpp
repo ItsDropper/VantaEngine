@@ -2289,7 +2289,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
             if (cascade == 0U) {
-                for (const SubmittedBatchDraw& submittedDraw : shadowBatchDraws) {
+                for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : shadowBatchDraws) {
                     const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
                     D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
                     instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
@@ -2409,7 +2409,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
-        for (const SubmittedBatchDraw& submittedDraw : sceneBatchDraws) {
+        for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : sceneBatchDraws) {
             const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
             D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
             instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *

@@ -90,6 +90,85 @@ bool IsSubmittedDrawVisible(
         rejectPlane(0.0F, 0.0F, -1.0F, 1.0F));
 }
 
+bool BuildSubmittedInstanceStreams(
+    const SubmittedSceneGeometry& geometry,
+    const math::Mat4& shadowViewProjection,
+    const math::Mat4& sceneViewProjection,
+    SubmittedInstanceStreams& output,
+    std::string& error)
+{
+    output = {};
+    output.shadowTransforms.push_back(math::Mat4::Identity());
+    output.sceneTransforms.push_back(math::Mat4::Identity());
+    output.shadowBatches.reserve(geometry.batches.size());
+    output.sceneBatches.reserve(geometry.batches.size());
+
+    // The GPU buffer stores the complete shadow stream before the scene stream.
+    // Finish the shadow stream before calculating any scene batch's absolute offset.
+    for (std::size_t batchIndex = 0; batchIndex < geometry.batches.size(); ++batchIndex) {
+        const SubmittedSceneBatch& batch = geometry.batches[batchIndex];
+        const std::size_t firstInstance = output.shadowTransforms.size();
+        for (const std::uint32_t drawIndex : batch.drawIndices) {
+            if (drawIndex >= geometry.draws.size()) {
+                error = "Submitted scene batch references a missing draw while building shadow instances.";
+                output = {};
+                return false;
+            }
+            const SubmittedDrawRange& draw = geometry.draws[drawIndex];
+            if (IsSubmittedDrawVisible(draw, shadowViewProjection))
+                output.shadowTransforms.push_back(draw.world);
+        }
+        const std::size_t instanceCount = output.shadowTransforms.size() - firstInstance;
+        if (instanceCount != 0U) {
+            if (firstInstance > std::numeric_limits<std::uint32_t>::max() ||
+                instanceCount > std::numeric_limits<std::uint32_t>::max()) {
+                error = "Submitted shadow instance stream exceeds 32-bit batch limits.";
+                output = {};
+                return false;
+            }
+            output.shadowBatches.push_back({
+                static_cast<std::uint32_t>(batchIndex),
+                static_cast<std::uint32_t>(firstInstance),
+                static_cast<std::uint32_t>(instanceCount)
+            });
+        }
+    }
+
+    const std::size_t sceneStreamBase = output.shadowTransforms.size();
+    for (std::size_t batchIndex = 0; batchIndex < geometry.batches.size(); ++batchIndex) {
+        const SubmittedSceneBatch& batch = geometry.batches[batchIndex];
+        const std::size_t firstSceneInstance = output.sceneTransforms.size();
+        for (const std::uint32_t drawIndex : batch.drawIndices) {
+            if (drawIndex >= geometry.draws.size()) {
+                error = "Submitted scene batch references a missing draw while building color instances.";
+                output = {};
+                return false;
+            }
+            const SubmittedDrawRange& draw = geometry.draws[drawIndex];
+            if (IsSubmittedDrawVisible(draw, sceneViewProjection))
+                output.sceneTransforms.push_back(draw.world);
+        }
+        const std::size_t instanceCount = output.sceneTransforms.size() - firstSceneInstance;
+        if (instanceCount != 0U) {
+            const std::size_t absoluteFirstInstance = sceneStreamBase + firstSceneInstance;
+            if (absoluteFirstInstance > std::numeric_limits<std::uint32_t>::max() ||
+                instanceCount > std::numeric_limits<std::uint32_t>::max()) {
+                error = "Submitted scene instance stream exceeds 32-bit batch limits.";
+                output = {};
+                return false;
+            }
+            output.sceneBatches.push_back({
+                static_cast<std::uint32_t>(batchIndex),
+                static_cast<std::uint32_t>(absoluteFirstInstance),
+                static_cast<std::uint32_t>(instanceCount)
+            });
+        }
+    }
+
+    error.clear();
+    return true;
+}
+
 bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error)
 {

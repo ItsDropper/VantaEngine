@@ -95,13 +95,19 @@ bool BuildSubmittedInstanceStreams(
     const math::Mat4& shadowViewProjection,
     const math::Mat4& sceneViewProjection,
     SubmittedInstanceStreams& output,
-    std::string& error)
+    std::string& error,
+    const bool includeSceneInstances)
 {
     output = {};
+    output.shadowTransforms.reserve(geometry.draws.size() + 1U);
     output.shadowTransforms.push_back(math::Mat4::Identity());
-    output.sceneTransforms.push_back(math::Mat4::Identity());
+    if (includeSceneInstances) {
+        output.sceneTransforms.reserve(geometry.draws.size() + 1U);
+        output.sceneTransforms.push_back(math::Mat4::Identity());
+    }
     output.shadowBatches.reserve(geometry.batches.size());
-    output.sceneBatches.reserve(geometry.batches.size());
+    if (includeSceneInstances)
+        output.sceneBatches.reserve(geometry.batches.size());
 
     // The GPU buffer stores the complete shadow stream before the scene stream.
     // Finish the shadow stream before calculating any scene batch's absolute offset.
@@ -134,34 +140,36 @@ bool BuildSubmittedInstanceStreams(
         }
     }
 
-    const std::size_t sceneStreamBase = output.shadowTransforms.size();
-    for (std::size_t batchIndex = 0; batchIndex < geometry.batches.size(); ++batchIndex) {
-        const SubmittedSceneBatch& batch = geometry.batches[batchIndex];
-        const std::size_t firstSceneInstance = output.sceneTransforms.size();
-        for (const std::uint32_t drawIndex : batch.drawIndices) {
-            if (drawIndex >= geometry.draws.size()) {
-                error = "Submitted scene batch references a missing draw while building color instances.";
-                output = {};
-                return false;
+    if (includeSceneInstances) {
+        const std::size_t sceneStreamBase = output.shadowTransforms.size();
+        for (std::size_t batchIndex = 0; batchIndex < geometry.batches.size(); ++batchIndex) {
+            const SubmittedSceneBatch& batch = geometry.batches[batchIndex];
+            const std::size_t firstSceneInstance = output.sceneTransforms.size();
+            for (const std::uint32_t drawIndex : batch.drawIndices) {
+                if (drawIndex >= geometry.draws.size()) {
+                    error = "Submitted scene batch references a missing draw while building color instances.";
+                    output = {};
+                    return false;
+                }
+                const SubmittedDrawRange& draw = geometry.draws[drawIndex];
+                if (IsSubmittedDrawVisible(draw, sceneViewProjection))
+                    output.sceneTransforms.push_back(draw.world);
             }
-            const SubmittedDrawRange& draw = geometry.draws[drawIndex];
-            if (IsSubmittedDrawVisible(draw, sceneViewProjection))
-                output.sceneTransforms.push_back(draw.world);
-        }
-        const std::size_t instanceCount = output.sceneTransforms.size() - firstSceneInstance;
-        if (instanceCount != 0U) {
-            const std::size_t absoluteFirstInstance = sceneStreamBase + firstSceneInstance;
-            if (absoluteFirstInstance > std::numeric_limits<std::uint32_t>::max() ||
-                instanceCount > std::numeric_limits<std::uint32_t>::max()) {
-                error = "Submitted scene instance stream exceeds 32-bit batch limits.";
-                output = {};
-                return false;
+            const std::size_t instanceCount = output.sceneTransforms.size() - firstSceneInstance;
+            if (instanceCount != 0U) {
+                const std::size_t absoluteFirstInstance = sceneStreamBase + firstSceneInstance;
+                if (absoluteFirstInstance > std::numeric_limits<std::uint32_t>::max() ||
+                    instanceCount > std::numeric_limits<std::uint32_t>::max()) {
+                    error = "Submitted scene instance stream exceeds 32-bit batch limits.";
+                    output = {};
+                    return false;
+                }
+                output.sceneBatches.push_back({
+                    static_cast<std::uint32_t>(batchIndex),
+                    static_cast<std::uint32_t>(absoluteFirstInstance),
+                    static_cast<std::uint32_t>(instanceCount)
+                });
             }
-            output.sceneBatches.push_back({
-                static_cast<std::uint32_t>(batchIndex),
-                static_cast<std::uint32_t>(absoluteFirstInstance),
-                static_cast<std::uint32_t>(instanceCount)
-            });
         }
     }
 

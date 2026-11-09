@@ -447,7 +447,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float snowBackScatter = pow(saturate(dot(-l, v)), 3.0);
     float3 snowTransmission = albedo * daylightColor * lighting.w *
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
-        snowSubsurfaceMask * (1.0 - shadow * 0.35);
+        snowSubsurfaceMask * lerp(0.35, 1.0, shadow);
     direct += snowTransmission;
     // Hemispherical sky irradiance: the horizon carries atmospheric haze while
     // the upper hemisphere retains the colder blue skylight of a clear winter day.
@@ -506,6 +506,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     fogColor = max(fogColor + inScattering +
         lerp(float3(0.34, 0.41, 0.47), daylightColor * 0.055,
             saturate(phase * 8.0)) * aerialPerspective, 0.0);
+    // Directional shadowing also attenuates a portion of the environment fill;
+    // otherwise bright snow receives unoccluded skylight and hides cast shadows.
+    ambient *= lerp(0.42, 1.0, shadow);
     float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
     return float4(litColor, 1.0);
 }

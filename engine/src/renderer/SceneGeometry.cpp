@@ -177,6 +177,35 @@ bool BuildSubmittedInstanceStreams(
     return true;
 }
 
+bool RebaseSubmittedSceneBatchOffsets(
+    std::vector<SubmittedInstanceBatchDraw>& sceneBatches,
+    const std::size_t sourceSceneStreamBase,
+    const std::size_t destinationSceneStreamBase,
+    const std::size_t sceneStreamSize,
+    std::string& error)
+{
+    for (SubmittedInstanceBatchDraw& batch : sceneBatches) {
+        if (batch.firstInstance < sourceSceneStreamBase) {
+            error = "Submitted scene batch starts before its source scene-instance stream.";
+            return false;
+        }
+        const std::size_t relativeFirst = static_cast<std::size_t>(batch.firstInstance) -
+            sourceSceneStreamBase;
+        if (relativeFirst > sceneStreamSize || batch.instanceCount > sceneStreamSize - relativeFirst) {
+            error = "Submitted scene batch exceeds its source scene-instance stream.";
+            return false;
+        }
+        if (relativeFirst > std::numeric_limits<std::uint32_t>::max() ||
+            destinationSceneStreamBase > std::numeric_limits<std::uint32_t>::max() - relativeFirst) {
+            error = "Rebased submitted scene batch offset exceeds 32-bit limits.";
+            return false;
+        }
+        batch.firstInstance = static_cast<std::uint32_t>(destinationSceneStreamBase + relativeFirst);
+    }
+    error.clear();
+    return true;
+}
+
 bool BuildSubmittedSceneGeometry(
     const SceneFrame& frame, SubmittedSceneGeometry& output, std::string& error)
 {

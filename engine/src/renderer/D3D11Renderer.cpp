@@ -166,7 +166,9 @@ struct PixelInput
     float2 uv : TEXCOORD;
     float3 worldPosition : TEXCOORD1;
     float4 shadowPosition : TEXCOORD2;
+    float3 diffuseIrradiance : TEXCOORD3;
 };
+float3 EvaluateEnvironmentSH(float3 direction, bool diffuse, float roughness);
 
 float3 EvaluateEnvironmentSH(float3 direction, bool diffuse, float roughness)
 {
@@ -213,6 +215,9 @@ PixelInput VSMain(VertexInput input)
     }
     output.position = mul(worldViewProjection, float4(localPosition, 1.0));
     output.normal = TransformWorldNormal(input.normal);
+    // Diffuse irradiance is normal-dependent, not pixel-dependent. Interpolate the
+    // vertex evaluation to avoid nine SH coefficient reads for every shaded pixel.
+    output.diffuseIrradiance = EvaluateEnvironmentSH(output.normal, true, 0.5);
     output.worldPosition = mul(world, float4(localPosition, 1.0)).xyz;
     output.shadowPosition = mul(lightViewProjection[0], float4(output.worldPosition, 1.0));
     output.color = input.color;
@@ -396,7 +401,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     float3 ambient;
     if (environmentFogColor.w > 0.5)
     {
-        float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+        float3 diffuseIrradiance = input.diffuseIrradiance;
         float3 environmentReflection = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
         float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) *
             (1.0 / 3.14159265) * ambientOcclusion;

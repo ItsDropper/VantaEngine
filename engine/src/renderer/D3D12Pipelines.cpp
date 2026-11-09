@@ -23,6 +23,8 @@ cbuffer SceneConstants : register(b0)
     float4 environmentFog;
     float4 environmentFogParameters;
     float4 environmentWind;
+    float4 diffuseIrradianceSH[9];
+    float4 specularPrefilterSH[45];
 };
 Texture2DArray<float> shadowMap : register(t2);
 Texture2DArray modelAlbedoTexture : register(t7);
@@ -38,6 +40,22 @@ Texture2DArray submittedOcclusionTexture : register(t16);
 cbuffer InstanceConstants : register(b1) { float4x4 instanceWorldConstants; };
 SamplerState linearClamp : register(s0);
 SamplerState linearWrap : register(s1);
+float3 EvaluateEnvironmentSH(float3 direction, bool diffuse, float roughness)
+{
+    float3 d = normalize(direction);
+    float basis[9] = {
+        0.282095,
+        0.488603 * d.y, 0.488603 * d.z, 0.488603 * d.x,
+        1.092548 * d.x * d.y, 1.092548 * d.y * d.z,
+        0.315392 * (3.0 * d.z * d.z - 1.0),
+        1.092548 * d.x * d.z, 0.546274 * (d.x * d.x - d.y * d.y)
+    };
+    float3 result = 0.0;
+    uint level = (uint)round(saturate(roughness) * 4.0);
+    [unroll] for (uint i = 0; i < 9; ++i)
+        result += (diffuse ? diffuseIrradianceSH[i].rgb : specularPrefilterSH[level * 9 + i].rgb) * basis[i];
+    return max(result, 0.0);
+}
 float3 TransformInstanceNormal(float3 normal, float4x4 instanceWorld)
 {
     const float3x3 linearWorld = (float3x3)instanceWorld;
@@ -415,23 +433,11 @@ float4 PSMain(PSInput input) : SV_TARGET
     direct += snowTransmission;
     // Hemispherical sky irradiance: the horizon carries atmospheric haze while
     // the upper hemisphere retains the colder blue skylight of a clear winter day.
-    float skyElevation = saturate(n.y * 0.5 + 0.5);
-    float horizonWeight = pow(1.0 - skyElevation, 2.2);
-    float3 physicallyBasedSky = lerp(float3(0.29, 0.35, 0.40),
-        float3(0.075, 0.145, 0.245), skyElevation);
-    physicallyBasedSky = lerp(physicallyBasedSky,
-        float3(0.48, 0.52, 0.54), horizonWeight * 0.24);
-    float3 sky = environmentSunColor.w > 0.5
-        ? lerp(environmentAmbient.rgb * 0.18, environmentAmbient.rgb, skyElevation)
-        : physicallyBasedSky;
     float ambientIntensity = environmentSunColor.w > 0.5 ? environmentAmbient.w : 1.05;
-    float3 ambient = sky * albedo * (1.0 - metallic) * ambientIntensity * ambientOcclusion;
-    float3 reflectedSky = environmentSunColor.w > 0.5
-        ? lerp(environmentAmbient.rgb * 0.35, environmentAmbient.rgb * 1.2,
-            saturate(reflect(-v, n).y * 0.5 + 0.5))
-        : lerp(float3(0.10, 0.095, 0.08), float3(0.30, 0.29, 0.25),
-            saturate(reflect(-v, n).y * 0.5 + 0.5));
-    ambient += reflectedSky * f * (1.0 - roughness * 0.7) * 0.45;
+    float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+    float3 reflectedEnvironment = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
+    float3 ambient = (diffuseIrradiance * albedo * (1.0 - metallic) / 3.14159265
+        + reflectedEnvironment * f) * ambientIntensity * ambientOcclusion;
     float3 cameraToSurface = input.worldPosition - cameraPosition.xyz;
     float distanceToCamera = length(cameraToSurface);
     float3 viewRay = cameraToSurface / max(distanceToCamera, 1.0e-4);

@@ -3,6 +3,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 
 #include <array>
+#include <cstddef>
 
 namespace vanta::renderer
 {

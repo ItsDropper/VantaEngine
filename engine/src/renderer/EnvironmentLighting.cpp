@@ -10,7 +10,6 @@ namespace
 {
 struct Float3 { float x, y, z; };
 constexpr float kPi = 3.14159265358979323846F;
-constexpr float kInvFourPi = 1.0F / (4.0F * kPi);
 
 Float3 Add(Float3 a, Float3 b) noexcept { return {a.x+b.x,a.y+b.y,a.z+b.z}; }
 Float3 Mul(Float3 a, float s) noexcept { return {a.x*s,a.y*s,a.z*s}; }
@@ -62,7 +61,7 @@ EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings
         const auto basis=Basis(direction);
         const Float3 light=Radiance(direction,settings);
         for(std::size_t c=0;c<basis.size();++c) {
-            const float weight=basis[c]*4.0F*kPi*kInvFourPi;
+            const float weight=basis[c]*(4.0F*kPi/static_cast<float>(sampleCount));
             radianceCoefficients[c][0]+=light.x*weight;
             radianceCoefficients[c][1]+=light.y*weight;
             radianceCoefficients[c][2]+=light.z*weight;

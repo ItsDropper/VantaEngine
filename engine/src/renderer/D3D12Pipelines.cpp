@@ -468,7 +468,8 @@ float4 PSMain(PSInput input) : SV_TARGET
     // exact for the clamped linear camera ray and replaces four per-pixel exp()
     // evaluations plus the sample loop with at most two exponentials.
     float opticalDepth = 0.0;
-    const float rayHeightDelta = cameraPosition.y - fogBaseHeight;
+    const float rayStartHeight = cameraPosition.y + viewRay.y * fogStart;
+    const float rayHeightDelta = rayStartHeight - fogBaseHeight;
     const float rayHeightSlope = viewRay.y;
     const float fogFalloff = max(heightFalloff, 1.0e-5);
     if (fogLength > 0.0 && fogDensity > 0.0)

@@ -401,7 +401,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float3 diffuseAmbient = diffuseIrradiance * albedo * (1.0 - metallic) *
             (1.0 / 3.14159265) * ambientOcclusion;
         float3 specularAmbient = environmentReflection * f * ambientOcclusion;
-        ambient = (diffuseAmbient * 0.72 + specularAmbient * 0.85) * environmentAmbient.w;
+        ambient = diffuseAmbient * 0.72 + specularAmbient * 0.85;
     }
     else
     {

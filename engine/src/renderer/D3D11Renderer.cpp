@@ -1806,11 +1806,9 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
             m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
             m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-            // Imported scene submissions currently use one draw per instance.
-            // Keep their shadow workload to the near cascade until the backend
-            // supports true per-instance GPU culling/instancing. The mid/far
-            // cascades remain available to the engine's chunked world renderer.
-            if (cascade == 0U) for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
+            // Submitted geometry must populate every cascade selected by the
+            // lighting shader; otherwise mid/far objects sample cleared depth slices.
+            for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
                 if (!renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
                 SceneConstants constants{};
                 constants.world = draw.world;

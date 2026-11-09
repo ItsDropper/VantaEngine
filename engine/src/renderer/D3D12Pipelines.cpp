@@ -52,8 +52,23 @@ float3 EvaluateEnvironmentSH(float3 direction, bool diffuse, float roughness)
     };
     float3 result = 0.0;
     uint level = (uint)round(saturate(roughness) * 4.0);
-    [unroll] for (uint i = 0; i < 9; ++i)
-        result += (diffuse ? diffuseIrradianceSH[i].rgb : specularPrefilterSH[level * 9 + i].rgb) * basis[i];
+    if (diffuse)
+    {
+        [unroll] for (uint i = 0; i < 9; ++i)
+            result += diffuseIrradianceSH[i].rgb * basis[i];
+    }
+    else if (roughness >= 0.72)
+    {
+        // High-roughness lobes strongly suppress L2 angular detail; evaluate only
+        // L0/L1 here to reduce per-pixel constant-buffer traffic on snow and timber.
+        [unroll] for (uint i = 0; i < 4; ++i)
+            result += specularPrefilterSH[level * 9 + i].rgb * basis[i];
+    }
+    else
+    {
+        [unroll] for (uint i = 0; i < 9; ++i)
+            result += specularPrefilterSH[level * 9 + i].rgb * basis[i];
+    }
     return max(result, 0.0);
 }
 float3 TransformInstanceNormal(float3 normal, float4x4 instanceWorld)

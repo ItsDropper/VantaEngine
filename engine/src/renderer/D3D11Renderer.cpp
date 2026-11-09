@@ -1536,9 +1536,10 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     const bool hasSubmittedScene = submittedScene != nullptr;
     const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
-    const renderer::EnvironmentLighting environmentLighting = submittedScene != nullptr
-        ? renderer::BuildEnvironmentLighting(submittedScene->view.environment)
-        : renderer::EnvironmentLighting{};
+    const renderer::EnvironmentLighting environmentLighting =
+        submittedScene != nullptr && submittedScene->view.environment.enabled
+            ? renderer::BuildEnvironmentLighting(submittedScene->view.environment)
+            : renderer::EnvironmentLighting{};
     if (hasSubmittedScene) {
         std::string geometryError;
         if (!renderer::BuildSubmittedSceneGeometry(*submittedScene, m_submittedGeometryCache, geometryError)) {

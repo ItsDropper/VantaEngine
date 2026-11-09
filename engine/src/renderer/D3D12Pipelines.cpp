@@ -166,11 +166,13 @@ float TerrainNoise(float2 p)
     n += ValueNoise(p * 5.11 - 9.0) * 0.15;
     return n;
 }
-float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection)
+float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection,
+                      float cameraDistanceSquared)
 {
-    float cameraDistance = distance(cameraPosition.xyz, worldPosition);
-    int cascade = cameraDistance < cascadeSplits.x ? 0 :
-                  (cameraDistance < cascadeSplits.y ? 1 : 2);
+    const float nearSplitSquared = cascadeSplits.x * cascadeSplits.x;
+    const float midSplitSquared = cascadeSplits.y * cascadeSplits.y;
+    int cascade = cameraDistanceSquared < nearSplitSquared ? 0 :
+                  (cameraDistanceSquared < midSplitSquared ? 1 : 2);
     float4 shadowClip = mul(lightViewProjection[cascade], float4(worldPosition, 1.0));
     if (shadowClip.w <= 0.0) return 1.0;
     float3 projected = shadowClip.xyz / shadowClip.w;
@@ -213,7 +215,9 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
     }
-    float3 v = normalize(cameraPosition.xyz - input.worldPosition);
+    const float3 surfaceToCamera = cameraPosition.xyz - input.worldPosition;
+    const float cameraDistanceSquared = dot(surfaceToCamera, surfaceToCamera);
+    float3 v = surfaceToCamera * rsqrt(max(cameraDistanceSquared, 1.0e-8));
     float3 l = normalize(lighting.xyz);
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
@@ -422,7 +426,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float g = GeometrySchlick(ndv, roughness) * GeometrySchlick(max(ndl, 0.001), roughness);
     float3 specular = d * g * f / max(4.0 * ndv * max(ndl, 0.001), 0.001);
     float3 kD = (1.0 - f) * (1.0 - metallic);
-    float shadow = CalculateShadow(input.worldPosition, n, l);
+    float shadow = CalculateShadow(input.worldPosition, n, l, cameraDistanceSquared);
     // Atmospheric transmittance is constant for the frame and is precomputed
     // on the CPU; avoid asin/pow/exp in every shaded pixel.
     float3 daylightColor = environmentSunColor.rgb;
@@ -456,8 +460,8 @@ float4 PSMain(PSInput input) : SV_TARGET
         ambient = (fallbackSky * albedo * (1.0 - metallic) * ambientOcclusion
             + fallbackReflection * f * (1.0 - roughness * 0.7) * 0.45) * 1.05;
     }
-    float3 cameraToSurface = input.worldPosition - cameraPosition.xyz;
-    float distanceToCamera = length(cameraToSurface);
+    const float distanceToCamera = sqrt(cameraDistanceSquared);
+    const float3 cameraToSurface = -surfaceToCamera;
     float3 viewRay = cameraToSurface / max(distanceToCamera, 1.0e-4);
     float fogStart = environmentFogParameters.y > 0.5 ? environmentFogParameters.x : 18.0;
     float fogDensity = environmentFogParameters.y > 0.5 ? environmentFog.w : 0.018;

@@ -193,7 +193,7 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
         [unroll] for (int x = -1; x <= 1; ++x)
             visibility += projected.z - bias <= shadowMap.SampleLevel(
                 linearClamp, float3(uv + texel * float2(x, y), cascade), 0) ? 1.0 : 0.0;
-    return lerp(0.38, 1.0, visibility / 9.0);
+    return lerp(0.24, 1.0, visibility / 9.0);
 }
 float4 PSMain(PSInput input) : SV_TARGET
 {

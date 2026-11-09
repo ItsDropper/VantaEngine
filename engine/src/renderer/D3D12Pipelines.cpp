@@ -76,7 +76,7 @@ struct VSInput
     float4 worldRow1 : INSTANCEWORLD1;
     float4 worldRow2 : INSTANCEWORLD2;
 };
-struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; };
+struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; float3 diffuseIrradiance : TEXCOORD4; };
 PSInput VSMain(VSInput input)
 {
     PSInput o;
@@ -102,6 +102,9 @@ PSInput VSMain(VSInput input)
     o.position = mul(viewProjection, float4(worldPosition, 1.0));
     o.worldPosition = worldPosition;
     o.normal = TransformInstanceNormal(input.normal, instanceWorld);
+    // Diffuse irradiance depends only on the transformed normal, so evaluate it per
+    // vertex and interpolate instead of loading nine SH coefficients per pixel.
+    o.diffuseIrradiance = EvaluateEnvironmentSH(o.normal, true, 0.5);
     o.color = input.color;
     o.uv = input.uv;
     o.material = input.material;
@@ -436,7 +439,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 ambient;
     if (environmentSunColor.w > 0.5)
     {
-        float3 diffuseIrradiance = EvaluateEnvironmentSH(n, true, roughness);
+        float3 diffuseIrradiance = input.diffuseIrradiance;
         float3 reflectedEnvironment = EvaluateEnvironmentSH(reflect(-v, n), false, roughness);
         ambient = (diffuseIrradiance * albedo * (1.0 - metallic) / 3.14159265
             + reflectedEnvironment * f) * ambientOcclusion;

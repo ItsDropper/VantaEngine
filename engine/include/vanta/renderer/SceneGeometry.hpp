@@ -16,8 +16,10 @@ struct SubmittedSceneVertex
     float color[4]{};
     float uv[2]{};
     float material[4]{};
+    float materialExtra0[4]{}; // emissive RGB, normal scale
+    float materialExtra1[4]{}; // AO strength, alpha cutoff, alpha mode, double-sided
 };
-static_assert(sizeof(SubmittedSceneVertex) == 64);
+static_assert(sizeof(SubmittedSceneVertex) == 96);
 
 struct SubmittedDrawRange
 {

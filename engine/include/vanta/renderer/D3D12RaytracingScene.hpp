@@ -55,7 +55,7 @@ public:
     [[nodiscard]] bool IsSupported() const noexcept { return m_device5 != nullptr; }
     [[nodiscard]] std::size_t BottomLevelCount() const noexcept { return m_bottomLevels.size(); }
     [[nodiscard]] D3D12_GPU_VIRTUAL_ADDRESS TopLevelAddress() const noexcept;
-    [[nodiscard]] ID3D12Resource* TopLevelResource() const noexcept { return m_topLevel.Get(); }
+    [[nodiscard]] ID3D12Resource* TopLevelResource() const noexcept { return m_topLevel.result.Get(); }
 
 private:
     struct AccelerationStructure

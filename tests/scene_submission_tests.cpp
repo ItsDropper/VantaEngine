@@ -151,6 +151,23 @@ int main()
     for (const bool seen : hierarchyMeshletSeen)
         Require(seen);
 
+
+    GpuMeshletHierarchy gpuHierarchy;
+    Require(BuildGpuMeshletHierarchy(hierarchy, gpuHierarchy, meshletError));
+    Require(gpuHierarchy.rootNode == hierarchy.rootNode);
+    Require(gpuHierarchy.nodes.size() == hierarchy.nodes.size());
+    Require(gpuHierarchy.childIndices == hierarchy.childIndices);
+    Require(gpuHierarchy.meshletIndices == hierarchy.meshletIndices);
+    Require(gpuHierarchy.nodes[gpuHierarchy.rootNode].childRange[1] == 3U);
+    Require(gpuHierarchy.nodes[0].meshletRange[1] == 1U);
+
+    MeshletHierarchy malformedGpuHierarchy = hierarchy;
+    malformedGpuHierarchy.nodes[0].firstMeshlet =
+        static_cast<std::uint32_t>(malformedGpuHierarchy.meshletIndices.size());
+    Require(!BuildGpuMeshletHierarchy(malformedGpuHierarchy, gpuHierarchy, meshletError));
+    Require(gpuHierarchy.nodes.empty() &&
+        gpuHierarchy.rootNode == MeshletHierarchy::InvalidIndex);
+
     MeshletData malformedHierarchy = hierarchyInput;
     malformedHierarchy.meshlets[0].primitiveOffset =
         static_cast<std::uint32_t>(malformedHierarchy.primitiveIndices.size() - 1U);

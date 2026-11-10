@@ -417,13 +417,22 @@ bool ValidateFrameView(const FrameView& view, std::string& error)
 SceneFrame SceneSubmission::BuildFrame(const FrameView& view) const
 {
     SceneFrame frame;
-    frame.view = view;
-    frame.resourceRevision = m_resourceRevision;
+    BuildFrame(view, frame);
+    return frame;
+}
+
+void SceneSubmission::BuildFrame(const FrameView& view, SceneFrame& output) const
+{
+    output.view = view;
+    output.resourceRevision = m_resourceRevision;
+    output.draws.clear();
+
     std::string validationError;
     if (!ValidateFrameView(view, validationError))
-        return frame;
+        return;
 
-    frame.draws.reserve(m_visibleInstances.size());
+    if (output.draws.capacity() < m_visibleInstances.size())
+        output.draws.reserve(m_visibleInstances.size());
     for (const std::uint32_t instanceIndex : m_visibleInstances)
     {
         const InstanceSlot& instance = m_instances[instanceIndex];
@@ -439,9 +448,8 @@ SceneFrame SceneSubmission::BuildFrame(const FrameView& view) const
             !meshSlot->resource || !materialSlot->resource)
             continue;
 
-        frame.draws.push_back({meshSlot->resource, materialSlot->resource, instance.world});
+        output.draws.push_back({meshSlot->resource, materialSlot->resource, instance.world});
     }
-    return frame;
 }
 
 void SceneSubmission::Clear() noexcept

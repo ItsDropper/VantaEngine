@@ -409,6 +409,14 @@ bool BuildSubmittedSceneGeometry(
             vertex.material[1] = range.material.metallic;
             vertex.material[2] = 1.0F;
             vertex.material[3] = static_cast<float>(materialFlags);
+            vertex.materialExtra0[0] = range.material.emissive.x;
+            vertex.materialExtra0[1] = range.material.emissive.y;
+            vertex.materialExtra0[2] = range.material.emissive.z;
+            vertex.materialExtra0[3] = range.material.normalScale;
+            vertex.materialExtra1[0] = range.material.occlusionStrength;
+            vertex.materialExtra1[1] = range.material.alphaCutoff;
+            vertex.materialExtra1[2] = static_cast<float>(range.material.alphaMode);
+            vertex.materialExtra1[3] = range.material.doubleSided ? 1.0F : 0.0F;
             output.vertices.push_back(vertex);
         }
 

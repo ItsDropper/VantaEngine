@@ -57,6 +57,8 @@ private:
     static constexpr UINT kHiZBaseUavIndex = 15;
     static constexpr UINT kSubmittedMaterialBaseSrvIndex = 47;
     static constexpr UINT kSubmittedMaterialSrvCount = 6;
+    static_assert(kSubmittedMaterialBaseSrvIndex >=
+        kHiZBaseUavIndex + kFrameCount * kHiZMipCapacity);
     struct DrawChunk
     {
         std::array<UINT, 5> startIndex{};

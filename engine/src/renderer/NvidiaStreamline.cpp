@@ -22,6 +22,37 @@ namespace vanta::renderer
 #if defined(VANTA_ENABLE_STREAMLINE)
 namespace
 {
+using CreateFactory2Function = HRESULT(WINAPI*)(UINT, REFIID, void**);
+using CreateD3D12DeviceFunction = HRESULT(WINAPI*)(IUnknown*, D3D_FEATURE_LEVEL, REFIID, void**);
+using SlInitFunction = decltype(&slInit);
+using SlShutdownFunction = decltype(&slShutdown);
+using SlSetD3DDeviceFunction = decltype(&slSetD3DDevice);
+using SlIsFeatureSupportedFunction = decltype(&slIsFeatureSupported);
+using SlGetNewFrameTokenFunction = decltype(&slGetNewFrameToken);
+using SlGetFeatureFunction = decltype(&slGetFeatureFunction);
+using SlPclSetMarkerFunction = decltype(&slPCLSetMarker);
+using SlReflexSetOptionsFunction = decltype(&slReflexSetOptions);
+
+bool VerifyAuthenticodeSignature(const std::filesystem::path& path)
+{
+    WINTRUST_FILE_INFO fileInfo{};
+    fileInfo.cbStruct = sizeof(fileInfo);
+    fileInfo.pcwszFilePath = path.c_str();
+    WINTRUST_DATA trustData{};
+    trustData.cbStruct = sizeof(trustData);
+    trustData.dwUIChoice = WTD_UI_NONE;
+    trustData.fdwRevocationChecks = WTD_REVOKE_NONE;
+    trustData.dwUnionChoice = WTD_CHOICE_FILE;
+    trustData.pFile = &fileInfo;
+    trustData.dwStateAction = WTD_STATEACTION_VERIFY;
+    trustData.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+    GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    const LONG result = WinVerifyTrust(nullptr, &policy, &trustData);
+    trustData.dwStateAction = WTD_STATEACTION_CLOSE;
+    (void)WinVerifyTrust(nullptr, &policy, &trustData);
+    return result == ERROR_SUCCESS;
+}
+
 void StreamlineLogMessage(const sl::LogType type, const char* message)
 {
     if (message == nullptr) return;
@@ -307,8 +338,14 @@ void NvidiaStreamlineRuntime::MarkPresentEnd() noexcept
 void NvidiaStreamlineRuntime::Shutdown() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_status.initialized)
-        (void)slShutdown();
+    if (m_status.initialized && m_slShutdown != nullptr) {
+        const auto shutdown = reinterpret_cast<SlShutdownFunction>(m_slShutdown);
+        (void)shutdown();
+    }
+    if (m_streamlineModule != nullptr) {
+        FreeLibrary(m_streamlineModule);
+        m_streamlineModule = nullptr;
+    }
 #endif
     m_status.initialized = false;
     m_status.deviceAttached = false;
@@ -320,5 +357,15 @@ void NvidiaStreamlineRuntime::Shutdown() noexcept
     m_status.dlssFrameGenerationSupported = false;
     m_status.dlssRayReconstructionSupported = false;
     m_status.nvidiaImageScalingSupported = false;
+    m_createFactory2 = nullptr;
+    m_createD3D12Device = nullptr;
+    m_slInit = nullptr;
+    m_slShutdown = nullptr;
+    m_slSetD3DDevice = nullptr;
+    m_slIsFeatureSupported = nullptr;
+    m_slGetNewFrameToken = nullptr;
+    m_slGetFeatureFunction = nullptr;
+    m_slPCLSetMarker = nullptr;
+    m_slReflexSetOptions = nullptr;
 }
 } // namespace vanta::renderer

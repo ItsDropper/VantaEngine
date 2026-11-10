@@ -199,7 +199,7 @@ bool D3D12RaytracingScene::BuildTopLevel(
         return false;
     }
     if (m_bottomLevels.empty() || instances.empty() ||
-        instances.size() > D3D12_RAYTRACING_MAX_INSTANCE_COUNT)
+        instances.size() > (1ULL << 24U))
     {
         error = "TLAS build requires valid BLAS data and a supported non-empty instance list.";
         return false;

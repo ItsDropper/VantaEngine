@@ -104,6 +104,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_transparentDepthState;
     Microsoft::WRL::ComPtr<ID3D11BlendState> m_alphaBlendState;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_rasterizerState;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> m_singleSidedRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_shadowVertexShader;
     Microsoft::WRL::ComPtr<ID3D11InputLayout> m_shadowInputLayout;

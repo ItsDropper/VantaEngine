@@ -84,7 +84,7 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
 #if defined(VANTA_ENABLE_STREAMLINE)
     m_status.sdkCompiledIn = true;
 
-    std::vector<wchar_t> executablePath(32768U, L'\\0');
+    std::vector<wchar_t> executablePath(32768U, L'\0');
     const DWORD pathLength = GetModuleFileNameW(nullptr, executablePath.data(),
         static_cast<DWORD>(executablePath.size()));
     if (pathLength == 0U || pathLength >= executablePath.size()) {
@@ -148,6 +148,9 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
     if (result != sl::Result::eOk) {
         error = "NVIDIA Streamline initialization failed (result " +
             std::to_string(static_cast<std::uint32_t>(result)) + ").";
+        m_status.diagnostic = error;
+        Shutdown();
+        m_status.sdkCompiledIn = true;
         m_status.diagnostic = error;
         return false;
     }

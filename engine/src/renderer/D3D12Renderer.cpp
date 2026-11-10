@@ -928,6 +928,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         {1, 1, {128, 128, 255, 255}},
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {0, 0, 0, 255}},
+        {1, 1, {255, 255, 255, 255}},
         {1, 1, {255, 255, 255, 255}}
     }};
     std::array<std::vector<assets::CpuTexture>, 6> materialMaps;

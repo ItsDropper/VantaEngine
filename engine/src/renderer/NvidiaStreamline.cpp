@@ -2,6 +2,10 @@
 
 #include "vanta/core/Log.hpp"
 
+#include <cstdint>
+#include <iterator>
+#include <string>
+
 #if defined(VANTA_ENABLE_STREAMLINE)
 #include <sl.h>
 #include <sl_consts.h>

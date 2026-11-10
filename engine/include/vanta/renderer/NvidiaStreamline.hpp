@@ -18,6 +18,7 @@ struct NvidiaStreamlineStatus
     bool reflexEnabled = false;
     bool dlssFrameGenerationSupported = false;
     bool dlssRayReconstructionSupported = false;
+    bool nvidiaImageScalingSupported = false;
     std::string diagnostic;
 };
 

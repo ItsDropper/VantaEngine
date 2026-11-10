@@ -34,7 +34,7 @@ bool IsValidSubmittedWorldTransform(const math::Mat4& world) noexcept
 
 std::string MaterialTextureKey(const MaterialDescription& material)
 {
-    const std::array<const std::filesystem::path*, 5> paths = {
+    const std::array<const std::filesystem::path*, 6> paths = {
         &material.baseColorTexture, &material.normalTexture, &material.roughnessTexture,
         &material.metallicTexture, &material.ambientOcclusionTexture
     };

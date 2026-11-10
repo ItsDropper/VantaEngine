@@ -415,7 +415,9 @@ int main()
 
     MaterialDescription blendedMaterialDescription;
     blendedMaterialDescription.alphaMode = MaterialAlphaMode::Blend;
-    Require(advancedMaterialScene.CreateMaterial(blendedMaterialDescription).IsValid());
+    const MaterialHandle blendedMaterial = advancedMaterialScene.CreateMaterial(blendedMaterialDescription);
+    Require(blendedMaterial.IsValid());
+    Require(advancedMaterialScene.CreateInstance(advancedMesh, blendedMaterial).IsValid());
     MaterialDescription emissiveTextureDescription;
     emissiveTextureDescription.emissiveTexture = textureRoot / "emissive.png";
     const MaterialHandle emissiveTextureMaterial = advancedMaterialScene.CreateMaterial(emissiveTextureDescription);

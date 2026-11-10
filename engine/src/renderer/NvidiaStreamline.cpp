@@ -83,13 +83,12 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
     m_slSetD3DDevice = GetProcAddress(m_streamlineModule, "slSetD3DDevice");
     m_slIsFeatureSupported = GetProcAddress(m_streamlineModule, "slIsFeatureSupported");
     m_slGetNewFrameToken = GetProcAddress(m_streamlineModule, "slGetNewFrameToken");
-    m_slPCLSetMarker = GetProcAddress(m_streamlineModule, "slPCLSetMarker");
-    m_slReflexSetOptions = GetProcAddress(m_streamlineModule, "slReflexSetOptions");
+    m_slGetFeatureFunction = GetProcAddress(m_streamlineModule, "slGetFeatureFunction");
     if (m_createFactory2 == nullptr || m_createD3D12Device == nullptr ||
         m_slInit == nullptr || m_slShutdown == nullptr || m_slSetD3DDevice == nullptr ||
         m_slIsFeatureSupported == nullptr || m_slGetNewFrameToken == nullptr ||
-        m_slPCLSetMarker == nullptr || m_slReflexSetOptions == nullptr) {
-        error = "Signed Streamline interposer is missing required D3D12/core/Reflex exports.";
+        m_slGetFeatureFunction == nullptr) {
+        error = "Signed Streamline interposer is missing required D3D12/core/feature-resolver exports.";
         m_status.diagnostic = error;
         Shutdown();
         m_status.sdkCompiledIn = true;
@@ -195,11 +194,28 @@ bool NvidiaStreamlineRuntime::SetDevice(
     m_status.reflexSupported = reflexResult == sl::Result::eOk;
     m_status.latencyMarkersSupported = pclResult == sl::Result::eOk;
     m_status.nvidiaImageScalingSupported = nisResult == sl::Result::eOk;
+
+    const auto getFeatureFunction =
+        reinterpret_cast<SlGetFeatureFunction>(m_slGetFeatureFunction);
+    if (m_status.latencyMarkersSupported) {
+        void* markerFunction = nullptr;
+        if (getFeatureFunction(sl::kFeaturePCL, "slPCLSetMarker", markerFunction) == sl::Result::eOk)
+            m_slPCLSetMarker = reinterpret_cast<FARPROC>(markerFunction);
+        else
+            m_status.latencyMarkersSupported = false;
+    }
     if (m_status.reflexSupported) {
-        sl::ReflexOptions reflexOptions{};
-        reflexOptions.mode = sl::ReflexMode::eLowLatency;
-        const auto setReflexOptions = reinterpret_cast<SlReflexSetOptionsFunction>(m_slReflexSetOptions);
-        m_status.reflexEnabled = setReflexOptions(reflexOptions) == sl::Result::eOk;
+        void* reflexOptionsFunction = nullptr;
+        if (getFeatureFunction(sl::kFeatureReflex, "slReflexSetOptions",
+                reflexOptionsFunction) == sl::Result::eOk)
+            m_slReflexSetOptions = reinterpret_cast<FARPROC>(reflexOptionsFunction);
+        if (m_slReflexSetOptions != nullptr) {
+            sl::ReflexOptions reflexOptions{};
+            reflexOptions.mode = sl::ReflexMode::eLowLatency;
+            const auto setReflexOptions =
+                reinterpret_cast<SlReflexSetOptionsFunction>(m_slReflexSetOptions);
+            m_status.reflexEnabled = setReflexOptions(reflexOptions) == sl::Result::eOk;
+        }
     }
 
     m_status.diagnostic = "NVIDIA Streamline device attached. DLSS Super Resolution: " +
@@ -232,7 +248,7 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
 #if defined(VANTA_ENABLE_STREAMLINE)
     m_currentFrameToken = nullptr;
     if (!m_status.initialized || !m_status.deviceAttached ||
-        !m_status.latencyMarkersSupported)
+        !m_status.latencyMarkersSupported || m_slPCLSetMarker == nullptr)
         return;
     sl::FrameToken* token = nullptr;
     const auto getNewFrameToken = reinterpret_cast<SlGetNewFrameTokenFunction>(m_slGetNewFrameToken);
@@ -246,7 +262,7 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
 void NvidiaStreamlineRuntime::MarkRenderSubmitStart() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr) {
+    if (m_currentFrameToken != nullptr && m_slPCLSetMarker != nullptr) {
         const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
         (void)setMarker(sl::PCLMarker::eRenderSubmitStart,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));

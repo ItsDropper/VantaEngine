@@ -2525,6 +2525,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         if (m_timestampFrequency != 0)
             m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + cascade + 1U);
     }
+    EndGpuEvent(m_commandList.Get());
     D3D12_RESOURCE_BARRIER shadowToSample = shadowToDepth;
     shadowToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_DEPTH_WRITE;
     shadowToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -2538,6 +2539,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     toRenderTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &toRenderTarget);
 
+    BeginGpuEvent(m_commandList.Get(), "Vanta.Scene");
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += static_cast<SIZE_T>(m_frameIndex) * m_rtvDescriptorSize;
     const D3D12_CPU_DESCRIPTOR_HANDLE dsv = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
@@ -2689,7 +2691,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         }
         m_sceneDrawCallsAccumulated += opaqueDrawCalls + transparentDraws.size();
     }
-    EndGpuEvent(m_commandList.Get());
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
     BeginGpuEvent(m_commandList.Get(), "Vanta.TemporalResolve");

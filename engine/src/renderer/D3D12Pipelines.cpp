@@ -796,6 +796,19 @@ bool D3D12Renderer::CreatePipeline()
         LogError("Direct3D 12: transparent material pipeline state creation failed.");
         return false;
     }
+    pso.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    pso.BlendState.RenderTarget[0] = defaultBlend;
+    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_singleSidedPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: single-sided material pipeline state creation failed.");
+        return false;
+    }
+    pso.BlendState.RenderTarget[0] = transparentBlend;
+    pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_singleSidedTransparentPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: single-sided transparent pipeline state creation failed.");
+        return false;
+    }
     return true;
 }
 

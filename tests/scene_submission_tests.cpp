@@ -387,6 +387,39 @@ int main()
     Require((snowTerrainFlags & 128U) != 0U);
     Require((snowTerrainFlags & 256U) != 0U);
 
+    SceneSubmission advancedMaterialScene;
+    const MeshHandle advancedMesh = advancedMaterialScene.CreateMesh(Triangle());
+    MaterialDescription advancedMaterialDescription;
+    advancedMaterialDescription.emissive = {1.4F, 0.25F, 0.05F};
+    advancedMaterialDescription.normalScale = 0.65F;
+    advancedMaterialDescription.occlusionStrength = 0.35F;
+    advancedMaterialDescription.alphaMode = MaterialAlphaMode::Mask;
+    advancedMaterialDescription.alphaCutoff = 0.42F;
+    advancedMaterialDescription.doubleSided = true;
+    const MaterialHandle advancedMaterial = advancedMaterialScene.CreateMaterial(advancedMaterialDescription);
+    Require(advancedMesh.IsValid() && advancedMaterial.IsValid());
+    Require(advancedMaterialScene.CreateInstance(advancedMesh, advancedMaterial).IsValid());
+    const SceneFrame advancedFrame = advancedMaterialScene.BuildFrame(view);
+    SubmittedSceneGeometry advancedGeometry;
+    Require(BuildSubmittedSceneGeometry(advancedFrame, advancedGeometry, geometryError));
+    Require(advancedGeometry.vertices.size() == 3U);
+    Require(advancedGeometry.vertices[0].materialExtra0[0] == 1.4F);
+    Require(advancedGeometry.vertices[0].materialExtra0[1] == 0.25F);
+    Require(advancedGeometry.vertices[0].materialExtra0[2] == 0.05F);
+    Require(advancedGeometry.vertices[0].materialExtra0[3] == 0.65F);
+    Require(advancedGeometry.vertices[0].materialExtra1[0] == 0.35F);
+    Require(advancedGeometry.vertices[0].materialExtra1[1] == 0.42F);
+    Require(advancedGeometry.vertices[0].materialExtra1[2] ==
+        static_cast<float>(MaterialAlphaMode::Mask));
+    Require(advancedGeometry.vertices[0].materialExtra1[3] == 1.0F);
+
+    MaterialDescription blendedMaterialDescription;
+    blendedMaterialDescription.alphaMode = MaterialAlphaMode::Blend;
+    Require(!advancedMaterialScene.CreateMaterial(blendedMaterialDescription).IsValid());
+    MaterialDescription emissiveTextureDescription;
+    emissiveTextureDescription.emissiveTexture = textureRoot / "emissive.png";
+    Require(!advancedMaterialScene.CreateMaterial(emissiveTextureDescription).IsValid());
+
     SceneSubmission cachedScene;
     const MeshHandle cachedMesh = cachedScene.CreateMesh(Triangle());
     const MaterialHandle cachedMaterial = cachedScene.CreateMaterial({});

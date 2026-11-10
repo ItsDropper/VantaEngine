@@ -54,7 +54,8 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
         sl::kFeatureDLSS_G,
         sl::kFeatureDLSS_RR,
         sl::kFeatureReflex,
-        sl::kFeaturePCL
+        sl::kFeaturePCL,
+        sl::kFeatureNIS
     };
     sl::Preferences preferences{};
     preferences.engine = sl::EngineType::eCustom;
@@ -113,12 +114,14 @@ bool NvidiaStreamlineRuntime::SetDevice(
         slIsFeatureSupported(sl::kFeatureDLSS_RR, adapterInfo);
     const sl::Result reflexResult = slIsFeatureSupported(sl::kFeatureReflex, adapterInfo);
     const sl::Result pclResult = slIsFeatureSupported(sl::kFeaturePCL, adapterInfo);
+    const sl::Result nisResult = slIsFeatureSupported(sl::kFeatureNIS, adapterInfo);
     m_status.deviceAttached = true;
     m_status.dlssSupported = dlssResult == sl::Result::eOk;
     m_status.dlssFrameGenerationSupported = frameGenerationResult == sl::Result::eOk;
     m_status.dlssRayReconstructionSupported = rayReconstructionResult == sl::Result::eOk;
     m_status.reflexSupported = reflexResult == sl::Result::eOk;
     m_status.latencyMarkersSupported = pclResult == sl::Result::eOk;
+    m_status.nvidiaImageScalingSupported = nisResult == sl::Result::eOk;
     if (m_status.reflexSupported) {
         sl::ReflexOptions reflexOptions{};
         reflexOptions.mode = sl::ReflexMode::eLowLatency;
@@ -137,7 +140,9 @@ bool NvidiaStreamlineRuntime::SetDevice(
         (m_status.reflexEnabled ? "enabled" : "not enabled") +
         "; latency markers: " +
         (m_status.latencyMarkersSupported ? "available" : "unavailable") +
-        ". DLSS execution still requires valid frame resources, constants, tagging and evaluation.";
+        "; NVIDIA Image Scaling: " +
+        (m_status.nvidiaImageScalingSupported ? "supported" : "unavailable") +
+        ". DLSS/NIS image processing still requires render-resource tagging and feature evaluation.";
     error.clear();
     return true;
 #else
@@ -215,5 +220,6 @@ void NvidiaStreamlineRuntime::Shutdown() noexcept
     m_currentFrameToken = nullptr;
     m_status.dlssFrameGenerationSupported = false;
     m_status.dlssRayReconstructionSupported = false;
+    m_status.nvidiaImageScalingSupported = false;
 }
 } // namespace vanta::renderer

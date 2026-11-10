@@ -162,6 +162,8 @@ public:
     [[nodiscard]] bool Contains(InstanceHandle handle) const noexcept;
 
     [[nodiscard]] SceneFrame BuildFrame(const FrameView& view) const;
+    // Reuses caller-owned draw storage to avoid allocating a fresh vector every frame.
+    void BuildFrame(const FrameView& view, SceneFrame& output) const;
     void Clear() noexcept;
 
     [[nodiscard]] std::size_t MeshCount() const noexcept { return m_meshCount; }

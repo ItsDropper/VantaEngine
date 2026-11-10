@@ -208,8 +208,6 @@ float4 PSMain(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
 {
     float3 n = normalize(input.normal);
     if (input.materialExtra1.w > 0.5 && !isFrontFace) n = -n;
-    if (input.materialExtra1.z > 0.5 && input.materialExtra1.z < 1.5)
-        clip(input.color.a - input.materialExtra1.y);
     uint materialFlags = (uint)(input.material.w + 0.5);
     float3 dp1 = ddx(input.worldPosition);
     float3 dp2 = ddy(input.worldPosition);
@@ -232,10 +230,17 @@ float4 PSMain(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
     float3 l = normalize(lighting.xyz);
     float3 h = normalize(v + l);
     float3 albedo = max(input.color.rgb, 0.0);
+    float baseColorAlpha = 1.0;
     if ((materialFlags & 1U) != 0U)
-        albedo *= submittedMaterial
-            ? submittedAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb
-            : modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
+    {
+        const float4 baseColorSample = submittedMaterial
+            ? submittedAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a))
+            : modelAlbedoTexture.Sample(linearWrap, float3(input.uv, input.color.a));
+        albedo *= baseColorSample.rgb;
+        baseColorAlpha = baseColorSample.a;
+    }
+    if (input.materialExtra1.z > 0.5 && input.materialExtra1.z < 1.5)
+        clip(baseColorAlpha - input.materialExtra1.y);
     // Determine whether this pixel belongs to the procedural terrain before evaluating
     // its expensive multi-octave noise. The merged scene also contains foliage, cabins,
     // rocks and props; those pixels should not pay the terrain-material cost.

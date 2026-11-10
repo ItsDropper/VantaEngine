@@ -23,6 +23,12 @@ struct SubmittedSceneGeometry;
 
 namespace vanta
 {
+struct SubmittedInstanceData
+{
+    float worldRows[3][4]{};
+};
+static_assert(sizeof(SubmittedInstanceData) == 48);
+
 [[nodiscard]] bool ValidateD3D12SceneShader(std::string& error);
 
 class D3D12Renderer final

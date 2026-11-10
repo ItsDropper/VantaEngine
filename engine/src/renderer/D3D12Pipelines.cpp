@@ -448,7 +448,8 @@ float4 PSMain(PSInput input) : SV_TARGET
         const float3 localH = normalize(v + localL);
         const float3 localF = FresnelSchlick(saturate(dot(localH, v)), f0);
         const float localD = DistributionGGX(n, localH, roughness);
-        const float localG = GeometrySchlick(ndv, max(localNdl, 0.001));
+        const float localG = GeometrySchlick(ndv, roughness) *
+            GeometrySchlick(max(localNdl, 0.001), roughness);
         const float3 localSpecular = localD * localG * localF /
             max(4.0 * ndv * max(localNdl, 0.001), 0.001);
         const float3 localKD = (1.0 - localF) * (1.0 - metallic);

@@ -42,6 +42,21 @@ MeshDescription Triangle()
 
 int main()
 {
+    FrameView pointLightView;
+    std::string pointLightError;
+    Require(ValidateFrameView(pointLightView, pointLightError));
+    pointLightView.pointLightCount = 1U;
+    pointLightView.pointLights[0] = {{2.0F, 3.0F, 4.0F}, 18.0F, {1.0F, 0.45F, 0.2F}, 24.0F};
+    Require(ValidateFrameView(pointLightView, pointLightError));
+    pointLightView.pointLightCount = MaximumPointLightsPerFrame + 1U;
+    Require(!ValidateFrameView(pointLightView, pointLightError));
+    pointLightView.pointLightCount = 1U;
+    pointLightView.pointLights[0].range = 0.0F;
+    Require(!ValidateFrameView(pointLightView, pointLightError));
+    pointLightView.pointLights[0].range = 18.0F;
+    pointLightView.pointLights[0].intensity = std::numeric_limits<float>::quiet_NaN();
+    Require(!ValidateFrameView(pointLightView, pointLightError));
+
     EnvironmentSettings lightingSettings{};
     lightingSettings.enabled = true;
     const EnvironmentLighting environmentLighting = BuildEnvironmentLighting(lightingSettings);

@@ -23,6 +23,9 @@ cbuffer SceneConstants : register(b0)
     float4 environmentFog;
     float4 environmentFogParameters;
     float4 environmentWind;
+    float4 pointLightPositionRange[8];
+    float4 pointLightColorIntensity[8];
+    float4 pointLightParameters;
     float4 diffuseIrradianceSH[9];
     float4 specularPrefilterSH[45];
 };
@@ -431,6 +434,28 @@ float4 PSMain(PSInput input) : SV_TARGET
     // on the CPU; avoid asin/pow/exp in every shaded pixel.
     float3 daylightColor = environmentSunColor.rgb;
     float3 direct = (kD * albedo / 3.14159265 + specular) * daylightColor * lighting.w * ndl * shadow;
+    [loop] for (uint lightIndex = 0U; lightIndex < min((uint)pointLightParameters.x, 8U); ++lightIndex)
+    {
+        const float3 toPointLight = pointLightPositionRange[lightIndex].xyz - input.worldPosition;
+        const float distanceSquared = dot(toPointLight, toPointLight);
+        const float distanceToLight = sqrt(max(distanceSquared, 0.0001));
+        const float lightRange = pointLightPositionRange[lightIndex].w;
+        const float rangeFade = saturate(1.0 - distanceToLight / max(lightRange, 0.001));
+        const float attenuation = rangeFade * rangeFade / max(distanceSquared, 0.25);
+        const float3 localL = toPointLight / distanceToLight;
+        const float localNdl = saturate(dot(n, localL));
+        if (localNdl <= 0.0) continue;
+        const float3 localH = normalize(v + localL);
+        const float3 localF = FresnelSchlick(saturate(dot(localH, v)), f0);
+        const float localD = DistributionGGX(n, localH, roughness);
+        const float localG = GeometrySchlick(ndv, max(localNdl, 0.001));
+        const float3 localSpecular = localD * localG * localF /
+            max(4.0 * ndv * max(localNdl, 0.001), 0.001);
+        const float3 localKD = (1.0 - localF) * (1.0 - metallic);
+        const float3 localRadiance = pointLightColorIntensity[lightIndex].rgb *
+            pointLightColorIntensity[lightIndex].w * attenuation;
+        direct += (localKD * albedo / 3.14159265 + localSpecular) * localRadiance * localNdl;
+    }
     // Snow is a translucent dielectric: add restrained forward-scattering and
     // back-lit transmission only to bright, rough, non-metallic surfaces.
     float snowSubsurfaceMask = saturate((min(albedo.r, min(albedo.g, albedo.b)) - 0.70) * 5.0) *

@@ -90,10 +90,13 @@ struct SceneConstants
     float environmentFog[4];
     float environmentFogParameters[4];
     float environmentWind[4];
+    float pointLightPositionRange[8][4];
+    float pointLightColorIntensity[8][4];
+    float pointLightParameters[4];
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
-static_assert(sizeof(SceneConstants) == 1248);
+static_assert(sizeof(SceneConstants) == 1520);
 
 struct TemporalConstants
 {
@@ -2009,6 +2012,22 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     constants.environmentWind[1] = environment.windDirectionZ;
     constants.environmentWind[2] = environment.windStrength;
     constants.environmentWind[3] = environment.enabled ? 1.0F : 0.0F;
+    if (submittedScene != nullptr)
+    {
+        constants.pointLightParameters[0] = static_cast<float>(submittedScene->view.pointLightCount);
+        for (std::uint32_t index = 0U; index < submittedScene->view.pointLightCount; ++index)
+        {
+            const renderer::PointLight& light = submittedScene->view.pointLights[index];
+            constants.pointLightPositionRange[index][0] = light.position.x;
+            constants.pointLightPositionRange[index][1] = light.position.y;
+            constants.pointLightPositionRange[index][2] = light.position.z;
+            constants.pointLightPositionRange[index][3] = light.range;
+            constants.pointLightColorIntensity[index][0] = light.color.x;
+            constants.pointLightColorIntensity[index][1] = light.color.y;
+            constants.pointLightColorIntensity[index][2] = light.color.z;
+            constants.pointLightColorIntensity[index][3] = light.intensity;
+        }
+    }
     if (environment.enabled &&
         (!m_environmentLightingCacheValid ||
          !SameEnvironmentSettings(environment, m_cachedEnvironmentSettings))) {

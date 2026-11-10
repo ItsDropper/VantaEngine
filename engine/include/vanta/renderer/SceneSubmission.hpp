@@ -3,11 +3,13 @@
 #include "vanta/assets/ObjLoader.hpp"
 #include "vanta/math/Math.hpp"
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace vanta::renderer
@@ -70,6 +72,16 @@ struct EnvironmentSettings
     float windStrength = 0.06F;
 };
 
+inline constexpr std::uint32_t MaximumPointLightsPerFrame = 8U;
+
+struct PointLight final
+{
+    math::Vec3 position{};
+    float range = 0.0F;
+    math::Vec3 color{1.0F, 1.0F, 1.0F};
+    float intensity = 0.0F;
+};
+
 struct FrameView
 {
     math::Mat4 view = math::Mat4::Identity();
@@ -78,7 +90,11 @@ struct FrameView
     float elapsedSeconds = 0.0F;
     std::uint64_t frameNumber = 0;
     EnvironmentSettings environment{};
+    std::array<PointLight, MaximumPointLightsPerFrame> pointLights{};
+    std::uint32_t pointLightCount = 0U;
 };
+
+[[nodiscard]] bool ValidateFrameView(const FrameView& view, std::string& error);
 
 struct MeshResource
 {

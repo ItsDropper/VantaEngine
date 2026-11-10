@@ -87,10 +87,13 @@ struct SceneConstants
     float environmentAmbient[4];
     float environmentFogColor[4];
     float environmentWind[4];
+    float pointLightPositionRange[8][4];
+    float pointLightColorIntensity[8][4];
+    float pointLightParameters[4];
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
-static_assert(sizeof(SceneConstants) == 1360);
+static_assert(sizeof(SceneConstants) == 1632);
 
 constexpr Vertex kCubeVertices[] = {
     // Front (+Z)
@@ -151,6 +154,9 @@ cbuffer SceneConstants : register(b0)
     float4 environmentAmbient;
     float4 environmentFogColor;
     float4 environmentWind;
+    float4 pointLightPositionRange[8];
+    float4 pointLightColorIntensity[8];
+    float4 pointLightParameters;
     float4 diffuseIrradianceSH[9];
     float4 specularPrefilterSH[45];
 };
@@ -417,6 +423,28 @@ float4 PSMain(PixelInput input) : SV_TARGET
         : float3(4.2, 3.45, 2.55);
     float shadow = CalculateShadow(input.worldPosition, n, l);
     float3 direct = (kD * albedo / 3.14159265 + specular) * radiance * nDotL * shadow;
+    [loop] for (uint lightIndex = 0U; lightIndex < min((uint)pointLightParameters.x, 8U); ++lightIndex)
+    {
+        const float3 toPointLight = pointLightPositionRange[lightIndex].xyz - input.worldPosition;
+        const float distanceSquared = dot(toPointLight, toPointLight);
+        const float distanceToLight = sqrt(max(distanceSquared, 0.0001));
+        const float lightRange = pointLightPositionRange[lightIndex].w;
+        const float rangeFade = saturate(1.0 - distanceToLight / max(lightRange, 0.001));
+        const float attenuation = rangeFade * rangeFade / max(distanceSquared, 0.25);
+        const float3 localL = toPointLight / distanceToLight;
+        const float localNdotL = saturate(dot(n, localL));
+        if (localNdotL <= 0.0) continue;
+        const float3 localH = normalize(v + localL);
+        const float3 localF = FresnelSchlick(saturate(dot(localH, v)), f0);
+        const float localNdf = DistributionGGX(n, localH, roughness);
+        const float localGeometry = GeometrySmith(n, v, localL, roughness);
+        const float3 localSpecular = (localNdf * localGeometry * localF) /
+            max(4.0 * nDotV * max(localNdotL, 0.001), 0.001);
+        const float3 localKD = (1.0 - localF) * (1.0 - metallic);
+        const float3 localRadiance = pointLightColorIntensity[lightIndex].rgb *
+            pointLightColorIntensity[lightIndex].w * attenuation;
+        direct += (localKD * albedo / 3.14159265 + localSpecular) * localRadiance * localNdotL;
+    }
     // Snow transmits a small amount of light beneath its surface. Restrict the
     // effect to bright, rough dielectrics so timber, foliage and ice stay distinct.
     float snowSubsurfaceMask = saturate((min(albedo.r, min(albedo.g, albedo.b)) - 0.70) * 5.0) *
@@ -2054,6 +2082,20 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
                 constants.environmentWind[1] = environment.windDirectionZ;
                 constants.environmentWind[2] = environment.windStrength;
                 constants.environmentWind[3] = submittedScene->view.elapsedSeconds;
+                constants.pointLightParameters[0] = static_cast<float>(submittedScene->view.pointLightCount);
+                for (std::uint32_t lightIndex = 0U;
+                    lightIndex < submittedScene->view.pointLightCount; ++lightIndex)
+                {
+                    const renderer::PointLight& light = submittedScene->view.pointLights[lightIndex];
+                    constants.pointLightPositionRange[lightIndex][0] = light.position.x;
+                    constants.pointLightPositionRange[lightIndex][1] = light.position.y;
+                    constants.pointLightPositionRange[lightIndex][2] = light.position.z;
+                    constants.pointLightPositionRange[lightIndex][3] = light.range;
+                    constants.pointLightColorIntensity[lightIndex][0] = light.color.x;
+                    constants.pointLightColorIntensity[lightIndex][1] = light.color.y;
+                    constants.pointLightColorIntensity[lightIndex][2] = light.color.z;
+                    constants.pointLightColorIntensity[lightIndex][3] = light.intensity;
+                }
             }
             constants.materialProperties[0] = draw.material.roughness;
             constants.materialProperties[1] = draw.material.metallic;

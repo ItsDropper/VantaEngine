@@ -362,14 +362,44 @@ bool SceneSubmission::Contains(const InstanceHandle handle) const noexcept
     return Find(handle) != nullptr;
 }
 
+bool ValidateFrameView(const FrameView& view, std::string& error)
+{
+    if (!IsFinite(view.view) || !IsFinite(view.projection) ||
+        !std::isfinite(view.cameraPosition.x) || !std::isfinite(view.cameraPosition.y) ||
+        !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds) ||
+        view.pointLightCount > MaximumPointLightsPerFrame)
+    {
+        error = "Frame view contains invalid camera data or exceeds the point-light limit.";
+        return false;
+    }
+    for (std::uint32_t index = 0U; index < view.pointLightCount; ++index)
+    {
+        const PointLight& light = view.pointLights[index];
+        if (!std::isfinite(light.position.x) || !std::isfinite(light.position.y) ||
+            !std::isfinite(light.position.z) || !std::isfinite(light.range) ||
+            light.range <= 0.0F || light.range > 10000.0F ||
+            !std::isfinite(light.color.x) || !std::isfinite(light.color.y) ||
+            !std::isfinite(light.color.z) || light.color.x < 0.0F ||
+            light.color.y < 0.0F || light.color.z < 0.0F ||
+            light.color.x > 1000.0F || light.color.y > 1000.0F || light.color.z > 1000.0F ||
+            !std::isfinite(light.intensity) || light.intensity < 0.0F ||
+            light.intensity > 100000.0F)
+        {
+            error = "Frame view contains an invalid point-light position, range, color, or intensity.";
+            return false;
+        }
+    }
+    error.clear();
+    return true;
+}
+
 SceneFrame SceneSubmission::BuildFrame(const FrameView& view) const
 {
     SceneFrame frame;
     frame.view = view;
     frame.resourceRevision = m_resourceRevision;
-    if (!IsFinite(view.view) || !IsFinite(view.projection) ||
-        !std::isfinite(view.cameraPosition.x) || !std::isfinite(view.cameraPosition.y) ||
-        !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds))
+    std::string validationError;
+    if (!ValidateFrameView(view, validationError))
         return frame;
 
     frame.draws.reserve(m_visibleInstances.size());

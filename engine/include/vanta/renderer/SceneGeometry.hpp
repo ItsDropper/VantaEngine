@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vanta/renderer/SceneSubmission.hpp"
+#include "vanta/renderer/MeshletBuilder.hpp"
 
 #include <cstdint>
 #include <string>
@@ -43,10 +44,22 @@ struct SubmittedSceneBatch
     std::vector<std::uint32_t> drawIndices;
 };
 
+struct SubmittedMeshletBatch
+{
+    std::uint32_t firstDraw = 0;
+    std::uint32_t drawCount = 0;
+    std::uint32_t firstIndex = 0;
+    std::uint32_t indexCount = 0;
+};
+
 struct SubmittedSceneGeometry
 {
     std::vector<SubmittedSceneVertex> vertices;
     std::vector<std::uint32_t> indices;
+    // Independent meshlet index stream. Values address the packed vertices above.
+    std::vector<std::uint32_t> meshletIndices;
+    std::vector<MeshletDrawDescriptor> meshletDraws;
+    std::vector<SubmittedMeshletBatch> meshletBatches;
     // One batch per unique mesh/material pair; instances reference draws by stable index.
     std::vector<SubmittedSceneBatch> batches;
     std::vector<SubmittedDrawRange> draws;

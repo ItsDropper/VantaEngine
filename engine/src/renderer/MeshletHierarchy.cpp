@@ -259,8 +259,10 @@ bool BuildGpuMeshletHierarchy(
     }
 
     output.nodes.reserve(source.nodes.size());
-    for (const MeshletHierarchyNode& node : source.nodes)
+    std::vector<std::uint32_t> parentCounts(source.nodes.size(), 0U);
+    for (std::size_t nodeIndex = 0U; nodeIndex < source.nodes.size(); ++nodeIndex)
     {
+        const MeshletHierarchyNode& node = source.nodes[nodeIndex];
         if (!IsFinite(node.boundsCenter) || !std::isfinite(node.boundsRadius) ||
             node.boundsRadius < 0.0F)
         {
@@ -277,7 +279,7 @@ bool BuildGpuMeshletHierarchy(
 
         if (node.IsLeaf())
         {
-            if (node.meshletCount == 0U ||
+            if (node.meshletCount == 0U || node.firstChild != 0U ||
                 node.firstMeshlet > source.meshletIndices.size() ||
                 node.meshletCount > source.meshletIndices.size() - node.firstMeshlet)
             {
@@ -299,7 +301,8 @@ bool BuildGpuMeshletHierarchy(
         }
         else
         {
-            if (node.childCount < 2U || node.firstChild > source.childIndices.size() ||
+            if (node.meshletCount != 0U || node.firstMeshlet != 0U ||
+                node.childCount < 2U || node.firstChild > source.childIndices.size() ||
                 node.childCount > source.childIndices.size() - node.firstChild)
             {
                 error = "Meshlet hierarchy internal node has an invalid child range.";
@@ -311,15 +314,53 @@ bool BuildGpuMeshletHierarchy(
             for (std::size_t offset = 0U; offset < node.childCount; ++offset)
             {
                 const std::uint32_t child = source.childIndices[node.firstChild + offset];
-                if (child >= source.nodes.size() || child == (&node - source.nodes.data()))
+                if (child >= source.nodes.size() || child == nodeIndex ||
+                    ++parentCounts[child] > 1U)
                 {
-                    error = "Meshlet hierarchy internal node references an invalid child.";
+                    error = "Meshlet hierarchy internal node references an invalid or multiply-parented child.";
                     output = {};
                     return false;
                 }
             }
         }
         output.nodes.push_back(gpuNode);
+    }
+
+    for (std::size_t nodeIndex = 0U; nodeIndex < parentCounts.size(); ++nodeIndex)
+    {
+        const std::uint32_t expectedParents = nodeIndex == source.rootNode ? 0U : 1U;
+        if (parentCounts[nodeIndex] != expectedParents)
+        {
+            error = "Meshlet hierarchy is disconnected or has an invalid root relationship.";
+            output = {};
+            return false;
+        }
+    }
+
+    std::vector<std::uint32_t> pendingNodes{source.rootNode};
+    std::vector<bool> visited(source.nodes.size(), false);
+    std::size_t visitedCount = 0U;
+    while (!pendingNodes.empty())
+    {
+        const std::uint32_t nodeIndex = pendingNodes.back();
+        pendingNodes.pop_back();
+        if (visited[nodeIndex])
+        {
+            error = "Meshlet hierarchy contains a cycle or repeated child reference.";
+            output = {};
+            return false;
+        }
+        visited[nodeIndex] = true;
+        ++visitedCount;
+        const MeshletHierarchyNode& node = source.nodes[nodeIndex];
+        for (std::size_t offset = 0U; offset < node.childCount; ++offset)
+            pendingNodes.push_back(source.childIndices[node.firstChild + offset]);
+    }
+    if (visitedCount != source.nodes.size())
+    {
+        error = "Meshlet hierarchy contains nodes unreachable from its root.";
+        output = {};
+        return false;
     }
 
     output.childIndices = source.childIndices;

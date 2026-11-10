@@ -1,6 +1,9 @@
 #include "vanta/renderer/D3D12RaytracingScene.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
+#include <utility>
 #include <limits>
 #include <sstream>
 

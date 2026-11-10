@@ -231,3 +231,5 @@ target_link_libraries(MyGame PRIVATE VantaEngine::Runtime)
 The target exports the engine include directory, C++23 requirement, and Direct3D/Win32 link dependencies. The `VantaEngine` executable is now a separate sample/entry-point target that links the same runtime library.
 
 **Integration boundary:** this build target is reusable, but the current renderer still constructs its procedural valley internally. The public renderer entry points still accept the sample camera parameters rather than a game-owned scene. Linking the runtime does not yet provide arbitrary game-scene submission; that requires the scene/resource submission path to be implemented in both graphics backends.
+
+The CPU hierarchy can also be converted into a fixed 48-byte, 16-byte-aligned GPU node record (`GpuMeshletHierarchyNode`). Child and leaf ranges remain in separate 32-bit index buffers; conversion validates bounds, ranges, parent relationships and root reachability before the data is eligible for upload. This is a serialization contract, not yet a live D3D12 traversal or draw path.

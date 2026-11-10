@@ -2069,12 +2069,16 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.environmentSunColor[1] = environment.sunColor.y;
     temporalConstants.environmentSunColor[2] = environment.sunColor.z;
     temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
-    std::vector<SubmittedInstanceData> shadowInstances;
-    std::vector<SubmittedInstanceData> sceneInstances;
-    std::array<std::vector<renderer::SubmittedInstanceBatchDraw>, 3> shadowBatchDraws;
-    std::vector<renderer::SubmittedInstanceBatchDraw> sceneBatchDraws;
+    auto& shadowInstances = m_submittedShadowInstanceScratch;
+    auto& sceneInstances = m_submittedSceneInstanceScratch;
+    auto& shadowBatchDraws = m_submittedShadowBatchScratch;
+    auto& sceneBatchDraws = m_submittedSceneBatchScratch;
+    shadowInstances.clear();
+    sceneInstances.clear();
+    for (auto& batches : shadowBatchDraws) batches.clear();
+    sceneBatchDraws.clear();
     if (hasSubmittedScene) {
-        std::array<renderer::SubmittedInstanceStreams, 3> cascadeStreams;
+        auto& cascadeStreams = m_submittedInstanceStreamsScratch;
         std::string instanceError;
         for (UINT cascade = 0; cascade < 3; ++cascade) {
             if (!renderer::BuildSubmittedInstanceStreams(submittedGeometry,
@@ -2089,14 +2093,16 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             shadowInstances.reserve(shadowInstances.size() + transforms.size() - 1U);
             for (std::size_t index = 1; index < transforms.size(); ++index)
                 shadowInstances.push_back(MakeSubmittedInstance(transforms[index]));
-            shadowBatchDraws[cascade] = std::move(cascadeStreams[cascade].shadowBatches);
+            shadowBatchDraws[cascade].assign(cascadeStreams[cascade].shadowBatches.begin(),
+                cascadeStreams[cascade].shadowBatches.end());
             for (auto& draw : shadowBatchDraws[cascade])
                 draw.firstInstance = cascadeBase + draw.firstInstance - 1U;
         }
         sceneInstances.reserve(cascadeStreams[0].sceneTransforms.size());
         for (const Mat4& transform : cascadeStreams[0].sceneTransforms)
             sceneInstances.push_back(MakeSubmittedInstance(transform));
-        sceneBatchDraws = std::move(cascadeStreams[0].sceneBatches);
+        sceneBatchDraws.assign(cascadeStreams[0].sceneBatches.begin(),
+            cascadeStreams[0].sceneBatches.end());
         // BuildSubmittedInstanceStreams uses a dummy element in each source stream.
         // The GPU upload strips only the shadow dummy; validate and rebase every
         // scene batch against the exact uploaded stream lengths before issuing draws.

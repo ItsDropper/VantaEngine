@@ -1,6 +1,7 @@
 #include "vanta/renderer/D3D12Renderer.hpp"
 #include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
+#include "vanta/renderer/NvidiaRendering.hpp"
 
 #include "vanta/core/Log.hpp"
 #include "vanta/world/ProceduralWorld.hpp"
@@ -756,6 +757,12 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         if (FAILED(adapter->GetDesc1(&description)) || (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) continue;
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
             LogInfo(DescribeD3D12Adapter(adapter.Get(), false));
+            char adapterName[128]{};
+            (void)WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
+                adapterName, static_cast<int>(sizeof(adapterName)), nullptr, nullptr);
+            const renderer::NvidiaRenderingCapabilities capabilities =
+                renderer::QueryNvidiaRenderingCapabilities(m_device.Get(), description.VendorId, adapterName);
+            LogInfo(capabilities.diagnostic.c_str());
             break;
         }
     }

@@ -168,6 +168,11 @@ int main()
     Require(gpuHierarchy.nodes.empty() &&
         gpuHierarchy.rootNode == MeshletHierarchy::InvalidIndex);
 
+    MeshletHierarchy cyclicGpuHierarchy = hierarchy;
+    cyclicGpuHierarchy.childIndices[0] = cyclicGpuHierarchy.rootNode;
+    Require(!BuildGpuMeshletHierarchy(cyclicGpuHierarchy, gpuHierarchy, meshletError));
+    Require(gpuHierarchy.nodes.empty());
+
     MeshletData malformedHierarchy = hierarchyInput;
     malformedHierarchy.meshlets[0].primitiveOffset =
         static_cast<std::uint32_t>(malformedHierarchy.primitiveIndices.size() - 1U);

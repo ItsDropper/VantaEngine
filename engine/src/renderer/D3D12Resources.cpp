@@ -390,7 +390,7 @@ bool D3D12Renderer::CreateModelTextureArray(UINT width, UINT height, UINT layers
 {
     const bool submittedMaterial = descriptorIndex >= kSubmittedMaterialBaseSrvIndex &&
         descriptorIndex < kSubmittedMaterialBaseSrvIndex + kSubmittedMaterialSrvCount;
-    const bool importedMaterial = descriptorIndex >= 7U && descriptorIndex < 12U;
+    const bool importedMaterial = descriptorIndex >= 7U && descriptorIndex < 13U;
     if (width == 0 || height == 0 || layers == 0 ||
         layers > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION ||
         (!submittedMaterial && !importedMaterial)) return false;

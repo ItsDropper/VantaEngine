@@ -418,6 +418,11 @@ int main()
     const MaterialHandle blendedMaterial = advancedMaterialScene.CreateMaterial(blendedMaterialDescription);
     Require(blendedMaterial.IsValid());
     Require(advancedMaterialScene.CreateInstance(advancedMesh, blendedMaterial).IsValid());
+    const SceneFrame blendedFrame = advancedMaterialScene.BuildFrame(view);
+    SubmittedSceneGeometry blendedGeometry;
+    Require(BuildSubmittedSceneGeometry(blendedFrame, blendedGeometry, geometryError));
+    Require(blendedGeometry.vertices.back().materialExtra1[2] ==
+        static_cast<float>(MaterialAlphaMode::Blend));
     MaterialDescription emissiveTextureDescription;
     emissiveTextureDescription.emissiveTexture = textureRoot / "emissive.png";
     const MaterialHandle emissiveTextureMaterial = advancedMaterialScene.CreateMaterial(emissiveTextureDescription);

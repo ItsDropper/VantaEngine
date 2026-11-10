@@ -81,6 +81,8 @@ struct SceneConstants
     float materialProperties[4];
     float baseColorFactor[4];
     UINT textureFlags[4];
+    float emissiveFactor[4];
+    float advancedMaterial[4];
     Mat4 lightViewProjection[3];
     float cascadeSplits[4];
     float environmentSunColor[4];
@@ -93,7 +95,7 @@ struct SceneConstants
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
-static_assert(sizeof(SceneConstants) == 1632);
+static_assert(sizeof(SceneConstants) == 1664);
 
 constexpr Vertex kCubeVertices[] = {
     // Front (+Z)
@@ -148,6 +150,8 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
+    float4 emissiveFactor;
+    float4 advancedMaterial;
     float4x4 lightViewProjection[3];
     float4 cascadeSplits;
     float4 environmentSunColor;
@@ -331,9 +335,10 @@ float ValueNoise(float3 p)
     return lerp(lerp(lerp(a,b,f.x),lerp(c,d,f.x),f.y),
                 lerp(lerp(e,f1,f.x),lerp(g,h,f.x),f.y),f.z);
 }
-float4 PSMain(PixelInput input) : SV_TARGET
+float4 PSMain(PixelInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
 {
     float3 n = normalize(input.normal);
+    if (emissiveFactor.w > 0.5 && !isFrontFace) n = -n;
     if (textureFlags.x != 0)
     {
         // Derivative-built tangent frame avoids requiring imported tangents in the OBJ vertex format.
@@ -344,6 +349,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
         float3 tangent = normalize(dpdx * duvdy.y - dpdy * duvdx.y);
         float3 bitangent = normalize(-dpdx * duvdy.x + dpdy * duvdx.x);
         float3 mappedNormal = normalTexture.Sample(diffuseSampler, input.uv).xyz * 2.0 - 1.0;
+        mappedNormal.xy *= advancedMaterial.x;
         n = normalize(tangent * mappedNormal.x + bitangent * mappedNormal.y + n * mappedNormal.z);
     }
     float3 v = normalize(cameraPosition - input.worldPosition);
@@ -360,6 +366,8 @@ float4 PSMain(PixelInput input) : SV_TARGET
         ? saturate(metallicMapValue)
         : saturate(materialProperties.y);
     float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
+    if (advancedMaterial.w > 0.5 && advancedMaterial.w < 1.5)
+        clip(sampled.a - advancedMaterial.z);
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);
     if (useTexture == 0)
     {
@@ -455,8 +463,9 @@ float4 PSMain(PixelInput input) : SV_TARGET
         (wrappedSnowDiffuse * 0.075 + snowBackScatter * 0.12) *
         snowSubsurfaceMask * lerp(0.35, 1.0, shadow);
     direct += snowTransmission;
-    float ambientOcclusion = textureFlags.w != 0
+    float ambientOcclusionSample = textureFlags.w != 0
         ? saturate(ambientOcclusionTexture.Sample(diffuseSampler, input.uv).r) : 1.0;
+    float ambientOcclusion = lerp(1.0, ambientOcclusionSample, saturate(advancedMaterial.y));
     float3 ambient;
     if (environmentFogColor.w > 0.5)
     {
@@ -483,7 +492,7 @@ float4 PSMain(PixelInput input) : SV_TARGET
     // after the full scene has been composited, so bright highlights can bloom correctly.
     // Directional shadowing also attenuates environment fill so bright snow does not wash out cast shadows.
     ambient *= lerp(0.42, 1.0, shadow);
-    float3 color = direct + ambient;
+    float3 color = direct + ambient + emissiveFactor.rgb;
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
     float3 fogColor = environmentFogColor.w > 0.5
@@ -2105,6 +2114,14 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             }
             constants.materialProperties[0] = draw.material.roughness;
             constants.materialProperties[1] = draw.material.metallic;
+            constants.emissiveFactor[0] = draw.material.emissive.x;
+            constants.emissiveFactor[1] = draw.material.emissive.y;
+            constants.emissiveFactor[2] = draw.material.emissive.z;
+            constants.emissiveFactor[3] = draw.material.doubleSided ? 1.0F : 0.0F;
+            constants.advancedMaterial[0] = draw.material.normalScale;
+            constants.advancedMaterial[1] = draw.material.occlusionStrength;
+            constants.advancedMaterial[2] = draw.material.alphaCutoff;
+            constants.advancedMaterial[3] = static_cast<float>(draw.material.alphaMode);
             // Submitted vertex colors already carry the material base color.
             // Multiplying it again here would square the tint whenever an albedo map exists.
             constants.baseColorFactor[0] = 1.0F;

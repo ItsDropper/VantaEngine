@@ -40,6 +40,33 @@ struct MeshletData
     std::vector<MeshletDescriptor> meshlets;
 };
 
+struct MeshletDrawDescriptor
+{
+    // Offsets into MeshletDrawData::indices; indices address the original vertex buffer.
+    std::uint32_t firstIndex = 0U;
+    std::uint32_t indexCount = 0U;
+    math::Vec3 boundsCenter{};
+    float boundsRadius = 0.0F;
+    math::Vec3 normalConeAxis{};
+    float normalConeCutoff = -1.0F;
+};
+
+struct MeshletDrawData
+{
+    // Expanded global vertex indices, suitable for a conventional indexed draw with
+    // BaseVertexLocation = 0 and the original mesh vertex buffer.
+    std::vector<std::uint32_t> indices;
+    std::vector<MeshletDrawDescriptor> draws;
+};
+
+// Expands meshlet-local byte indices into contiguous conventional indexed-draw ranges.
+// This is a deterministic bridge to indexed indirect drawing; it does not submit GPU work.
+[[nodiscard]] bool BuildMeshletDrawData(
+    std::span<const assets::ModelVertex> vertices,
+    const MeshletData& meshlets,
+    MeshletDrawData& output,
+    std::string& error);
+
 // Deterministically partitions indexed triangle geometry into bounded meshlets.
 // This is the CPU asset-build foundation for GPU cluster culling; it does not alter
 // the current indexed renderer or its instance-buffer layout.

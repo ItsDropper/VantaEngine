@@ -53,8 +53,8 @@ private:
     static constexpr UINT kFrameCount = 2;
     static constexpr UINT kIndirectStreamCount = 4;
     static constexpr UINT kHiZMipCapacity = 16;
-    static constexpr UINT kHiZBaseSrvIndex = 12;
-    static constexpr UINT kHiZBaseUavIndex = 14;
+    static constexpr UINT kHiZBaseSrvIndex = 13;
+    static constexpr UINT kHiZBaseUavIndex = 15;
     static constexpr UINT kSubmittedMaterialBaseSrvIndex = 46;
     static constexpr UINT kSubmittedMaterialSrvCount = 6;
     struct DrawChunk

@@ -113,7 +113,8 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
     preferences.flags = sl::PreferenceFlags::eDisableCLStateTracking;
     preferences.logMessageCallback = StreamlineLogMessage;
 
-    const auto initialize = reinterpret_cast<SlInitFunction>(m_slInit);\n    const sl::Result result = initialize(preferences, sl::kSDKVersion);
+    const auto initialize = reinterpret_cast<SlInitFunction>(m_slInit);
+    const sl::Result result = initialize(preferences, sl::kSDKVersion);
     if (result != sl::Result::eOk) {
         error = "NVIDIA Streamline initialization failed (result " +
             std::to_string(static_cast<std::uint32_t>(result)) + ").";
@@ -167,7 +168,8 @@ bool NvidiaStreamlineRuntime::SetDevice(
         return false;
     }
 
-    const auto setDevice = reinterpret_cast<SlSetD3DDeviceFunction>(m_slSetD3DDevice);\n    const sl::Result attachResult = setDevice(device);
+    const auto setDevice = reinterpret_cast<SlSetD3DDeviceFunction>(m_slSetD3DDevice);
+    const sl::Result attachResult = setDevice(device);
     if (attachResult != sl::Result::eOk) {
         error = "NVIDIA Streamline could not attach to the selected D3D12 device (result " +
             std::to_string(static_cast<std::uint32_t>(attachResult)) + ").";
@@ -196,7 +198,8 @@ bool NvidiaStreamlineRuntime::SetDevice(
     if (m_status.reflexSupported) {
         sl::ReflexOptions reflexOptions{};
         reflexOptions.mode = sl::ReflexMode::eLowLatency;
-        const auto setReflexOptions = reinterpret_cast<SlReflexSetOptionsFunction>(m_slReflexSetOptions);\n        m_status.reflexEnabled = setReflexOptions(reflexOptions) == sl::Result::eOk;
+        const auto setReflexOptions = reinterpret_cast<SlReflexSetOptionsFunction>(m_slReflexSetOptions);
+        m_status.reflexEnabled = setReflexOptions(reflexOptions) == sl::Result::eOk;
     }
 
     m_status.diagnostic = "NVIDIA Streamline device attached. DLSS Super Resolution: " +
@@ -232,7 +235,8 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
         !m_status.latencyMarkersSupported)
         return;
     sl::FrameToken* token = nullptr;
-    const auto getNewFrameToken = reinterpret_cast<SlGetNewFrameTokenFunction>(m_slGetNewFrameToken);\n    if (getNewFrameToken(token, &frameIndex) == sl::Result::eOk)
+    const auto getNewFrameToken = reinterpret_cast<SlGetNewFrameTokenFunction>(m_slGetNewFrameToken);
+    if (getNewFrameToken(token, &frameIndex) == sl::Result::eOk)
         m_currentFrameToken = token;
 #else
     (void)frameIndex;

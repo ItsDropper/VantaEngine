@@ -1,6 +1,7 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 #include "vanta/renderer/MeshletBuilder.hpp"
+#include "vanta/renderer/MeshletHierarchy.hpp"
 #include "vanta/renderer/EnvironmentLighting.hpp"
 
 #include <cstdlib>
@@ -91,6 +92,71 @@ int main()
         meshlets, meshletError));
     Require(meshlets.meshlets.empty());
 
+
+    // Spatial hierarchy groups meshlets into bounded, conservative parent spheres.
+    MeshletData hierarchyInput;
+    for (std::uint32_t index = 0U; index < 10U; ++index)
+    {
+        hierarchyInput.vertexIndices.insert(hierarchyInput.vertexIndices.end(),
+            {index * 3U, index * 3U + 1U, index * 3U + 2U});
+        hierarchyInput.primitiveIndices.insert(hierarchyInput.primitiveIndices.end(),
+            {0U, 1U, 2U});
+        MeshletDescriptor descriptor;
+        descriptor.vertexOffset = index * 3U;
+        descriptor.vertexCount = 3U;
+        descriptor.primitiveOffset = index * 3U;
+        descriptor.primitiveCount = 1U;
+        descriptor.boundsCenter = {static_cast<float>(index), 0.0F, 0.0F};
+        descriptor.boundsRadius = 0.5F;
+        hierarchyInput.meshlets.push_back(descriptor);
+    }
+    MeshletHierarchy hierarchy;
+    MeshletHierarchyBuildOptions hierarchyOptions;
+    hierarchyOptions.maxLeafMeshlets = 1U;
+    hierarchyOptions.maxChildren = 4U;
+    Require(BuildMeshletHierarchy(hierarchyInput, hierarchy, meshletError, hierarchyOptions));
+    Require(hierarchy.rootNode != MeshletHierarchy::InvalidIndex);
+    Require(hierarchy.nodes[hierarchy.rootNode].childCount == 3U);
+    Require(hierarchy.meshletIndices.size() == hierarchyInput.meshlets.size());
+    std::vector<bool> hierarchyMeshletSeen(hierarchyInput.meshlets.size(), false);
+    for (const MeshletHierarchyNode& node : hierarchy.nodes)
+    {
+        Require(node.boundsRadius >= 0.0F && std::isfinite(node.boundsRadius));
+        if (node.IsLeaf())
+        {
+            Require(node.meshletCount == 1U);
+            Require(node.firstMeshlet < hierarchy.meshletIndices.size());
+            const std::uint32_t meshletIndex = hierarchy.meshletIndices[node.firstMeshlet];
+            Require(meshletIndex < hierarchyMeshletSeen.size());
+            Require(!hierarchyMeshletSeen[meshletIndex]);
+            hierarchyMeshletSeen[meshletIndex] = true;
+            const auto& source = hierarchyInput.meshlets[meshletIndex];
+            Require((source.boundsCenter - node.boundsCenter).Length() + source.boundsRadius
+                <= node.boundsRadius + 0.0001F);
+        }
+        else
+        {
+            Require(node.childCount >= 2U && node.childCount <= hierarchyOptions.maxChildren);
+            Require(node.firstChild + node.childCount <= hierarchy.childIndices.size());
+            for (std::uint32_t child = 0U; child < node.childCount; ++child)
+            {
+                const auto childIndex = hierarchy.childIndices[node.firstChild + child];
+                Require(childIndex < hierarchy.nodes.size());
+                const auto& childNode = hierarchy.nodes[childIndex];
+                Require((childNode.boundsCenter - node.boundsCenter).Length() + childNode.boundsRadius
+                    <= node.boundsRadius + 0.0001F);
+            }
+        }
+    }
+    for (const bool seen : hierarchyMeshletSeen)
+        Require(seen);
+
+    MeshletData malformedHierarchy = hierarchyInput;
+    malformedHierarchy.meshlets[0].primitiveOffset =
+        static_cast<std::uint32_t>(malformedHierarchy.primitiveIndices.size() - 1U);
+    Require(!BuildMeshletHierarchy(malformedHierarchy, hierarchy, meshletError, hierarchyOptions));
+    Require(hierarchy.nodes.empty() && hierarchy.rootNode == MeshletHierarchy::InvalidIndex);
+
     // Reusing a SceneFrame retains its draw allocation across updates.
     SceneSubmission reusableScene;
     const MeshHandle reusableMesh = reusableScene.CreateMesh(Triangle());
@@ -100,8 +166,8 @@ int main()
         reusableMesh, reusableMaterial, math::Mat4::Translation({2.0F, 0.0F, 0.0F}));
     Require(reusableA.IsValid() && reusableB.IsValid());
     SceneFrame reusableFrame;
-    FrameView reusableView;
-    reusableScene.BuildFrame(reusableView, reusableFrame);
+    FrameView reusableViewUpdated;
+    reusableScene.BuildFrame(reusableViewUpdated, reusableFrame);
     Require(reusableFrame.draws.size() == 2U);
     const auto* reusableDrawStorage = reusableFrame.draws.data();
     const std::size_t reusableDrawCapacity = reusableFrame.draws.capacity();

@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <d3d12.h>
 
+#include <cstdint>
 #include <string>
 
 #if defined(VANTA_ENABLE_AFTERMATH)
@@ -31,8 +32,8 @@ public:
     NvidiaAftermathRuntime(const NvidiaAftermathRuntime&) = delete;
     NvidiaAftermathRuntime& operator=(const NvidiaAftermathRuntime&) = delete;
 
-    [[nodiscard]] bool InitializeBeforeDevice(std::string& error) noexcept;
-    [[nodiscard]] bool InitializeDevice(ID3D12Device* device, std::string& error) noexcept;
+    [[nodiscard]] bool InitializeBeforeDevice(std::string& error);
+    [[nodiscard]] bool InitializeDevice(ID3D12Device* device, std::string& error);
     void Shutdown() noexcept;
 
     [[nodiscard]] const NvidiaAftermathStatus& Status() const noexcept { return m_status; }

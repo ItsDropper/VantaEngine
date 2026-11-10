@@ -65,16 +65,17 @@ void QueryDeviceFeatures(ID3D12Device* device, NvidiaRenderingCapabilities& resu
             options7.SamplerFeedbackTier != D3D12_SAMPLER_FEEDBACK_TIER_NOT_SUPPORTED;
     }
 
-    D3D12_FEATURE_DATA_SHADER_MODEL shaderModel{};
-    shaderModel.HighestShaderModel = D3D_SHADER_MODEL_6_6;
-    if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
-            &shaderModel, sizeof(shaderModel)))) {
-        result.shaderModel = static_cast<std::uint32_t>(shaderModel.HighestShaderModel);
-    } else {
-        shaderModel.HighestShaderModel = D3D_SHADER_MODEL_6_0;
+    constexpr std::uint32_t shaderModelCandidates[] = {
+        0x69U, 0x68U, 0x67U, 0x66U, 0x65U, 0x64U, 0x63U, 0x62U, 0x61U, 0x60U
+    };
+    for (const std::uint32_t candidate : shaderModelCandidates) {
+        D3D12_FEATURE_DATA_SHADER_MODEL shaderModel{};
+        shaderModel.HighestShaderModel = static_cast<D3D_SHADER_MODEL>(candidate);
         if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,
-                &shaderModel, sizeof(shaderModel))))
+                &shaderModel, sizeof(shaderModel)))) {
             result.shaderModel = static_cast<std::uint32_t>(shaderModel.HighestShaderModel);
+            break;
+        }
     }
 }
 

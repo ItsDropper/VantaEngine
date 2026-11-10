@@ -48,6 +48,8 @@ target_compile_definitions(VantaEngineRuntime PRIVATE
 
 target_link_libraries(VantaEngineRuntime PUBLIC
     d3d11
+    d3d12
+    dxgi
     d3dcompiler
     windowscodecs
     ole32
@@ -55,10 +57,8 @@ target_link_libraries(VantaEngineRuntime PUBLIC
 )
 
 if(VANTA_ENABLE_STREAMLINE)
-    target_link_libraries(VantaEngineRuntime PUBLIC streamline)
+    target_link_libraries(VantaEngineRuntime PUBLIC streamline wintrust)
     target_compile_definitions(VantaEngineRuntime PRIVATE VANTA_ENABLE_STREAMLINE=1)
-else()
-    target_link_libraries(VantaEngineRuntime PUBLIC d3d12 dxgi)
 endif()
 
 if(MSVC)

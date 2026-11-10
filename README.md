@@ -291,7 +291,7 @@ selection policy is unchanged.
 | RTXMU | Not integrated; evaluate after acceleration-structure lifetime and allocation strategy are established |
 | RTX Neural Shaders / Neural Texture Compression | Not integrated; separate SDK and asset/runtime pipeline required |
 | RTX Mega Geometry / Opacity Micromaps / Shader Execution Reordering | Not integrated; requires DXR 1.2 / Shader Model 6.9 support and feature-specific data paths |
-| Nsight / Aftermath diagnostics | D3D12 timestamp profiler and debug-layer validation exist; Aftermath crash-dump SDK is not integrated |
+| Nsight / Aftermath diagnostics | Optional Streamline Nsight Perf plugin is loaded/queried when present; D3D12 timestamps and debug-layer validation exist; Aftermath crash dumps remain unintegrated |
 
 NVIDIA's current public integration route for DLSS and Reflex is Streamline.
 DLSS 4.5 includes Super Resolution, Ray Reconstruction, Frame Generation,
@@ -321,8 +321,7 @@ routed through the interposer only after successful initialization; otherwise
 the native D3D12 path remains available.
 
 When Streamline is active, VantaEngine requests DLSS Super Resolution, DLSS
-Frame Generation, DLSS Ray Reconstruction, Reflex, PC Latency markers and
-NVIDIA Image Scaling. It attaches the selected D3D12 device, checks each
+Frame Generation, DLSS Ray Reconstruction, Reflex, PC Latency markers, NVIDIA Image Scaling and the optional Nsight Perf plugin. It attaches the selected D3D12 device, checks each
 feature against that adapter, enables Reflex Low Latency when supported, and
 emits render-submit/present markers. The current renderer does not yet provide
 DLSS/NIS input-resource tags or call their evaluation functions, so those

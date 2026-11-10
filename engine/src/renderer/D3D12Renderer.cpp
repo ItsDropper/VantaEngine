@@ -755,7 +755,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         LogInfo("Direct3D 12 Debug: debug layer is unavailable; continuing without validation.");
     }
 #endif
-    if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(m_factory.GetAddressOf())))) {
+    if (FAILED(m_nvidiaStreamline.CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(m_factory.GetAddressOf())))) {
         LogError("Direct3D 12: DXGI factory creation failed.");
         return false;
     }
@@ -765,7 +765,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         if (m_factory->EnumAdapters1(index, adapter.GetAddressOf()) == DXGI_ERROR_NOT_FOUND) break;
         DXGI_ADAPTER_DESC1 description{};
         if (FAILED(adapter->GetDesc1(&description)) || (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) continue;
-        if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
+        if (SUCCEEDED(m_nvidiaStreamline.CreateD3D12Device(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
             if (m_nvidiaStreamline.Status().initialized) {
                 std::string attachError;
                 if (!m_nvidiaStreamline.SetDevice(m_device.Get(), description.AdapterLuid, attachError))
@@ -798,7 +798,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         Microsoft::WRL::ComPtr<IDXGIAdapter1> warp1;
         if (FAILED(m_factory->EnumWarpAdapter(IID_PPV_ARGS(warp.GetAddressOf()))) ||
             FAILED(warp.As(&warp1)) ||
-            FAILED(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
+            FAILED(m_nvidiaStreamline.CreateD3D12Device(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
             LogError("Direct3D 12: no compatible hardware or WARP device was found.");
             return false;
         }

@@ -111,8 +111,7 @@ bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
            description.alphaCutoff <= 1.0F &&
            (description.alphaMode == MaterialAlphaMode::Opaque ||
             description.alphaMode == MaterialAlphaMode::Mask ||
-            description.alphaMode == MaterialAlphaMode::Blend) &&
-           true;
+            description.alphaMode == MaterialAlphaMode::Blend);
 }
 
 const MeshResource* SceneSubmission::Find(const MeshHandle handle) const noexcept

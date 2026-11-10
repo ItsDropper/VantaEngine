@@ -2388,6 +2388,8 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             {
                 for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : shadowBatchDraws[cascade]) {
                     const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
+                    if (!batch.drawIndices.empty() && submittedGeometry.draws[batch.drawIndices.front()].material.alphaMode == renderer::MaterialAlphaMode::Blend)
+                        continue;
                     D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
                     instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
                         sizeof(SubmittedInstanceData);

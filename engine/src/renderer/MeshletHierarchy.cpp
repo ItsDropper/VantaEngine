@@ -28,9 +28,6 @@ Sphere MergeSpheres(const Sphere& a, const Sphere& b) noexcept
         return a;
     if (b.radius >= distance + a.radius)
         return b;
-    if (distance <= math::kEpsilon)
-        return {a.center, std::max(a.radius, b.radius)};
-
     const float radius = (distance + a.radius + b.radius) * 0.5F;
     return {a.center + delta * ((radius - a.radius) / distance), radius};
 }
@@ -88,9 +85,7 @@ bool BuildMeshletHierarchy(
         error = "Meshlet hierarchy limits require at least one meshlet per leaf and two children per parent.";
         return false;
     }
-    if (meshlets.meshlets.size() > std::numeric_limits<std::uint32_t>::max() ||
-        options.maxLeafMeshlets > std::numeric_limits<std::uint32_t>::max() ||
-        options.maxChildren > std::numeric_limits<std::uint32_t>::max())
+    if (meshlets.meshlets.size() > std::numeric_limits<std::uint32_t>::max())
     {
         error = "Meshlet hierarchy exceeds supported 32-bit index limits.";
         return false;
@@ -142,10 +137,11 @@ bool BuildMeshletHierarchy(
     {
         std::vector<BuildNode> all;
         all.reserve(meshlets.meshlets.size());
-        for (std::uint32_t index = 0U; index < meshlets.meshlets.size(); ++index)
+        for (std::size_t index = 0U; index < meshlets.meshlets.size(); ++index)
         {
             const MeshletDescriptor& descriptor = meshlets.meshlets[index];
-            all.push_back({{descriptor.boundsCenter, descriptor.boundsRadius}, index});
+            all.push_back({{descriptor.boundsCenter, descriptor.boundsRadius},
+                static_cast<std::uint32_t>(index)});
         }
         return LongestAxis(all);
     }();

@@ -618,12 +618,13 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         UINT textureWidth = 1U;
         UINT textureHeight = 1U;
         for (const renderer::MaterialDescription& material : geometry.materialLayers) {
-            const std::array<std::filesystem::path, 5> paths = {
+            const std::array<std::filesystem::path, 6> paths = {
                 material.baseColorTexture,
                 material.normalTexture,
                 material.roughnessTexture,
                 material.metallicTexture,
-                material.ambientOcclusionTexture
+                material.ambientOcclusionTexture,
+                material.emissiveTexture
             };
             assets::CpuTexture texture;
             texture.width = 1U;
@@ -945,7 +946,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         materialPaths[materialIndex][3] = material.packedMetallicRoughness
             ? std::filesystem::path{} : material.metallicTexture;
         materialPaths[materialIndex][4] = material.ambientOcclusionTexture;
-        materialPaths[materialIndex][5] = material.emissiveTexture;
+        materialPaths[materialIndex][5] = {};
         for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
             const auto& path = materialPaths[materialIndex][slot];
             if (path.empty() || !std::filesystem::exists(path)) continue;

@@ -2387,14 +2387,19 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         }
         if (hasSubmittedScene && m_submittedVertexBuffers[m_frameIndex].Get() != nullptr &&
             m_submittedIndexBuffers[m_frameIndex].Get() != nullptr) {
-            m_commandList->SetPipelineState(m_shadowPipelineState.Get());
             m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
             m_commandList->IASetIndexBuffer(&submittedIndexView);
             {
+                std::size_t submittedShadowDrawCalls = 0U;
                 for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : shadowBatchDraws[cascade]) {
                     const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
-                    if (!batch.drawIndices.empty() && submittedGeometry.draws[batch.drawIndices.front()].material.alphaMode == renderer::MaterialAlphaMode::Blend)
+                    if (batch.drawIndices.empty()) continue;
+                    const renderer::MaterialDescription& material =
+                        submittedGeometry.draws[batch.drawIndices.front()].material;
+                    if (material.alphaMode == renderer::MaterialAlphaMode::Blend)
                         continue;
+                    m_commandList->SetPipelineState(material.doubleSided
+                        ? m_shadowPipelineState.Get() : m_singleSidedShadowPipelineState.Get());
                     D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
                     instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
                         sizeof(SubmittedInstanceData);
@@ -2405,8 +2410,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                         batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
                     m_shadowTrianglesAccumulated[cascade] +=
                         static_cast<std::uint64_t>(batch.indexCount / 3U) * submittedDraw.instanceCount;
+                    ++submittedShadowDrawCalls;
                 }
-                m_shadowDrawCallsAccumulated[cascade] += shadowBatchDraws[cascade].size();
+                m_shadowDrawCallsAccumulated[cascade] += submittedShadowDrawCalls;
             }
         }
         if (m_timestampFrequency != 0)

@@ -1245,6 +1245,57 @@ bool D3D12Renderer::CreateSceneGeometry()
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     m_indexCount = static_cast<UINT>(indices.size());
 
+    // Build a real static BLAS/TLAS over the renderer's packed world geometry.
+    // This is the shared acceleration-structure foundation for the DXR path tracer;
+    // it is intentionally separate from raster instance streams and draw capacities.
+    std::string raytracingError;
+    if (m_staticRaytracingScene.Initialize(m_device.Get(), raytracingError) &&
+        m_staticRaytracingScene.IsSupported()) {
+        if (FAILED(m_commandAllocators[0]->Reset()) ||
+            FAILED(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr))) {
+            LogError("Direct3D 12: DXR acceleration-structure command reset failed.");
+            return false;
+        }
+        const renderer::D3D12RaytracingTriangleGeometry geometry{
+            m_vertexBuffer->GetGPUVirtualAddress(),
+            static_cast<std::uint32_t>(gpuVertices.size()),
+            static_cast<std::uint32_t>(sizeof(D3D12WorldVertex)),
+            m_indexBuffer->GetGPUVirtualAddress(),
+            m_indexCount,
+            D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
+        };
+        renderer::D3D12RaytracingInstance instance{};
+        instance.transform = {1.0F, 0.0F, 0.0F, 0.0F,
+                              0.0F, 1.0F, 0.0F, 0.0F,
+                              0.0F, 0.0F, 1.0F, 0.0F};
+        instance.instanceId = 0U;
+        const bool built = m_staticRaytracingScene.BuildBottomLevel(
+                m_commandList.Get(), std::span{&geometry, 1U}, raytracingError) &&
+            m_staticRaytracingScene.BuildTopLevel(
+                m_commandList.Get(), std::span{&instance, 1U}, raytracingError);
+        if (!built) {
+            LogInfo(("Direct3D 12: DXR scene acceleration structures unavailable: " +
+                raytracingError).c_str());
+            m_staticRaytracingSceneReady = false;
+        } else if (FAILED(m_commandList->Close())) {
+            LogError("Direct3D 12: DXR acceleration-structure command-list close failed.");
+            return false;
+        } else {
+            ID3D12CommandList* raytracingLists[] = {m_commandList.Get()};
+            m_commandQueue->ExecuteCommandLists(1, raytracingLists);
+            if (!WaitForGpu()) {
+                LogError("Direct3D 12: DXR acceleration-structure build fence wait failed.");
+                return false;
+            }
+            m_staticRaytracingSceneReady = true;
+            LogInfo("Direct3D 12: static world BLAS and TLAS built successfully for DXR workloads.");
+        }
+    } else {
+        LogInfo(("Direct3D 12: hardware ray tracing unavailable: " +
+            (raytracingError.empty() ? std::string("adapter does not expose ID3D12Device5") :
+                raytracingError)).c_str());
+    }
+
     char uploadSummary[192]{};
     std::snprintf(uploadSummary, sizeof(uploadSummary),
         "Direct3D 12: static geometry now resides in DEFAULT heaps (%.2f MiB vertices, %.2f MiB indices).",

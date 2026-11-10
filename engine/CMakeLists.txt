@@ -17,6 +17,7 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/MeshletHierarchy.cpp
     src/world/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
+    src/renderer/NvidiaStreamline.cpp
     src/renderer/D3D12RaytracingScene.cpp
     src/assets/ObjLoader.cpp
     src/assets/ModelAssetStore.cpp
@@ -47,13 +48,18 @@ target_compile_definitions(VantaEngineRuntime PRIVATE
 
 target_link_libraries(VantaEngineRuntime PUBLIC
     d3d11
-    d3d12
-    dxgi
     d3dcompiler
     windowscodecs
     ole32
     user32
 )
+
+if(VANTA_ENABLE_STREAMLINE)
+    target_link_libraries(VantaEngineRuntime PUBLIC streamline)
+    target_compile_definitions(VantaEngineRuntime PRIVATE VANTA_ENABLE_STREAMLINE=1)
+else()
+    target_link_libraries(VantaEngineRuntime PUBLIC d3d12 dxgi)
+endif()
 
 if(MSVC)
     target_compile_options(VantaEngineRuntime PRIVATE

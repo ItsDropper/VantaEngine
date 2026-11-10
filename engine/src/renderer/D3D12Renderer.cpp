@@ -2,6 +2,7 @@
 #include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
 #include "vanta/renderer/NvidiaRendering.hpp"
+#include "vanta/renderer/NvidiaStreamline.hpp"
 
 #include "vanta/core/Log.hpp"
 #include "vanta/world/ProceduralWorld.hpp"
@@ -672,6 +673,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
 D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
+    m_nvidiaStreamline.Shutdown();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
         if (m_mappedSubmittedInstanceBuffers[frame] != nullptr && m_submittedInstanceBuffers[frame]) {
             m_submittedInstanceBuffers[frame]->Unmap(0, nullptr);
@@ -725,6 +727,14 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
 
+    // Streamline must initialize before the first DXGI/D3D12 API call.
+    std::string streamlineError;
+    if (m_nvidiaStreamline.Initialize(streamlineError)) {
+        LogInfo("NVIDIA Streamline SDK initialized.");
+    } else if (m_nvidiaStreamline.Status().sdkCompiledIn) {
+        LogInfo(streamlineError.c_str());
+    }
+
     UINT factoryFlags = 0;
 #if defined(_DEBUG)
     Microsoft::WRL::ComPtr<ID3D12Debug> debugController;
@@ -756,6 +766,13 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
         DXGI_ADAPTER_DESC1 description{};
         if (FAILED(adapter->GetDesc1(&description)) || (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) continue;
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_device.GetAddressOf())))) {
+            if (m_nvidiaStreamline.Status().initialized) {
+                std::string attachError;
+                if (!m_nvidiaStreamline.SetDevice(m_device.Get(), description.AdapterLuid, attachError))
+                    LogInfo(attachError.c_str());
+                else
+                    LogInfo(m_nvidiaStreamline.Status().diagnostic.c_str());
+            }
             LogInfo(DescribeD3D12Adapter(adapter.Get(), false));
             char adapterName[128]{};
             (void)WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,

@@ -1899,7 +1899,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             // Submitted geometry must populate every cascade selected by the
             // lighting shader; otherwise mid/far objects sample cleared depth slices.
             for (const renderer::SubmittedDrawRange& draw : submittedGeometry.draws) {
-                if (!renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
+                if (draw.material.alphaMode == renderer::MaterialAlphaMode::Blend ||
+                    !renderer::IsSubmittedDrawVisible(draw, lightViewProjections[cascade])) continue;
                 SceneConstants constants{};
                 constants.world = draw.world;
                 constants.lightViewProjection[0] = lightViewProjections[cascade];

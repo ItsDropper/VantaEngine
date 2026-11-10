@@ -372,6 +372,7 @@ bool BuildSubmittedSceneGeometry(
         if (!range.material.roughnessTexture.empty()) materialFlags |= 4U;
         if (!range.material.metallicTexture.empty()) materialFlags |= 8U;
         if (!range.material.ambientOcclusionTexture.empty()) materialFlags |= 16U;
+        if (!range.material.emissiveTexture.empty()) materialFlags |= 512U;
         if (range.material.packedMetallicRoughness) materialFlags |= 32U;
         if (range.material.terrain) materialFlags |= 64U;
         if (materialFlags != 0U) materialFlags |= 128U;

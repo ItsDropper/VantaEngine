@@ -281,17 +281,17 @@ selection policy is unchanged.
 | --- | --- |
 | DXR acceleration structures (BLAS/TLAS) | Native D3D12 foundation implemented; not yet connected to scene rendering |
 | DXR path tracing | Not yet implemented; requires ray pipeline, shaders, material/light bindings, accumulation and denoising |
-| DLSS Super Resolution / DLAA | Not integrated; Streamline/NGX SDK and temporal input integration required |
-| DLSS Ray Reconstruction | Not integrated; requires ray-traced signal decomposition and supported SDK |
-| DLSS Frame Generation / Multi Frame Generation | Not integrated; requires Streamline, motion/depth/UI inputs and swap-chain/present integration |
-| NVIDIA Reflex | Not integrated; requires Reflex SDK/Streamline markers and render-queue pacing |
-| NVIDIA NRD | Not integrated; denoiser integration follows ray-traced lighting/path-tracing signals |
+| DLSS Super Resolution / DLAA | Optional Streamline SDK initialization and adapter support detection implemented; render-resource tagging/evaluation not yet wired |
+| DLSS Ray Reconstruction | Optional Streamline plugin loading and adapter support detection implemented; requires a real ray-traced signal and evaluation path |
+| DLSS Frame Generation / Multi Frame Generation | Optional Streamline plugin loading and adapter support detection implemented; frame-generation inputs/evaluation not yet wired |
+| NVIDIA Reflex | Optional Streamline integration sets Low Latency mode and emits render-submit/present markers when supported |
+| NVIDIA NRD | Not integrated; the current Streamline SDK no longer exposes NRD as a feature; evaluate standalone denoising SDKs for the path tracer |
 | RTXDI / ReSTIR | Not integrated; requires GPU light sampling, reservoirs and temporal/spatial reuse |
-| RTX Path Tracing (RTXPT) | Reference architecture identified; no code has been copied or claimed as integrated |
+| RTX Path Tracing (RTXPT) | DXR BLAS/TLAS construction exists; no path-tracing ray pipeline or RTXPT code has been integrated |
 | RTXMU | Not integrated; evaluate after acceleration-structure lifetime and allocation strategy are established |
 | RTX Neural Shaders / Neural Texture Compression | Not integrated; separate SDK and asset/runtime pipeline required |
 | RTX Mega Geometry / Opacity Micromaps / Shader Execution Reordering | Not integrated; requires DXR 1.2 / Shader Model 6.9 support and feature-specific data paths |
-| Nsight / Aftermath diagnostics | Not integrated; current renderer retains its D3D12 timestamp profiler and debug-layer validation |
+| Nsight / Aftermath diagnostics | D3D12 timestamp profiler and debug-layer validation exist; Aftermath crash-dump SDK is not integrated |
 
 NVIDIA's current public integration route for DLSS and Reflex is Streamline.
 DLSS 4.5 includes Super Resolution, Ray Reconstruction, Frame Generation,
@@ -302,3 +302,29 @@ supported developer integration path.
 The capability report is a hardware/API inventory only. A feature becomes
 "integrated" only after its real SDK or API path is implemented, validated,
 and exercised in the renderer.
+
+
+### Enabling the optional NVIDIA Streamline integration
+
+Download and unpack an official NVIDIA Streamline SDK release, then configure
+VantaEngine with:
+
+```powershell
+cmake -S . -B build -DVANTA_ENABLE_STREAMLINE=ON -DVANTA_STREAMLINE_SDK_ROOT="C:/SDKs/Streamline"
+cmake --build build --config Release
+```
+
+The build uses Streamline's interface target and runtime DLL-copy target, while
+loading `sl.interposer.dll` dynamically. Before loading it, VantaEngine checks
+its Windows Authenticode signature. DXGI factory and D3D12 device creation are
+routed through the interposer only after successful initialization; otherwise
+the native D3D12 path remains available.
+
+When Streamline is active, VantaEngine requests DLSS Super Resolution, DLSS
+Frame Generation, DLSS Ray Reconstruction, Reflex, PC Latency markers and
+NVIDIA Image Scaling. It attaches the selected D3D12 device, checks each
+feature against that adapter, enables Reflex Low Latency when supported, and
+emits render-submit/present markers. The current renderer does not yet provide
+DLSS/NIS input-resource tags or call their evaluation functions, so those
+upscaling and generation features are not advertised as active rendering
+features.

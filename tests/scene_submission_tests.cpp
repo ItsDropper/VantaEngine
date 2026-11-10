@@ -1,5 +1,6 @@
 #include "vanta/renderer/SceneSubmission.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
+#include "vanta/renderer/MeshletBuilder.hpp"
 #include "vanta/renderer/EnvironmentLighting.hpp"
 
 #include <cstdlib>
@@ -42,6 +43,74 @@ MeshDescription Triangle()
 
 int main()
 {
+
+    // Meshlet preprocessing is deterministic, bounded, and independent of the renderer's
+    // existing instance-buffer layout.
+    MeshDescription meshletQuad;
+    meshletQuad.vertices = {
+        {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 0.0F, 0.0F},
+        {{1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 0.0F},
+        {{1.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 1.0F},
+        {{0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 0.0F, 1.0F}
+    };
+    meshletQuad.indices = {0U, 1U, 2U, 0U, 2U, 3U};
+    MeshletData meshlets;
+    std::string meshletError;
+    Require(BuildMeshlets(meshletQuad.vertices, meshletQuad.indices, meshlets, meshletError));
+    Require(meshlets.meshlets.size() == 1U);
+    Require(meshlets.meshlets[0].vertexCount == 4U);
+    Require(meshlets.meshlets[0].primitiveCount == 2U);
+    Require(meshlets.vertexIndices.size() == 4U);
+    Require(meshlets.primitiveIndices.size() == 6U);
+    Require(meshlets.meshlets[0].boundsRadius > 0.0F);
+    Require(meshlets.meshlets[0].normalConeCutoff > 0.99F);
+
+    MeshletBuildOptions tinyMeshletOptions;
+    tinyMeshletOptions.maxVertices = 3U;
+    tinyMeshletOptions.maxPrimitives = 1U;
+    Require(BuildMeshlets(meshletQuad.vertices, meshletQuad.indices,
+        meshlets, meshletError, tinyMeshletOptions));
+    Require(meshlets.meshlets.size() == 2U);
+    for (const MeshletDescriptor& descriptor : meshlets.meshlets)
+    {
+        Require(descriptor.vertexCount == 3U);
+        Require(descriptor.primitiveCount == 1U);
+        Require(descriptor.vertexCount <= tinyMeshletOptions.maxVertices);
+        Require(descriptor.primitiveCount <= tinyMeshletOptions.maxPrimitives);
+    }
+    Require(meshlets.primitiveIndices.size() == 6U);
+
+    MeshletBuildOptions invalidMeshletOptions;
+    invalidMeshletOptions.maxVertices = 2U;
+    Require(!BuildMeshlets(meshletQuad.vertices, meshletQuad.indices,
+        meshlets, meshletError, invalidMeshletOptions));
+    Require(meshlets.meshlets.empty() && meshlets.vertexIndices.empty() &&
+        meshlets.primitiveIndices.empty());
+    const std::vector<std::uint32_t> invalidMeshletIndices{0U, 1U, 99U};
+    Require(!BuildMeshlets(meshletQuad.vertices, invalidMeshletIndices,
+        meshlets, meshletError));
+    Require(meshlets.meshlets.empty());
+
+    // Reusing a SceneFrame retains its draw allocation across updates.
+    SceneSubmission reusableScene;
+    const MeshHandle reusableMesh = reusableScene.CreateMesh(Triangle());
+    const MaterialHandle reusableMaterial = reusableScene.CreateMaterial({});
+    const InstanceHandle reusableA = reusableScene.CreateInstance(reusableMesh, reusableMaterial);
+    const InstanceHandle reusableB = reusableScene.CreateInstance(
+        reusableMesh, reusableMaterial, math::Mat4::Translation({2.0F, 0.0F, 0.0F}));
+    Require(reusableA.IsValid() && reusableB.IsValid());
+    SceneFrame reusableFrame;
+    reusableScene.BuildFrame(view, reusableFrame);
+    Require(reusableFrame.draws.size() == 2U);
+    const auto* reusableDrawStorage = reusableFrame.draws.data();
+    const std::size_t reusableDrawCapacity = reusableFrame.draws.capacity();
+    Require(reusableScene.SetTransform(reusableA,
+        math::Mat4::Translation({1.0F, 0.0F, 0.0F})));
+    reusableScene.BuildFrame(view, reusableFrame);
+    Require(reusableFrame.draws.size() == 2U);
+    Require(reusableFrame.draws.data() == reusableDrawStorage);
+    Require(reusableFrame.draws.capacity() == reusableDrawCapacity);
+
     FrameView pointLightView;
     std::string pointLightError;
     Require(ValidateFrameView(pointLightView, pointLightError));

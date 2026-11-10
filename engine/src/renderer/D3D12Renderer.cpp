@@ -1829,6 +1829,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                            float cameraYaw, float cameraPitch,
                            const renderer::SceneFrame* submittedScene)
 {
+    m_nvidiaStreamline.BeginFrame(static_cast<std::uint32_t>(m_renderFrameNumber));
     m_lastFrameSucceeded = false;
     m_lastRenderError.clear();
     if (m_failed || m_deviceLost) { m_lastRenderError = m_deviceLost ? "D3D12 device is lost before frame recording." : "D3D12 renderer is in a failed state."; return; }
@@ -2231,6 +2232,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         std::memcpy(shadowConstants + sizeof(Mat4), &elapsedSeconds, sizeof(elapsedSeconds));
     }
 
+    m_nvidiaStreamline.MarkRenderSubmitStart();
     if (FAILED(m_commandAllocators[m_frameIndex]->Reset()) ||
         FAILED(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get()))) {
         m_lastRenderError = "Direct3D 12: command recording reset failed.";
@@ -2701,6 +2703,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
+    m_nvidiaStreamline.MarkRenderSubmitEnd();
     if (m_gpuCullingEnabled) {
         m_gpuCullStatsPending[m_frameIndex] = true;
         m_lastHiZFrameIndex = m_frameIndex;
@@ -2709,7 +2712,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     if (m_timestampFrequency != 0) m_profilePending[m_frameIndex] = true;
     // Keep presentation uncapped so missed v-sync intervals do not halve apparent frame rate.
     m_lastPresentedBackBufferIndex = m_frameIndex;
+    m_nvidiaStreamline.MarkPresentStart();
     const HRESULT presentResult = m_swapChain->Present(0, 0);
+    m_nvidiaStreamline.MarkPresentEnd();
     const UINT64 signalValue = m_nextFenceValue++;
     const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), signalValue);
     if (FAILED(signalResult)) {

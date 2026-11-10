@@ -1452,6 +1452,12 @@ bool D3D11Renderer::Resize(const int width, const int height)
 
 bool D3D11Renderer::Render(const renderer::SceneFrame& submittedScene)
 {
+    std::string validationError;
+    if (!renderer::ValidateFrameView(submittedScene.view, validationError))
+    {
+        m_lastFrameSucceeded = false;
+        return false;
+    }
     const float forwardX = submittedScene.view.view.At(2, 0);
     const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
     const float forwardZ = submittedScene.view.view.At(2, 2);

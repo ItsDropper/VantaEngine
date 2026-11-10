@@ -572,22 +572,24 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         return false;
     }
 
-    const std::array<std::array<std::uint8_t, 4>, 5> neutralPixels = {{
+    const std::array<std::array<std::uint8_t, 4>, 6> neutralPixels = {{
         {{255U, 255U, 255U, 255U}},
         {{128U, 128U, 255U, 255U}},
         {{255U, 255U, 255U, 255U}},
         {{255U, 255U, 255U, 255U}},
+        {{255U, 255U, 255U, 255U}},
         {{255U, 255U, 255U, 255U}}
     }};
-    std::array<bool, 5> usedSlots{};
+    std::array<bool, 6> usedSlots{};
     std::string cacheKey = std::to_string(geometry.materialLayers.size());
     for (const renderer::MaterialDescription& material : geometry.materialLayers) {
-        const std::array<std::filesystem::path, 5> paths = {
+        const std::array<std::filesystem::path, 6> paths = {
             material.baseColorTexture,
             material.normalTexture,
             material.roughnessTexture,
             material.metallicTexture,
-            material.ambientOcclusionTexture
+            material.ambientOcclusionTexture,
+            material.emissiveTexture
         };
         for (std::size_t slot = 0; slot < paths.size(); ++slot) {
             cacheKey.push_back('|');
@@ -653,7 +655,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         }
         if (!CreateModelTextureArray(textureWidth, textureHeight,
                 static_cast<UINT>(materialMaps.size()), textureLayers,
-                kSubmittedMaterialBaseSrvIndex + slot, slot == 0U)) {
+                kSubmittedMaterialBaseSrvIndex + slot, slot == 0U || slot == 5U)) {
             error = "Could not upload a submitted material texture array to Direct3D 12.";
             return false;
         }
@@ -920,16 +922,16 @@ bool D3D12Renderer::CreateSceneGeometry()
     }
     m_modelMaterialLayerCount = static_cast<UINT>(materialCount);
     UINT materialTextureResolution = 1U;
-    const std::array<assets::CpuTexture, 5> neutralTextures = {{
+    const std::array<assets::CpuTexture, 6> neutralTextures = {{
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {128, 128, 255, 255}},
         {1, 1, {255, 255, 255, 255}},
         {1, 1, {0, 0, 0, 255}},
         {1, 1, {255, 255, 255, 255}}
     }};
-    std::array<std::vector<assets::CpuTexture>, 5> materialMaps;
-    std::array<std::vector<bool>, 5> materialMapPresent;
-    std::vector<std::array<std::filesystem::path, 5>> materialPaths(materialCount);
+    std::array<std::vector<assets::CpuTexture>, 6> materialMaps;
+    std::array<std::vector<bool>, 6> materialMapPresent;
+    std::vector<std::array<std::filesystem::path, 6>> materialPaths(materialCount);
     std::vector<UINT> materialTextureFlags(materialCount, 0U);
     for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
         materialMaps[slot].resize(materialCount, neutralTextures[slot]);
@@ -943,6 +945,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         materialPaths[materialIndex][3] = material.packedMetallicRoughness
             ? std::filesystem::path{} : material.metallicTexture;
         materialPaths[materialIndex][4] = material.ambientOcclusionTexture;
+        materialPaths[materialIndex][5] = material.emissiveTexture;
         for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
             const auto& path = materialPaths[materialIndex][slot];
             if (path.empty() || !std::filesystem::exists(path)) continue;
@@ -985,7 +988,7 @@ bool D3D12Renderer::CreateSceneGeometry()
             textureLayers.insert(textureLayers.end(), resampled.begin(), resampled.end());
         }
         if (!CreateModelTextureArray(materialTextureResolution, materialTextureResolution,
-                static_cast<UINT>(materialCount), textureLayers, 7U + slot, slot == 0U)) return false;
+                static_cast<UINT>(materialCount), textureLayers, 7U + slot, slot == 0U || slot == 5U)) return false;
     }
 
     if (modelLoaded) {

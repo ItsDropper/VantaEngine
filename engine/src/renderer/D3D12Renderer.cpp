@@ -947,7 +947,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         materialPaths[materialIndex][3] = material.packedMetallicRoughness
             ? std::filesystem::path{} : material.metallicTexture;
         materialPaths[materialIndex][4] = material.ambientOcclusionTexture;
-        materialPaths[materialIndex][5] = {};
+        materialPaths[materialIndex][5] = std::filesystem::path{};
         for (UINT slot = 0; slot < materialMaps.size(); ++slot) {
             const auto& path = materialPaths[materialIndex][slot];
             if (path.empty() || !std::filesystem::exists(path)) continue;

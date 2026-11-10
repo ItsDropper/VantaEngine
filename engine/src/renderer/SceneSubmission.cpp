@@ -42,6 +42,12 @@ void AdvanceGeneration(Slot& slot) noexcept
     if (slot.generation == 0U)
         slot.generation = 1U;
 }
+
+bool IsFiniteMatrix(const math::Mat4& matrix) noexcept
+{
+    return std::all_of(matrix.elements.begin(), matrix.elements.end(),
+        [](const float value) { return std::isfinite(value); });
+}
 } // namespace
 
 SceneSubmission::SceneSubmission()
@@ -364,7 +370,7 @@ bool SceneSubmission::Contains(const InstanceHandle handle) const noexcept
 
 bool ValidateFrameView(const FrameView& view, std::string& error)
 {
-    if (!IsFinite(view.view) || !IsFinite(view.projection) ||
+    if (!IsFiniteMatrix(view.view) || !IsFiniteMatrix(view.projection) ||
         !std::isfinite(view.cameraPosition.x) || !std::isfinite(view.cameraPosition.y) ||
         !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds) ||
         view.pointLightCount > MaximumPointLightsPerFrame)

@@ -798,6 +798,7 @@ bool D3D12Renderer::CreatePipeline()
     }
     const D3D12_RENDER_TARGET_BLEND_DESC transparentBlendState = transparentBlend;
     pso.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    pso.RasterizerState.FrontCounterClockwise = TRUE;
     pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     pso.BlendState.RenderTarget[0] = defaultBlend;
     if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_singleSidedPipelineState.GetAddressOf())))) {

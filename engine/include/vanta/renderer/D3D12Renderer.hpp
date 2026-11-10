@@ -55,7 +55,7 @@ private:
     static constexpr UINT kHiZMipCapacity = 16;
     static constexpr UINT kHiZBaseSrvIndex = 13;
     static constexpr UINT kHiZBaseUavIndex = 15;
-    static constexpr UINT kSubmittedMaterialBaseSrvIndex = 46;
+    static constexpr UINT kSubmittedMaterialBaseSrvIndex = 47;
     static constexpr UINT kSubmittedMaterialSrvCount = 6;
     struct DrawChunk
     {

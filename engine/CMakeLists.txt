@@ -18,6 +18,7 @@ set(VANTA_RUNTIME_SOURCES
     src/world/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
     src/renderer/NvidiaStreamline.cpp
+    src/renderer/NvidiaAftermath.cpp
     src/renderer/D3D12RaytracingScene.cpp
     src/assets/ObjLoader.cpp
     src/assets/ModelAssetStore.cpp
@@ -61,6 +62,12 @@ if(VANTA_ENABLE_STREAMLINE)
     target_compile_definitions(VantaEngineRuntime PRIVATE VANTA_ENABLE_STREAMLINE=1)
 endif()
 
+if(VANTA_ENABLE_AFTERMATH)
+    target_include_directories(VantaEngineRuntime PRIVATE "${VANTA_AFTERMATH_SDK_ROOT}/include")
+    target_link_libraries(VantaEngineRuntime PUBLIC "${VANTA_AFTERMATH_LIBRARY}")
+    target_compile_definitions(VantaEngineRuntime PRIVATE VANTA_ENABLE_AFTERMATH=1)
+endif()
+
 if(MSVC)
     target_compile_options(VantaEngineRuntime PRIVATE
         /W4
@@ -85,6 +92,13 @@ target_link_libraries(VantaEngine PRIVATE VantaEngine::Runtime)
 set_target_properties(VantaEngine PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+if(VANTA_ENABLE_AFTERMATH)
+    add_custom_command(TARGET VantaEngine POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${VANTA_AFTERMATH_RUNTIME}" "$<TARGET_FILE_DIR:VantaEngine>"
+        VERBATIM)
+endif()
 
 if(BUILD_TESTING)
     add_test(

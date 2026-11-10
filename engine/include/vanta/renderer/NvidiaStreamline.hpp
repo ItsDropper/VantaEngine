@@ -58,6 +58,7 @@ private:
     FARPROC m_slSetD3DDevice = nullptr;
     FARPROC m_slIsFeatureSupported = nullptr;
     FARPROC m_slGetNewFrameToken = nullptr;
+    FARPROC m_slGetFeatureFunction = nullptr;
     FARPROC m_slPCLSetMarker = nullptr;
     FARPROC m_slReflexSetOptions = nullptr;
     void* m_currentFrameToken = nullptr;

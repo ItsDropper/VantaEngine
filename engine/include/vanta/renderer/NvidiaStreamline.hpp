@@ -34,6 +34,9 @@ public:
     NvidiaStreamlineRuntime& operator=(const NvidiaStreamlineRuntime&) = delete;
 
     [[nodiscard]] bool Initialize(std::string& error);
+    [[nodiscard]] HRESULT CreateDXGIFactory2(UINT flags, REFIID interfaceId, void** factory) const noexcept;
+    [[nodiscard]] HRESULT CreateD3D12Device(IUnknown* adapter, D3D_FEATURE_LEVEL minimumFeatureLevel,
+        REFIID interfaceId, void** device) const noexcept;
     [[nodiscard]] bool SetDevice(ID3D12Device* device, const LUID& adapterLuid,
         std::string& error);
     void BeginFrame(std::uint32_t frameIndex) noexcept;
@@ -47,6 +50,16 @@ public:
 
 private:
     NvidiaStreamlineStatus m_status;
+    HMODULE m_streamlineModule = nullptr;
+    FARPROC m_createFactory2 = nullptr;
+    FARPROC m_createD3D12Device = nullptr;
+    FARPROC m_slInit = nullptr;
+    FARPROC m_slShutdown = nullptr;
+    FARPROC m_slSetD3DDevice = nullptr;
+    FARPROC m_slIsFeatureSupported = nullptr;
+    FARPROC m_slGetNewFrameToken = nullptr;
+    FARPROC m_slPCLSetMarker = nullptr;
+    FARPROC m_slReflexSetOptions = nullptr;
     void* m_currentFrameToken = nullptr;
 };
 } // namespace vanta::renderer

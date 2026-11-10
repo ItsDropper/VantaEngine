@@ -112,6 +112,7 @@ add_executable(VantaEngineSceneSubmissionTests
     ../engine/src/renderer/SceneSubmission.cpp
     ../engine/src/renderer/SceneGeometry.cpp
     ../engine/src/renderer/MeshletBuilder.cpp
+    ../engine/src/renderer/MeshletHierarchy.cpp
     ../engine/src/renderer/EnvironmentLighting.cpp
 )
 vanta_configure_test(VantaEngineSceneSubmissionTests)

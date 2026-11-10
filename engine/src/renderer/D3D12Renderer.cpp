@@ -2517,6 +2517,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             float distanceSquared = 0.0F;
             std::uint32_t batchIndex = 0U;
             std::uint32_t firstInstance = 0U;
+            bool doubleSided = false;
         };
         std::vector<TransparentSubmittedDraw> transparentDraws;
         std::size_t opaqueDrawCalls = 0U;
@@ -2535,10 +2536,13 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                     const float dy = draw.world.At(1, 3) - cameraY;
                     const float dz = draw.world.At(2, 3) - cameraZ;
                     transparentDraws.push_back({dx * dx + dy * dy + dz * dz,
-                        submittedDraw.batchIndex, instanceIndex++});
+                        submittedDraw.batchIndex, instanceIndex++, draw.material.doubleSided});
                 }
                 continue;
             }
+            m_commandList->SetPipelineState(batch.drawIndices.empty() ||
+                submittedGeometry.draws[batch.drawIndices.front()].material.doubleSided
+                ? m_pipelineState.Get() : m_singleSidedPipelineState.Get());
             D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
             instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
                 sizeof(SubmittedInstanceData);
@@ -2554,8 +2558,9 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
                 return a.distanceSquared > b.distanceSquared;
             });
         if (!transparentDraws.empty()) {
-            m_commandList->SetPipelineState(m_transparentPipelineState.Get());
             for (const TransparentSubmittedDraw& transparentDraw : transparentDraws) {
+                m_commandList->SetPipelineState(transparentDraw.doubleSided
+                    ? m_transparentPipelineState.Get() : m_singleSidedTransparentPipelineState.Get());
                 const renderer::SubmittedSceneBatch& batch =
                     submittedGeometry.batches[transparentDraw.batchIndex];
                 D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;

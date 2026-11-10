@@ -279,8 +279,8 @@ selection policy is unchanged.
 
 | Technology | Current status |
 | --- | --- |
-| DXR acceleration structures (BLAS/TLAS) | Native D3D12 foundation implemented; not yet connected to scene rendering |
-| DXR path tracing | Not yet implemented; requires ray pipeline, shaders, material/light bindings, accumulation and denoising |
+| DXR acceleration structures (BLAS/TLAS) | Renderer now builds persistent BLAS/TLAS for its static world geometry on DXR-capable adapters; imported submitted-scene geometry is not yet included |
+| DXR path tracing | Not yet implemented; acceleration structures are built but no DXR state object, ray-generation pipeline, path accumulation or denoiser is active |
 | DLSS Super Resolution / DLAA | Optional Streamline SDK initialization and adapter support detection implemented; render-resource tagging/evaluation not yet wired |
 | DLSS Ray Reconstruction | Optional Streamline plugin loading and adapter support detection implemented; requires a real ray-traced signal and evaluation path |
 | DLSS Frame Generation / Multi Frame Generation | Optional Streamline plugin loading and adapter support detection implemented; frame-generation inputs/evaluation not yet wired |
@@ -327,3 +327,26 @@ emits render-submit/present markers. The current renderer does not yet provide
 DLSS/NIS input-resource tags or call their evaluation functions, so those
 upscaling and generation features are not advertised as active rendering
 features.
+
+
+### Enabling NVIDIA Nsight Aftermath
+
+Install the official Nsight Aftermath SDK and configure:
+
+```powershell
+cmake -S . -B build-aftermath -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DVANTA_ENABLE_AFTERMATH=ON -DVANTA_AFTERMATH_SDK_ROOT="C:/SDKs/NsightAftermath"
+cmake --build build-aftermath --parallel
+ctest --test-dir build-aftermath --output-on-failure
+```
+
+The expected SDK layout is `include/`, `lib/x64/GFSDK_AFTERMATH_Lib.x64.lib`,
+and `lib/x64/GFSDK_AFTERMATH_Lib.x64.dll` (or the corresponding ARM64 names).
+The runtime DLL is copied beside the engine executable. Crash dumps are written
+to `%LOCALAPPDATA%/VantaEngine/CrashDumps` as `.nv-gpudmp` files for inspection
+with Nsight Graphics. Aftermath must be initialized before D3D12 device creation;
+its build also disables the D3D12 debug layer because the SDK's D3D12 interception
+is not compatible with that validation layer.
+
+The renderer emits named `Vanta.Shadows`, `Vanta.Scene`,
+`Vanta.TemporalResolve` and `Vanta.PostProcess` command-list events. These
+are available to GPU profilers and can be included in Aftermath crash timelines.

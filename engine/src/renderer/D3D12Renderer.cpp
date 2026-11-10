@@ -651,7 +651,7 @@ bool D3D12Renderer::PrepareSubmittedMaterialTextures(
         textureLayers.reserve(layerBytes * materialMaps.size());
         for (const assets::CpuTexture& texture : materialMaps) {
             const auto pixels = ResampleTexture(texture, textureWidth,
-                textureHeight, slot == 0U);
+                textureHeight, slot == 0U || slot == 5U);
             textureLayers.insert(textureLayers.end(), pixels.begin(), pixels.end());
         }
         if (!CreateModelTextureArray(textureWidth, textureHeight,
@@ -986,7 +986,7 @@ bool D3D12Renderer::CreateSceneGeometry()
         textureLayers.reserve(layerBytes * materialCount);
         for (std::size_t layer = 0; layer < materialCount; ++layer) {
             auto resampled = ResampleTexture(materialMaps[slot][layer], materialTextureResolution,
-                materialTextureResolution, slot == 0U);
+                materialTextureResolution, slot == 0U || slot == 5U);
             textureLayers.insert(textureLayers.end(), resampled.begin(), resampled.end());
         }
         if (!CreateModelTextureArray(materialTextureResolution, materialTextureResolution,

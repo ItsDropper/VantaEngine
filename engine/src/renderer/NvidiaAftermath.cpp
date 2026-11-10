@@ -26,7 +26,7 @@ NvidiaAftermathRuntime::~NvidiaAftermathRuntime()
     Shutdown();
 }
 
-bool NvidiaAftermathRuntime::InitializeBeforeDevice(std::string& error) noexcept
+bool NvidiaAftermathRuntime::InitializeBeforeDevice(std::string& error)
 {
 #if defined(VANTA_ENABLE_AFTERMATH)
     m_status.sdkCompiledIn = true;
@@ -57,7 +57,7 @@ bool NvidiaAftermathRuntime::InitializeBeforeDevice(std::string& error) noexcept
 }
 
 bool NvidiaAftermathRuntime::InitializeDevice(
-    ID3D12Device* device, std::string& error) noexcept
+    ID3D12Device* device, std::string& error)
 {
 #if defined(VANTA_ENABLE_AFTERMATH)
     if (!m_status.crashDumpsEnabled) {

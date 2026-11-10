@@ -228,4 +228,105 @@ bool BuildMeshletHierarchy(
     error.clear();
     return true;
 }
+
+bool BuildGpuMeshletHierarchy(
+    const MeshletHierarchy& source,
+    GpuMeshletHierarchy& output,
+    std::string& error)
+{
+    output = {};
+    output.rootNode = MeshletHierarchy::InvalidIndex;
+
+    if (source.nodes.empty())
+    {
+        if (source.rootNode != MeshletHierarchy::InvalidIndex ||
+            !source.childIndices.empty() || !source.meshletIndices.empty())
+        {
+            error = "Empty meshlet hierarchy has non-empty root or index data.";
+            return false;
+        }
+        error.clear();
+        return true;
+    }
+
+    if (source.rootNode >= source.nodes.size() ||
+        source.nodes.size() > std::numeric_limits<std::uint32_t>::max() ||
+        source.childIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
+        source.meshletIndices.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        error = "Meshlet hierarchy cannot be represented by 32-bit GPU indices.";
+        return false;
+    }
+
+    output.nodes.reserve(source.nodes.size());
+    for (const MeshletHierarchyNode& node : source.nodes)
+    {
+        if (!IsFinite(node.boundsCenter) || !std::isfinite(node.boundsRadius) ||
+            node.boundsRadius < 0.0F)
+        {
+            error = "Meshlet hierarchy contains non-finite or negative GPU bounds.";
+            output = {};
+            return false;
+        }
+
+        GpuMeshletHierarchyNode gpuNode{};
+        gpuNode.bounds[0] = node.boundsCenter.x;
+        gpuNode.bounds[1] = node.boundsCenter.y;
+        gpuNode.bounds[2] = node.boundsCenter.z;
+        gpuNode.bounds[3] = node.boundsRadius;
+
+        if (node.IsLeaf())
+        {
+            if (node.meshletCount == 0U ||
+                node.firstMeshlet > source.meshletIndices.size() ||
+                node.meshletCount > source.meshletIndices.size() - node.firstMeshlet)
+            {
+                error = "Meshlet hierarchy leaf has an invalid meshlet range.";
+                output = {};
+                return false;
+            }
+            gpuNode.meshletRange[0] = node.firstMeshlet;
+            gpuNode.meshletRange[1] = node.meshletCount;
+            for (std::size_t offset = 0U; offset < node.meshletCount; ++offset)
+            {
+                if (source.meshletIndices[node.firstMeshlet + offset] >= source.meshletIndices.size())
+                {
+                    error = "Meshlet hierarchy leaf references an invalid meshlet index.";
+                    output = {};
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            if (node.childCount < 2U || node.firstChild > source.childIndices.size() ||
+                node.childCount > source.childIndices.size() - node.firstChild)
+            {
+                error = "Meshlet hierarchy internal node has an invalid child range.";
+                output = {};
+                return false;
+            }
+            gpuNode.childRange[0] = node.firstChild;
+            gpuNode.childRange[1] = node.childCount;
+            for (std::size_t offset = 0U; offset < node.childCount; ++offset)
+            {
+                const std::uint32_t child = source.childIndices[node.firstChild + offset];
+                if (child >= source.nodes.size() || child == (&node - source.nodes.data()))
+                {
+                    error = "Meshlet hierarchy internal node references an invalid child.";
+                    output = {};
+                    return false;
+                }
+            }
+        }
+        output.nodes.push_back(gpuNode);
+    }
+
+    output.childIndices = source.childIndices;
+    output.meshletIndices = source.meshletIndices;
+    output.rootNode = source.rootNode;
+    error.clear();
+    return true;
+}
+
 } // namespace vanta::renderer

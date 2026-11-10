@@ -98,7 +98,12 @@ bool BuildSubmittedInstanceStreams(
     std::string& error,
     const bool includeSceneInstances)
 {
-    output = {};
+    // Retain vector capacity across frames. D3D12 keeps these streams as renderer-owned
+    // scratch storage, so clearing must not release their allocations every frame.
+    output.shadowTransforms.clear();
+    output.sceneTransforms.clear();
+    output.shadowBatches.clear();
+    output.sceneBatches.clear();
     output.shadowTransforms.reserve(geometry.draws.size() + 1U);
     output.shadowTransforms.push_back(math::Mat4::Identity());
     if (includeSceneInstances) {
@@ -117,7 +122,10 @@ bool BuildSubmittedInstanceStreams(
         for (const std::uint32_t drawIndex : batch.drawIndices) {
             if (drawIndex >= geometry.draws.size()) {
                 error = "Submitted scene batch references a missing draw while building shadow instances.";
-                output = {};
+                output.shadowTransforms.clear();
+                output.sceneTransforms.clear();
+                output.shadowBatches.clear();
+                output.sceneBatches.clear();
                 return false;
             }
             const SubmittedDrawRange& draw = geometry.draws[drawIndex];
@@ -129,7 +137,10 @@ bool BuildSubmittedInstanceStreams(
             if (firstInstance > std::numeric_limits<std::uint32_t>::max() ||
                 instanceCount > std::numeric_limits<std::uint32_t>::max()) {
                 error = "Submitted shadow instance stream exceeds 32-bit batch limits.";
-                output = {};
+                output.shadowTransforms.clear();
+                output.sceneTransforms.clear();
+                output.shadowBatches.clear();
+                output.sceneBatches.clear();
                 return false;
             }
             output.shadowBatches.push_back({
@@ -400,7 +411,10 @@ bool BuildSubmittedSceneGeometry(
             if (index >= range.vertexCount)
             {
                 error = "Submitted mesh contains an out-of-range index.";
-                output = {};
+                output.shadowTransforms.clear();
+                output.sceneTransforms.clear();
+                output.shadowBatches.clear();
+                output.sceneBatches.clear();
                 return false;
             }
             output.indices.push_back(index);

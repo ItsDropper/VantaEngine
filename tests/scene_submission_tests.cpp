@@ -415,6 +415,30 @@ int main()
     }
     Require(hierarchySubmitted.meshletHierarchyMeshlets.back() ==
         hierarchySubmitted.meshletBatches.back().firstDraw);
+
+    SubmittedSceneGeometryCache hierarchyCache;
+    Require(BuildSubmittedSceneGeometry(hierarchyScene.BuildFrame(view), hierarchyCache, geometryError));
+    Require(hierarchyCache.geometry.meshletHierarchyBatches.size() == 2U);
+    const SubmittedMeshletHierarchyBatch& cachedFirstHierarchy =
+        hierarchyCache.geometry.meshletHierarchyBatches[0];
+    const SubmittedMeshletHierarchyBatch& cachedSecondHierarchy =
+        hierarchyCache.geometry.meshletHierarchyBatches[1];
+    Require(cachedFirstHierarchy.nodeCount == firstHierarchyBatch.nodeCount);
+    Require(cachedSecondHierarchy.rootNode == cachedFirstHierarchy.firstNode + cachedFirstHierarchy.nodeCount);
+    Require(cachedSecondHierarchy.firstChild ==
+        cachedFirstHierarchy.firstChild + cachedFirstHierarchy.childCount);
+    const GpuMeshletHierarchyNode& cachedFirstRoot =
+        hierarchyCache.geometry.meshletHierarchyNodes[cachedFirstHierarchy.rootNode];
+    Require(cachedFirstRoot.childRange[0] >= cachedFirstHierarchy.firstChild);
+    Require(cachedFirstRoot.childRange[0] + cachedFirstRoot.childRange[1] <=
+        cachedFirstHierarchy.firstChild + cachedFirstHierarchy.childCount);
+    for (std::uint32_t child = 0U; child < cachedFirstRoot.childRange[1]; ++child)
+    {
+        const std::uint32_t childNode =
+            hierarchyCache.geometry.meshletHierarchyChildren[cachedFirstRoot.childRange[0] + child];
+        Require(childNode >= cachedFirstHierarchy.firstNode);
+        Require(childNode < cachedFirstHierarchy.firstNode + cachedFirstHierarchy.nodeCount);
+    }
     Require(batchedGeometry.meshletBatches[0].firstIndex == 0U);
     Require(batchedGeometry.meshletBatches[1].firstIndex == 3U);
     Require(batchedGeometry.meshletIndices[3] >= batchedGeometry.batches[1].firstVertex);

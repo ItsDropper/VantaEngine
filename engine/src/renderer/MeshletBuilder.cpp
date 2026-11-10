@@ -221,4 +221,85 @@ bool BuildMeshlets(
     error.clear();
     return true;
 }
+
+bool BuildMeshletDrawData(
+    const std::span<const assets::ModelVertex> vertices,
+    const MeshletData& meshlets,
+    MeshletDrawData& output,
+    std::string& error)
+{
+    output = {};
+
+    if (vertices.size() > std::numeric_limits<std::uint32_t>::max() ||
+        meshlets.vertexIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
+        meshlets.primitiveIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
+        meshlets.meshlets.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        error = "Meshlet draw data exceeds the supported 32-bit indexed-draw limits.";
+        return false;
+    }
+
+    output.draws.reserve(meshlets.meshlets.size());
+    for (const MeshletDescriptor& meshlet : meshlets.meshlets)
+    {
+        if (meshlet.vertexCount == 0U || meshlet.primitiveCount == 0U ||
+            meshlet.vertexOffset > meshlets.vertexIndices.size() ||
+            meshlet.vertexCount > meshlets.vertexIndices.size() - meshlet.vertexOffset ||
+            meshlet.primitiveOffset > meshlets.primitiveIndices.size() / 3U ||
+            meshlet.primitiveCount > (meshlets.primitiveIndices.size() / 3U) - meshlet.primitiveOffset ||
+            !IsFinite(meshlet.boundsCenter) || !std::isfinite(meshlet.boundsRadius) ||
+            meshlet.boundsRadius < 0.0F || !IsFinite(meshlet.normalConeAxis) ||
+            !std::isfinite(meshlet.normalConeCutoff))
+        {
+            error = "Meshlet draw descriptor contains an invalid range or bound.";
+            output = {};
+            return false;
+        }
+
+        const std::size_t indexCount = static_cast<std::size_t>(meshlet.primitiveCount) * 3U;
+        if (output.indices.size() > std::numeric_limits<std::uint32_t>::max() ||
+            indexCount > std::numeric_limits<std::uint32_t>::max() - output.indices.size())
+        {
+            error = "Expanded meshlet indices exceed 32-bit indexed-draw offsets.";
+            output = {};
+            return false;
+        }
+
+        MeshletDrawDescriptor draw;
+        draw.firstIndex = static_cast<std::uint32_t>(output.indices.size());
+        draw.indexCount = static_cast<std::uint32_t>(indexCount);
+        draw.boundsCenter = meshlet.boundsCenter;
+        draw.boundsRadius = meshlet.boundsRadius;
+        draw.normalConeAxis = meshlet.normalConeAxis;
+        draw.normalConeCutoff = meshlet.normalConeCutoff;
+
+        const std::size_t primitiveByteOffset =
+            static_cast<std::size_t>(meshlet.primitiveOffset) * 3U;
+        for (std::size_t indexOffset = 0U; indexOffset < indexCount; ++indexOffset)
+        {
+            const std::uint8_t localIndex =
+                meshlets.primitiveIndices[primitiveByteOffset + indexOffset];
+            if (localIndex >= meshlet.vertexCount)
+            {
+                error = "Meshlet primitive references a vertex outside its local vertex range.";
+                output = {};
+                return false;
+            }
+            const std::uint32_t globalIndex =
+                meshlets.vertexIndices[static_cast<std::size_t>(meshlet.vertexOffset) + localIndex];
+            if (globalIndex >= vertices.size())
+            {
+                error = "Meshlet references a vertex outside the source vertex buffer.";
+                output = {};
+                return false;
+            }
+            output.indices.push_back(globalIndex);
+        }
+        output.draws.push_back(draw);
+    }
+
+    error.clear();
+    return true;
+}
+
 } // namespace vanta::renderer

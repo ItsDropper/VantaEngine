@@ -66,6 +66,26 @@ int main()
     Require(meshlets.meshlets[0].boundsRadius > 0.0F);
     Require(meshlets.meshlets[0].normalConeCutoff > 0.99F);
 
+    MeshletDrawData meshletDrawData;
+    Require(BuildMeshletDrawData(meshletQuad.vertices, meshlets, meshletDrawData, meshletError));
+    Require(meshletDrawData.draws.size() == 1U);
+    Require(meshletDrawData.indices == meshletQuad.indices);
+    Require(meshletDrawData.draws[0].firstIndex == 0U);
+    Require(meshletDrawData.draws[0].indexCount == meshletQuad.indices.size());
+    Require(meshletDrawData.draws[0].boundsRadius == meshlets.meshlets[0].boundsRadius);
+
+    MeshletData invalidLocalMeshlet = meshlets;
+    invalidLocalMeshlet.primitiveIndices[0] = 4U;
+    Require(!BuildMeshletDrawData(meshletQuad.vertices, invalidLocalMeshlet,
+        meshletDrawData, meshletError));
+    Require(meshletDrawData.indices.empty() && meshletDrawData.draws.empty());
+
+    MeshletData invalidGlobalMeshlet = meshlets;
+    invalidGlobalMeshlet.vertexIndices[0] = 99U;
+    Require(!BuildMeshletDrawData(meshletQuad.vertices, invalidGlobalMeshlet,
+        meshletDrawData, meshletError));
+    Require(meshletDrawData.indices.empty() && meshletDrawData.draws.empty());
+
     MeshletBuildOptions tinyMeshletOptions;
     tinyMeshletOptions.maxVertices = 3U;
     tinyMeshletOptions.maxPrimitives = 1U;

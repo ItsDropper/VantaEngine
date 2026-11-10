@@ -41,16 +41,30 @@ struct MeshDescription
     std::vector<std::uint32_t> indices;
 };
 
+enum class MaterialAlphaMode : std::uint8_t
+{
+    Opaque,
+    Mask,
+    Blend
+};
+
 struct MaterialDescription
 {
     math::Vec3 baseColor{1.0F, 1.0F, 1.0F};
     float roughness = 0.8F;
     float metallic = 0.0F;
+    math::Vec3 emissive{};
+    float normalScale = 1.0F;
+    float occlusionStrength = 1.0F;
+    float alphaCutoff = 0.5F;
+    MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+    bool doubleSided = false;
     std::filesystem::path baseColorTexture;
     std::filesystem::path normalTexture;
     std::filesystem::path roughnessTexture;
     std::filesystem::path metallicTexture;
     std::filesystem::path ambientOcclusionTexture;
+    std::filesystem::path emissiveTexture;
     bool packedMetallicRoughness = false;
     bool terrain = false;
     bool snowSurface = false;

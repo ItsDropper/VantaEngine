@@ -1438,6 +1438,7 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
     rasterDescription.CullMode = D3D11_CULL_BACK;
+    rasterDescription.FrontCounterClockwise = TRUE;
     if (FAILED(m_device->CreateRasterizerState(&rasterDescription, m_singleSidedRasterizerState.GetAddressOf())))
     {
         LogError("Could not create the single-sided rasterizer state.");

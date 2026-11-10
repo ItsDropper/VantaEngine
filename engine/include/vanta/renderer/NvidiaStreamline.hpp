@@ -14,6 +14,8 @@ struct NvidiaStreamlineStatus
     bool deviceAttached = false;
     bool dlssSupported = false;
     bool reflexSupported = false;
+    bool dlssFrameGenerationSupported = false;
+    bool dlssRayReconstructionSupported = false;
     std::string diagnostic;
 };
 

@@ -14,6 +14,8 @@ struct NvidiaStreamlineStatus
     bool deviceAttached = false;
     bool dlssSupported = false;
     bool reflexSupported = false;
+    bool latencyMarkersSupported = false;
+    bool reflexEnabled = false;
     bool dlssFrameGenerationSupported = false;
     bool dlssRayReconstructionSupported = false;
     std::string diagnostic;
@@ -33,11 +35,17 @@ public:
     [[nodiscard]] bool Initialize(std::string& error);
     [[nodiscard]] bool SetDevice(ID3D12Device* device, const LUID& adapterLuid,
         std::string& error);
+    void BeginFrame(std::uint32_t frameIndex) noexcept;
+    void MarkRenderSubmitStart() noexcept;
+    void MarkRenderSubmitEnd() noexcept;
+    void MarkPresentStart() noexcept;
+    void MarkPresentEnd() noexcept;
     void Shutdown() noexcept;
 
     [[nodiscard]] const NvidiaStreamlineStatus& Status() const noexcept { return m_status; }
 
 private:
     NvidiaStreamlineStatus m_status;
+    void* m_currentFrameToken = nullptr;
 };
 } // namespace vanta::renderer

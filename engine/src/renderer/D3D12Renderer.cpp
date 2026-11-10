@@ -2506,8 +2506,32 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_constantBuffers[m_frameIndex]->GetGPUVirtualAddress());
         m_commandList->IASetVertexBuffers(0, 1, &submittedVertexView);
         m_commandList->IASetIndexBuffer(&submittedIndexView);
+        struct TransparentSubmittedDraw {
+            float distanceSquared = 0.0F;
+            std::uint32_t batchIndex = 0U;
+            std::uint32_t firstInstance = 0U;
+        };
+        std::vector<TransparentSubmittedDraw> transparentDraws;
+        std::size_t opaqueDrawCalls = 0U;
         for (const renderer::SubmittedInstanceBatchDraw& submittedDraw : sceneBatchDraws) {
             const renderer::SubmittedSceneBatch& batch = submittedGeometry.batches[submittedDraw.batchIndex];
+            if (batch.drawIndices.empty()) continue;
+            const renderer::MaterialAlphaMode alphaMode =
+                submittedGeometry.draws[batch.drawIndices.front()].material.alphaMode;
+            if (alphaMode == renderer::MaterialAlphaMode::Blend) {
+                std::uint32_t instanceIndex = submittedDraw.firstInstance;
+                for (const std::uint32_t drawIndex : batch.drawIndices) {
+                    if (drawIndex >= submittedGeometry.draws.size()) continue;
+                    const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
+                    if (!renderer::IsSubmittedDrawVisible(draw, constants.viewProjection)) continue;
+                    const float dx = draw.world.At(0, 3) - cameraX;
+                    const float dy = draw.world.At(1, 3) - cameraY;
+                    const float dz = draw.world.At(2, 3) - cameraZ;
+                    transparentDraws.push_back({dx * dx + dy * dy + dz * dz,
+                        submittedDraw.batchIndex, instanceIndex++});
+                }
+                continue;
+            }
             D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
             instanceView.BufferLocation += static_cast<UINT64>(submittedDraw.firstInstance) *
                 sizeof(SubmittedInstanceData);
@@ -2516,8 +2540,29 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             m_commandList->IASetVertexBuffers(0, 2, vertexViews);
             m_commandList->DrawIndexedInstanced(batch.indexCount, submittedDraw.instanceCount,
                 batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
+            ++opaqueDrawCalls;
         }
-        m_sceneDrawCallsAccumulated += sceneBatchDraws.size();
+        std::sort(transparentDraws.begin(), transparentDraws.end(),
+            [](const TransparentSubmittedDraw& a, const TransparentSubmittedDraw& b) {
+                return a.distanceSquared > b.distanceSquared;
+            });
+        if (!transparentDraws.empty()) {
+            m_commandList->SetPipelineState(m_transparentPipelineState.Get());
+            for (const TransparentSubmittedDraw& transparentDraw : transparentDraws) {
+                const renderer::SubmittedSceneBatch& batch =
+                    submittedGeometry.batches[transparentDraw.batchIndex];
+                D3D12_VERTEX_BUFFER_VIEW instanceView = submittedInstanceView;
+                instanceView.BufferLocation += static_cast<UINT64>(transparentDraw.firstInstance) *
+                    sizeof(SubmittedInstanceData);
+                instanceView.SizeInBytes = sizeof(SubmittedInstanceData);
+                const D3D12_VERTEX_BUFFER_VIEW vertexViews[] = {submittedVertexView, instanceView};
+                m_commandList->IASetVertexBuffers(0, 2, vertexViews);
+                m_commandList->DrawIndexedInstanced(batch.indexCount, 1U,
+                    batch.firstIndex, static_cast<INT>(batch.firstVertex), 0U);
+            }
+            m_commandList->SetPipelineState(m_pipelineState.Get());
+        }
+        m_sceneDrawCallsAccumulated += opaqueDrawCalls + transparentDraws.size();
     }
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);

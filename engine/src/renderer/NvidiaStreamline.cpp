@@ -322,7 +322,7 @@ void NvidiaStreamlineRuntime::MarkRenderSubmitEnd() noexcept
 void NvidiaStreamlineRuntime::MarkPresentStart() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr) {
+    if (m_currentFrameToken != nullptr && m_slPCLSetMarker != nullptr) {
         const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
         (void)setMarker(sl::PCLMarker::ePresentStart,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));
@@ -333,7 +333,7 @@ void NvidiaStreamlineRuntime::MarkPresentStart() noexcept
 void NvidiaStreamlineRuntime::MarkPresentEnd() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr) {
+    if (m_currentFrameToken != nullptr && m_slPCLSetMarker != nullptr) {
         const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
         (void)setMarker(sl::PCLMarker::ePresentEnd,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));

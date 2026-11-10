@@ -147,6 +147,13 @@ NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities()
     for (const auto& adapter : adapters) {
         DXGI_ADAPTER_DESC1 description{};
         if (FAILED(adapter->GetDesc1(&description))) continue;
+        const char* vendor = VendorName(description.VendorId);
+        if (description.VendorId == 0x10DE) AddUnique(result.availableVendors, vendor);
+        else if (description.VendorId == 0x1002 || description.VendorId == 0x1022)
+            AddUnique(result.availableVendors, vendor);
+        else if (description.VendorId == 0x8086) AddUnique(result.availableVendors, vendor);
+        else AddUnique(result.availableVendors, vendor);
+
         Microsoft::WRL::ComPtr<ID3D12Device> device;
         if (FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                 IID_PPV_ARGS(device.GetAddressOf()))))
@@ -155,7 +162,9 @@ NvidiaRenderingCapabilities QueryNvidiaRenderingCapabilities()
         char adapterName[128]{};
         (void)WideCharToMultiByte(CP_UTF8, 0, description.Description, -1,
             adapterName, static_cast<int>(sizeof(adapterName)), nullptr, nullptr);
+        const std::vector<std::string> detectedVendors = result.availableVendors;
         result = QueryNvidiaRenderingCapabilities(device.Get(), description.VendorId, adapterName);
+        result.availableVendors = detectedVendors;
         break;
     }
 

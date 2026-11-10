@@ -117,6 +117,13 @@ private:
     std::array<UINT64, kFrameCount> m_submittedVertexBufferCapacities{};
     std::array<UINT64, kFrameCount> m_submittedIndexBufferCapacities{};
     renderer::SubmittedSceneGeometryCache m_submittedGeometryCache;
+    // Retained CPU staging storage for imported-scene instance generation. These
+    // vectors keep capacity between frames instead of allocating per Render() call.
+    std::array<renderer::SubmittedInstanceStreams, 3> m_submittedInstanceStreamsScratch;
+    std::vector<SubmittedInstanceData> m_submittedShadowInstanceScratch;
+    std::vector<SubmittedInstanceData> m_submittedSceneInstanceScratch;
+    std::array<std::vector<renderer::SubmittedInstanceBatchDraw>, 3> m_submittedShadowBatchScratch;
+    std::vector<renderer::SubmittedInstanceBatchDraw> m_submittedSceneBatchScratch;
     renderer::EnvironmentSettings m_cachedEnvironmentSettings{};
     renderer::EnvironmentLighting m_cachedEnvironmentLighting{};
     renderer::EnvironmentLighting m_emptyEnvironmentLighting{};

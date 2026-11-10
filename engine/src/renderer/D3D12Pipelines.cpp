@@ -894,6 +894,12 @@ float4 VSMain(VSInput input) : SV_POSITION
         LogError("Direct3D 12: cascaded shadow pipeline creation failed.");
         return false;
     }
+    pso.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+    pso.RasterizerState.FrontCounterClockwise = TRUE;
+    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_singleSidedShadowPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: single-sided cascaded shadow pipeline creation failed.");
+        return false;
+    }
     return true;
 }
 

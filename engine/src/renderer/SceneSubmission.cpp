@@ -112,7 +112,7 @@ bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
            (description.alphaMode == MaterialAlphaMode::Opaque ||
             description.alphaMode == MaterialAlphaMode::Mask ||
             description.alphaMode == MaterialAlphaMode::Blend) &&
-           description.emissiveTexture.empty();
+           true;
 }
 
 const MeshResource* SceneSubmission::Find(const MeshHandle handle) const noexcept

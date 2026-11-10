@@ -674,6 +674,7 @@ D3D12Renderer::~D3D12Renderer()
 {
     (void)WaitForGpu();
     m_nvidiaStreamline.Shutdown();
+    m_nvidiaAftermath.Shutdown();
     for (UINT frame = 0; frame < kFrameCount; ++frame) {
         if (m_mappedSubmittedInstanceBuffers[frame] != nullptr && m_submittedInstanceBuffers[frame]) {
             m_submittedInstanceBuffers[frame]->Unmap(0, nullptr);
@@ -727,6 +728,13 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     m_width = static_cast<UINT>(width);
     m_height = static_cast<UINT>(height);
 
+    // Aftermath must register crash-dump callbacks before device creation.
+    std::string aftermathError;
+    if (m_nvidiaAftermath.InitializeBeforeDevice(aftermathError))
+        LogInfo(m_nvidiaAftermath.Status().diagnostic.c_str());
+    else if (m_nvidiaAftermath.Status().sdkCompiledIn)
+        LogInfo(aftermathError.c_str());
+
     // Streamline must initialize before the first DXGI/D3D12 API call.
     std::string streamlineError;
     if (m_nvidiaStreamline.Initialize(streamlineError)) {
@@ -736,7 +744,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
     }
 
     UINT factoryFlags = 0;
-#if defined(_DEBUG)
+#if defined(_DEBUG) && !defined(VANTA_ENABLE_AFTERMATH)
     Microsoft::WRL::ComPtr<ID3D12Debug> debugController;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf())))) {
         debugController->EnableDebugLayer();
@@ -783,7 +791,7 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
             break;
         }
     }
-#if defined(_DEBUG)
+#if defined(_DEBUG) && !defined(VANTA_ENABLE_AFTERMATH)
     if (m_device) {
         Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
         if (SUCCEEDED(m_device.As(&infoQueue))) {
@@ -803,6 +811,14 @@ bool D3D12Renderer::Initialize(HWND window, int width, int height)
             return false;
         }
         LogInfo(DescribeD3D12Adapter(warp1.Get(), true));
+    }
+
+    if (m_nvidiaAftermath.Status().crashDumpsEnabled) {
+        std::string aftermathDeviceError;
+        if (m_nvidiaAftermath.InitializeDevice(m_device.Get(), aftermathDeviceError))
+            LogInfo(m_nvidiaAftermath.Status().diagnostic.c_str());
+        else
+            LogInfo(aftermathDeviceError.c_str());
     }
 
     D3D12_COMMAND_QUEUE_DESC queueDescription{};

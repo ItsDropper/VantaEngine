@@ -286,8 +286,7 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
     m_currentFrameToken = nullptr;
-    if (!m_status.initialized || !m_status.deviceAttached ||
-        !m_status.latencyMarkersSupported || m_slPCLSetMarker == nullptr)
+    if (!m_status.initialized || !m_status.deviceAttached)
         return;
     sl::FrameToken* token = nullptr;
     const auto getNewFrameToken = reinterpret_cast<SlGetNewFrameTokenFunction>(m_slGetNewFrameToken);
@@ -312,7 +311,7 @@ void NvidiaStreamlineRuntime::MarkRenderSubmitStart() noexcept
 void NvidiaStreamlineRuntime::MarkRenderSubmitEnd() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr) {
+    if (m_currentFrameToken != nullptr && m_slPCLSetMarker != nullptr) {
         const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
         (void)setMarker(sl::PCLMarker::eRenderSubmitEnd,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));

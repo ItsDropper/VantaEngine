@@ -75,8 +75,10 @@ struct D3D12WorldVertex
     float color[4];
     float uv[2];
     float material[4];
+    float materialExtra0[4]{};
+    float materialExtra1[4]{};
 };
-static_assert(sizeof(D3D12WorldVertex) == 64);
+static_assert(sizeof(D3D12WorldVertex) == 96);
 
 struct SceneConstants
 {

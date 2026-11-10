@@ -50,6 +50,61 @@ std::string MaterialTextureKey(const MaterialDescription& material)
     return key;
 }
 
+bool AppendSubmittedMeshlets(
+    const MeshResource& mesh,
+    const std::uint32_t firstVertex,
+    SubmittedSceneGeometry& output,
+    std::string& error)
+{
+    MeshletData meshlets;
+    if (!BuildMeshlets(mesh.vertices, mesh.indices, meshlets, error))
+        return false;
+
+    MeshletDrawData drawData;
+    if (!BuildMeshletDrawData(mesh.vertices, meshlets, drawData, error))
+        return false;
+
+    if (output.meshletIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
+        drawData.indices.size() > std::numeric_limits<std::uint32_t>::max() - output.meshletIndices.size() ||
+        output.meshletDraws.size() > std::numeric_limits<std::uint32_t>::max() ||
+        drawData.draws.size() > std::numeric_limits<std::uint32_t>::max() - output.meshletDraws.size())
+    {
+        error = "Submitted meshlet data exceeds 32-bit draw range limits.";
+        return false;
+    }
+
+    const std::uint32_t firstIndex = static_cast<std::uint32_t>(output.meshletIndices.size());
+    const std::uint32_t firstDraw = static_cast<std::uint32_t>(output.meshletDraws.size());
+    for (const std::uint32_t index : drawData.indices)
+    {
+        if (index > std::numeric_limits<std::uint32_t>::max() - firstVertex)
+        {
+            error = "Submitted meshlet vertex rebase exceeds 32-bit index limits.";
+            return false;
+        }
+        output.meshletIndices.push_back(firstVertex + index);
+    }
+    for (MeshletDrawDescriptor descriptor : drawData.draws)
+    {
+        if (descriptor.firstIndex > std::numeric_limits<std::uint32_t>::max() - firstIndex)
+        {
+            error = "Submitted meshlet index offset exceeds 32-bit limits.";
+            return false;
+        }
+        descriptor.firstIndex += firstIndex;
+        output.meshletDraws.push_back(descriptor);
+    }
+
+    output.meshletBatches.push_back({
+        firstDraw,
+        static_cast<std::uint32_t>(drawData.draws.size()),
+        firstIndex,
+        static_cast<std::uint32_t>(drawData.indices.size())
+    });
+    error.clear();
+    return true;
+}
+
 } // namespace
 
 bool IsSubmittedDrawVisible(
@@ -432,6 +487,11 @@ bool BuildSubmittedSceneGeometry(
             }
             output.indices.push_back(index);
         }
+        if (!AppendSubmittedMeshlets(*draw.mesh, range.firstVertex, output, error))
+        {
+            output = {};
+            return false;
+        }
 
         const std::uint32_t drawIndex = static_cast<std::uint32_t>(output.draws.size());
         SubmittedSceneBatch batch;
@@ -620,6 +680,50 @@ bool BuildSubmittedSceneGeometry(
         }
         cache.geometry.indices.insert(cache.geometry.indices.end(),
             pending.geometry.indices.begin(), pending.geometry.indices.end());
+
+        if (cache.geometry.meshletIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
+            pending.geometry.meshletIndices.size() >
+                std::numeric_limits<std::uint32_t>::max() - cache.geometry.meshletIndices.size() ||
+            cache.geometry.meshletDraws.size() > std::numeric_limits<std::uint32_t>::max() ||
+            pending.geometry.meshletDraws.size() >
+                std::numeric_limits<std::uint32_t>::max() - cache.geometry.meshletDraws.size())
+        {
+            error = "Submitted meshlet cache exceeds 32-bit draw range limits.";
+            return false;
+        }
+        const std::uint32_t firstMeshletIndex =
+            static_cast<std::uint32_t>(cache.geometry.meshletIndices.size());
+        const std::uint32_t firstMeshletDraw =
+            static_cast<std::uint32_t>(cache.geometry.meshletDraws.size());
+        for (const std::uint32_t index : pending.geometry.meshletIndices)
+        {
+            if (index > std::numeric_limits<std::uint32_t>::max() - firstVertex)
+            {
+                error = "Submitted meshlet vertex rebase exceeds 32-bit index limits.";
+                return false;
+            }
+            cache.geometry.meshletIndices.push_back(firstVertex + index);
+        }
+        for (MeshletDrawDescriptor descriptor : pending.geometry.meshletDraws)
+        {
+            if (descriptor.firstIndex >
+                std::numeric_limits<std::uint32_t>::max() - firstMeshletIndex)
+            {
+                error = "Submitted meshlet index offset exceeds 32-bit limits.";
+                return false;
+            }
+            descriptor.firstIndex += firstMeshletIndex;
+            cache.geometry.meshletDraws.push_back(descriptor);
+        }
+        for (const SubmittedMeshletBatch& meshletBatch : pending.geometry.meshletBatches)
+        {
+            cache.geometry.meshletBatches.push_back({
+                firstMeshletDraw + meshletBatch.firstDraw,
+                meshletBatch.drawCount,
+                firstMeshletIndex + meshletBatch.firstIndex,
+                meshletBatch.indexCount
+            });
+        }
 
         SubmittedDrawRange geometryTemplate = sourceRange;
         geometryTemplate.firstVertex = firstVertex;

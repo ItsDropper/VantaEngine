@@ -233,7 +233,8 @@ bool BuildMeshletDrawData(
     if (vertices.size() > std::numeric_limits<std::uint32_t>::max() ||
         meshlets.vertexIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
         meshlets.primitiveIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
-        meshlets.meshlets.size() > std::numeric_limits<std::uint32_t>::max())
+        meshlets.meshlets.size() > std::numeric_limits<std::uint32_t>::max() ||
+        meshlets.primitiveIndices.size() % 3U != 0U)
     {
         error = "Meshlet draw data exceeds the supported 32-bit indexed-draw limits.";
         return false;

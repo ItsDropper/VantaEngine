@@ -75,8 +75,8 @@ struct D3D12WorldVertex
     float color[4];
     float uv[2];
     float material[4];
-    float materialExtra0[4]{};
-    float materialExtra1[4]{};
+    float materialExtra0[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+    float materialExtra1[4] = {1.0F, 0.5F, 0.0F, 0.0F};
 };
 static_assert(sizeof(D3D12WorldVertex) == 96);
 

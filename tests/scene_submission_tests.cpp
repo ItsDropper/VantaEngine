@@ -100,6 +100,26 @@ int main()
         Require(descriptor.primitiveCount <= tinyMeshletOptions.maxPrimitives);
     }
     Require(meshlets.primitiveIndices.size() == 6U);
+    Require(BuildMeshletDrawData(meshletQuad.vertices, meshlets, meshletDrawData, meshletError));
+    Require(meshletDrawData.draws.size() == 2U);
+    Require(meshletDrawData.draws[0].firstIndex == 0U);
+    Require(meshletDrawData.draws[0].indexCount == 3U);
+    Require(meshletDrawData.draws[1].firstIndex == 3U);
+    Require(meshletDrawData.draws[1].indexCount == 3U);
+    Require(meshletDrawData.indices == meshletQuad.indices);
+
+    MeshletData incompletePrimitiveData = meshlets;
+    incompletePrimitiveData.primitiveIndices.push_back(0U);
+    Require(!BuildMeshletDrawData(meshletQuad.vertices, incompletePrimitiveData,
+        meshletDrawData, meshletError));
+    Require(meshletDrawData.indices.empty() && meshletDrawData.draws.empty());
+
+    MeshletData invalidDrawRange = meshlets;
+    invalidDrawRange.meshlets[0].primitiveCount =
+        static_cast<std::uint32_t>(invalidDrawRange.primitiveIndices.size());
+    Require(!BuildMeshletDrawData(meshletQuad.vertices, invalidDrawRange,
+        meshletDrawData, meshletError));
+    Require(meshletDrawData.indices.empty() && meshletDrawData.draws.empty());
 
     MeshletBuildOptions invalidMeshletOptions;
     invalidMeshletOptions.maxVertices = 2U;

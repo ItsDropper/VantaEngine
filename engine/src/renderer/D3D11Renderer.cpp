@@ -81,6 +81,7 @@ struct SceneConstants
     float materialProperties[4];
     float baseColorFactor[4];
     UINT textureFlags[4];
+    UINT advancedTextureFlags[4];
     float emissiveFactor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
     float advancedMaterial[4] = {1.0F, 1.0F, 0.5F, 0.0F};
     Mat4 lightViewProjection[3];

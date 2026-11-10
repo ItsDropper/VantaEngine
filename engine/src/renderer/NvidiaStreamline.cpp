@@ -5,8 +5,12 @@
 #include <cstdint>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #if defined(VANTA_ENABLE_STREAMLINE)
+#include <filesystem>
+#include <softpub.h>
+#include <wintrust.h>
 #include <sl.h>
 #include <sl_consts.h>
 #include <sl_dlss.h>
@@ -49,6 +53,49 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
 #if defined(VANTA_ENABLE_STREAMLINE)
     m_status.sdkCompiledIn = true;
 
+    std::vector<wchar_t> executablePath(32768U, L'\\0');
+    const DWORD pathLength = GetModuleFileNameW(nullptr, executablePath.data(),
+        static_cast<DWORD>(executablePath.size()));
+    if (pathLength == 0U || pathLength >= executablePath.size()) {
+        error = "Could not resolve the executable path for secure Streamline loading.";
+        m_status.diagnostic = error;
+        return false;
+    }
+    const std::filesystem::path interposerPath =
+        std::filesystem::path(executablePath.data()).parent_path() / L"sl.interposer.dll";
+    if (!VerifyAuthenticodeSignature(interposerPath)) {
+        error = "NVIDIA Streamline interposer failed Windows Authenticode verification; refusing to load it.";
+        m_status.diagnostic = error;
+        return false;
+    }
+    m_streamlineModule = LoadLibraryExW(interposerPath.c_str(), nullptr,
+        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+    if (m_streamlineModule == nullptr) {
+        error = "Could not load signed NVIDIA Streamline interposer (Win32 error " +
+            std::to_string(GetLastError()) + ").";
+        m_status.diagnostic = error;
+        return false;
+    }
+    m_createFactory2 = GetProcAddress(m_streamlineModule, "CreateDXGIFactory2");
+    m_createD3D12Device = GetProcAddress(m_streamlineModule, "D3D12CreateDevice");
+    m_slInit = GetProcAddress(m_streamlineModule, "slInit");
+    m_slShutdown = GetProcAddress(m_streamlineModule, "slShutdown");
+    m_slSetD3DDevice = GetProcAddress(m_streamlineModule, "slSetD3DDevice");
+    m_slIsFeatureSupported = GetProcAddress(m_streamlineModule, "slIsFeatureSupported");
+    m_slGetNewFrameToken = GetProcAddress(m_streamlineModule, "slGetNewFrameToken");
+    m_slPCLSetMarker = GetProcAddress(m_streamlineModule, "slPCLSetMarker");
+    m_slReflexSetOptions = GetProcAddress(m_streamlineModule, "slReflexSetOptions");
+    if (m_createFactory2 == nullptr || m_createD3D12Device == nullptr ||
+        m_slInit == nullptr || m_slShutdown == nullptr || m_slSetD3DDevice == nullptr ||
+        m_slIsFeatureSupported == nullptr || m_slGetNewFrameToken == nullptr ||
+        m_slPCLSetMarker == nullptr || m_slReflexSetOptions == nullptr) {
+        error = "Signed Streamline interposer is missing required D3D12/core/Reflex exports.";
+        m_status.diagnostic = error;
+        Shutdown();
+        m_status.sdkCompiledIn = true;
+        return false;
+    }
+
     constexpr sl::Feature features[] = {
         sl::kFeatureDLSS,
         sl::kFeatureDLSS_G,
@@ -66,7 +113,7 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
     preferences.flags = sl::PreferenceFlags::eDisableCLStateTracking;
     preferences.logMessageCallback = StreamlineLogMessage;
 
-    const sl::Result result = slInit(preferences);
+    const auto initialize = reinterpret_cast<SlInitFunction>(m_slInit);\n    const sl::Result result = initialize(preferences, sl::kSDKVersion);
     if (result != sl::Result::eOk) {
         error = "NVIDIA Streamline initialization failed (result " +
             std::to_string(static_cast<std::uint32_t>(result)) + ").";
@@ -85,6 +132,28 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
 #endif
 }
 
+HRESULT NvidiaStreamlineRuntime::CreateDXGIFactory2(
+    const UINT flags, const REFIID interfaceId, void** factory) const noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_createFactory2 != nullptr)
+        return reinterpret_cast<CreateFactory2Function>(m_createFactory2)(flags, interfaceId, factory);
+#endif
+    return ::CreateDXGIFactory2(flags, interfaceId, factory);
+}
+
+HRESULT NvidiaStreamlineRuntime::CreateD3D12Device(
+    IUnknown* adapter, const D3D_FEATURE_LEVEL minimumFeatureLevel,
+    const REFIID interfaceId, void** device) const noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_createD3D12Device != nullptr)
+        return reinterpret_cast<CreateD3D12DeviceFunction>(m_createD3D12Device)(
+            adapter, minimumFeatureLevel, interfaceId, device);
+#endif
+    return ::D3D12CreateDevice(adapter, minimumFeatureLevel, interfaceId, device);
+}
+
 bool NvidiaStreamlineRuntime::SetDevice(
     ID3D12Device* device, const LUID& adapterLuid, std::string& error)
 {
@@ -98,7 +167,7 @@ bool NvidiaStreamlineRuntime::SetDevice(
         return false;
     }
 
-    const sl::Result attachResult = slSetD3DDevice(device);
+    const auto setDevice = reinterpret_cast<SlSetD3DDeviceFunction>(m_slSetD3DDevice);\n    const sl::Result attachResult = setDevice(device);
     if (attachResult != sl::Result::eOk) {
         error = "NVIDIA Streamline could not attach to the selected D3D12 device (result " +
             std::to_string(static_cast<std::uint32_t>(attachResult)) + ").";
@@ -106,15 +175,17 @@ bool NvidiaStreamlineRuntime::SetDevice(
         return false;
     }
 
+    const auto isFeatureSupported =
+        reinterpret_cast<SlIsFeatureSupportedFunction>(m_slIsFeatureSupported);
     const sl::AdapterInfo adapterInfo = MakeAdapterInfo(adapterLuid);
-    const sl::Result dlssResult = slIsFeatureSupported(sl::kFeatureDLSS, adapterInfo);
+    const sl::Result dlssResult = isFeatureSupported(sl::kFeatureDLSS, adapterInfo);
     const sl::Result frameGenerationResult =
-        slIsFeatureSupported(sl::kFeatureDLSS_G, adapterInfo);
+        isFeatureSupported(sl::kFeatureDLSS_G, adapterInfo);
     const sl::Result rayReconstructionResult =
-        slIsFeatureSupported(sl::kFeatureDLSS_RR, adapterInfo);
-    const sl::Result reflexResult = slIsFeatureSupported(sl::kFeatureReflex, adapterInfo);
-    const sl::Result pclResult = slIsFeatureSupported(sl::kFeaturePCL, adapterInfo);
-    const sl::Result nisResult = slIsFeatureSupported(sl::kFeatureNIS, adapterInfo);
+        isFeatureSupported(sl::kFeatureDLSS_RR, adapterInfo);
+    const sl::Result reflexResult = isFeatureSupported(sl::kFeatureReflex, adapterInfo);
+    const sl::Result pclResult = isFeatureSupported(sl::kFeaturePCL, adapterInfo);
+    const sl::Result nisResult = isFeatureSupported(sl::kFeatureNIS, adapterInfo);
     m_status.deviceAttached = true;
     m_status.dlssSupported = dlssResult == sl::Result::eOk;
     m_status.dlssFrameGenerationSupported = frameGenerationResult == sl::Result::eOk;
@@ -125,7 +196,7 @@ bool NvidiaStreamlineRuntime::SetDevice(
     if (m_status.reflexSupported) {
         sl::ReflexOptions reflexOptions{};
         reflexOptions.mode = sl::ReflexMode::eLowLatency;
-        m_status.reflexEnabled = slReflexSetOptions(reflexOptions) == sl::Result::eOk;
+        const auto setReflexOptions = reinterpret_cast<SlReflexSetOptionsFunction>(m_slReflexSetOptions);\n        m_status.reflexEnabled = setReflexOptions(reflexOptions) == sl::Result::eOk;
     }
 
     m_status.diagnostic = "NVIDIA Streamline device attached. DLSS Super Resolution: " +
@@ -161,7 +232,7 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
         !m_status.latencyMarkersSupported)
         return;
     sl::FrameToken* token = nullptr;
-    if (slGetNewFrameToken(token, &frameIndex) == sl::Result::eOk)
+    const auto getNewFrameToken = reinterpret_cast<SlGetNewFrameTokenFunction>(m_slGetNewFrameToken);\n    if (getNewFrameToken(token, &frameIndex) == sl::Result::eOk)
         m_currentFrameToken = token;
 #else
     (void)frameIndex;
@@ -171,36 +242,44 @@ void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcep
 void NvidiaStreamlineRuntime::MarkRenderSubmitStart() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr)
-        (void)slPCLSetMarker(sl::PCLMarker::eRenderSubmitStart,
+    if (m_currentFrameToken != nullptr) {
+        const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
+        (void)setMarker(sl::PCLMarker::eRenderSubmitStart,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));
+    }
 #endif
 }
 
 void NvidiaStreamlineRuntime::MarkRenderSubmitEnd() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr)
-        (void)slPCLSetMarker(sl::PCLMarker::eRenderSubmitEnd,
+    if (m_currentFrameToken != nullptr) {
+        const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
+        (void)setMarker(sl::PCLMarker::eRenderSubmitEnd,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));
+    }
 #endif
 }
 
 void NvidiaStreamlineRuntime::MarkPresentStart() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr)
-        (void)slPCLSetMarker(sl::PCLMarker::ePresentStart,
+    if (m_currentFrameToken != nullptr) {
+        const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
+        (void)setMarker(sl::PCLMarker::ePresentStart,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));
+    }
 #endif
 }
 
 void NvidiaStreamlineRuntime::MarkPresentEnd() noexcept
 {
 #if defined(VANTA_ENABLE_STREAMLINE)
-    if (m_currentFrameToken != nullptr)
-        (void)slPCLSetMarker(sl::PCLMarker::ePresentEnd,
+    if (m_currentFrameToken != nullptr) {
+        const auto setMarker = reinterpret_cast<SlPclSetMarkerFunction>(m_slPCLSetMarker);
+        (void)setMarker(sl::PCLMarker::ePresentEnd,
             *static_cast<sl::FrameToken*>(m_currentFrameToken));
+    }
     m_currentFrameToken = nullptr;
 #endif
 }

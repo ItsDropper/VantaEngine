@@ -2,6 +2,7 @@
 
 #include "vanta/renderer/SceneSubmission.hpp"
 #include "vanta/renderer/MeshletBuilder.hpp"
+#include "vanta/renderer/MeshletHierarchy.hpp"
 
 #include <cstdint>
 #include <string>
@@ -52,6 +53,17 @@ struct SubmittedMeshletBatch
     std::uint32_t indexCount = 0;
 };
 
+struct SubmittedMeshletHierarchyBatch
+{
+    std::uint32_t rootNode = MeshletHierarchy::InvalidIndex;
+    std::uint32_t firstNode = 0U;
+    std::uint32_t nodeCount = 0U;
+    std::uint32_t firstChild = 0U;
+    std::uint32_t childCount = 0U;
+    std::uint32_t firstMeshlet = 0U;
+    std::uint32_t meshletCount = 0U;
+};
+
 struct SubmittedSceneGeometry
 {
     std::vector<SubmittedSceneVertex> vertices;
@@ -60,6 +72,11 @@ struct SubmittedSceneGeometry
     std::vector<std::uint32_t> meshletIndices;
     std::vector<MeshletDrawDescriptor> meshletDraws;
     std::vector<SubmittedMeshletBatch> meshletBatches;
+    // GPU-layout hierarchy arrays; ranges are absolute within these arrays.
+    std::vector<GpuMeshletHierarchyNode> meshletHierarchyNodes;
+    std::vector<std::uint32_t> meshletHierarchyChildren;
+    std::vector<std::uint32_t> meshletHierarchyMeshlets;
+    std::vector<SubmittedMeshletHierarchyBatch> meshletHierarchyBatches;
     // One batch per unique mesh/material pair; instances reference draws by stable index.
     std::vector<SubmittedSceneBatch> batches;
     std::vector<SubmittedDrawRange> draws;

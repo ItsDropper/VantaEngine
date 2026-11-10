@@ -317,6 +317,11 @@ int main()
     Require(submitted.meshletBatches[0].drawCount == 1U);
     Require(submitted.meshletDraws[0].firstIndex == 0U);
     Require(submitted.meshletDraws[0].indexCount == 3U);
+    Require(submitted.meshletHierarchyBatches.size() == 1U);
+    Require(submitted.meshletHierarchyNodes.size() == 1U);
+    Require(submitted.meshletHierarchyBatches[0].rootNode == 0U);
+    Require(submitted.meshletHierarchyNodes[0].meshletRange[1] == 1U);
+    Require(submitted.meshletHierarchyMeshlets[0] == 0U);
     Require(submitted.draws.size() == 1U);
     Require(submitted.vertices[0].position[0] == -1.0F);
     Require(submitted.vertices[0].position[1] == 0.0F);
@@ -352,6 +357,13 @@ int main()
     Require(batchedGeometry.meshletBatches.size() == 2U);
     Require(batchedGeometry.meshletDraws.size() == 2U);
     Require(batchedGeometry.meshletIndices.size() == 6U);
+    Require(batchedGeometry.meshletHierarchyBatches.size() == 2U);
+    Require(batchedGeometry.meshletHierarchyNodes.size() == 2U);
+    Require(batchedGeometry.meshletHierarchyBatches[0].rootNode == 0U);
+    Require(batchedGeometry.meshletHierarchyBatches[1].rootNode == 1U);
+    Require(batchedGeometry.meshletHierarchyMeshlets.size() == 2U);
+    Require(batchedGeometry.meshletHierarchyMeshlets[0] == 0U);
+    Require(batchedGeometry.meshletHierarchyMeshlets[1] == 1U);
     Require(batchedGeometry.meshletBatches[0].firstIndex == 0U);
     Require(batchedGeometry.meshletBatches[1].firstIndex == 3U);
     Require(batchedGeometry.meshletIndices[3] >= batchedGeometry.batches[1].firstVertex);
@@ -669,6 +681,10 @@ int main()
     Require(geometryCache.geometry.draws[0].world.At(2, 3) == -7.0F);
     Require(geometryCache.geometry.batches.size() == 1U);
     Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
+    Require(geometryCache.geometry.meshletHierarchyBatches.size() == 1U);
+    Require(geometryCache.geometry.meshletHierarchyNodes.size() == 1U);
+    Require(geometryCache.geometry.meshletHierarchyBatches[0].rootNode == 0U);
+    Require(geometryCache.geometry.meshletHierarchyMeshlets[0] == 0U);
 
     // Changing only the visible instance set must not rebuild immutable mesh data.
     const InstanceHandle cachedInstanceB = cachedScene.CreateInstance(
@@ -721,6 +737,13 @@ int main()
     Require(geometryCache.geometry.draws.size() == 2U);
     Require(geometryCache.geometry.batches[0].drawIndices.size() == 1U);
     Require(geometryCache.geometry.batches[1].drawIndices.size() == 1U);
+    Require(geometryCache.geometry.meshletHierarchyBatches.size() == 2U);
+    Require(geometryCache.geometry.meshletHierarchyNodes.size() == 2U);
+    Require(geometryCache.geometry.meshletHierarchyBatches[0].rootNode == 0U);
+    Require(geometryCache.geometry.meshletHierarchyBatches[1].rootNode == 1U);
+    Require(geometryCache.geometry.meshletHierarchyMeshlets.size() == 2U);
+    Require(geometryCache.geometry.meshletHierarchyMeshlets[0] == 0U);
+    Require(geometryCache.geometry.meshletHierarchyMeshlets[1] == 1U);
 
     Require(cachedScene.DestroyInstance(addedInstance));
     Require(cachedScene.DestroyMesh(addedMesh));

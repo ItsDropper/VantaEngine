@@ -90,11 +90,13 @@ struct VSInput
     float4 color : COLOR;
     float2 uv : TEXCOORD0;
     float4 material : TEXCOORD1;
+    float4 materialExtra0 : TEXCOORD2;
+    float4 materialExtra1 : TEXCOORD3;
     float4 worldRow0 : INSTANCEWORLD0;
     float4 worldRow1 : INSTANCEWORLD1;
     float4 worldRow2 : INSTANCEWORLD2;
 };
-struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; float3 diffuseIrradiance : TEXCOORD4; };
+struct PSInput { float4 position : SV_POSITION; float3 worldPosition : TEXCOORD0; float3 normal : TEXCOORD1; float4 color : COLOR; float2 uv : TEXCOORD2; float4 material : TEXCOORD3; float3 diffuseIrradiance : TEXCOORD4; float4 materialExtra0 : TEXCOORD5; float4 materialExtra1 : TEXCOORD6; };
 PSInput VSMain(VSInput input)
 {
     PSInput o;
@@ -126,6 +128,8 @@ PSInput VSMain(VSInput input)
     o.color = input.color;
     o.uv = input.uv;
     o.material = input.material;
+    o.materialExtra0 = input.materialExtra0;
+    o.materialExtra1 = input.materialExtra1;
     return o;
 }
 float DistributionGGX(float3 n, float3 h, float roughness)
@@ -200,9 +204,12 @@ float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection
                 linearClamp, float3(uv + texel * float2(x, y), cascade), 0) ? 1.0 : 0.0;
     return lerp(0.24, 1.0, visibility / 9.0);
 }
-float4 PSMain(PSInput input) : SV_TARGET
+float4 PSMain(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
 {
     float3 n = normalize(input.normal);
+    if (input.materialExtra1.w > 0.5 && !isFrontFace) n = -n;
+    if (input.materialExtra1.z > 0.5 && input.materialExtra1.z < 1.5)
+        clip(input.color.a - input.materialExtra1.y);
     uint materialFlags = (uint)(input.material.w + 0.5);
     float3 dp1 = ddx(input.worldPosition);
     float3 dp2 = ddy(input.worldPosition);
@@ -214,6 +221,7 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 tangentNormal = submittedMaterial
             ? submittedNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0
             : modelNormalTexture.Sample(linearWrap, float3(input.uv, input.color.a)).xyz * 2.0 - 1.0;
+        tangentNormal.xy *= input.materialExtra0.w;
         float3 tangent = normalize(dp1 * duv2.y - dp2 * duv1.y);
         float3 bitangent = normalize(-dp1 * duv2.x + dp2 * duv1.x);
         n = normalize(tangent * tangentNormal.x + bitangent * tangentNormal.y + n * tangentNormal.z);
@@ -416,11 +424,12 @@ float4 PSMain(PSInput input) : SV_TARGET
         metallic = saturate(metallic * packedMetallic);
     }
 )VANTA2"
-    R"VANTA3(    float ambientOcclusion = (materialFlags & 16U) != 0U
+    R"VANTA3(    float ambientOcclusionSample = (materialFlags & 16U) != 0U
         ? (submittedMaterial
             ? submittedOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r
             : modelOcclusionTexture.Sample(linearWrap, float3(input.uv, input.color.a)).r)
         : 1.0;
+    float ambientOcclusion = lerp(1.0, ambientOcclusionSample, saturate(input.materialExtra1.x));
     float ndl = saturate(dot(n, l));
     float ndv = max(saturate(dot(n, v)), 0.001);
     float3 f0 = lerp(float3(0.04, 0.04, 0.04), albedo, metallic);

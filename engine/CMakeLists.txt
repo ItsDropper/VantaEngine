@@ -17,6 +17,7 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/MeshletHierarchy.cpp
     src/world/ProceduralWorld.cpp
     src/renderer/NvidiaRendering.cpp
+    src/renderer/D3D12RaytracingScene.cpp
     src/assets/ObjLoader.cpp
     src/assets/ModelAssetStore.cpp
     src/assets/GltfLoader.cpp

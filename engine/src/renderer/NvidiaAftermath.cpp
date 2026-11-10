@@ -12,7 +12,7 @@ namespace
 {
 std::filesystem::path CrashDumpDirectory()
 {
-    std::vector<wchar_t> localAppData(32768U, L'\\0');
+    std::vector<wchar_t> localAppData(32768U, L'\0');
     const DWORD length = GetEnvironmentVariableW(
         L"LOCALAPPDATA", localAppData.data(), static_cast<DWORD>(localAppData.size()));
     if (length > 0U && length < localAppData.size())

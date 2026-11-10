@@ -95,7 +95,7 @@ struct SceneConstants
     float diffuseIrradianceSH[9][4];
     float specularPrefilterSH[45][4];
 };
-static_assert(sizeof(SceneConstants) == 1664);
+static_assert(sizeof(SceneConstants) == 1680);
 
 constexpr Vertex kCubeVertices[] = {
     // Front (+Z)
@@ -150,6 +150,7 @@ cbuffer SceneConstants : register(b0)
     float4 materialProperties;
     float4 baseColorFactor;
     uint4 textureFlags;
+    uint4 advancedTextureFlags;
     float4 emissiveFactor;
     float4 advancedMaterial;
     float4x4 lightViewProjection[3];
@@ -173,6 +174,7 @@ Texture2D ambientOcclusionTexture : register(t5);
 Texture2D grassAlbedoTexture : register(t6);
 Texture2D rockAlbedoTexture : register(t7);
 Texture2D woodAlbedoTexture : register(t8);
+Texture2D emissiveTexture : register(t9);
 SamplerState diffuseSampler : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
 
@@ -492,7 +494,10 @@ float4 PSMain(PixelInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
     // after the full scene has been composited, so bright highlights can bloom correctly.
     // Directional shadowing also attenuates environment fill so bright snow does not wash out cast shadows.
     ambient *= lerp(0.42, 1.0, shadow);
-    float3 color = direct + ambient + emissiveFactor.rgb;
+    float3 emissive = emissiveFactor.rgb;
+    if (advancedTextureFlags.x != 0)
+        emissive *= emissiveTexture.Sample(diffuseSampler, input.uv).rgb;
+    float3 color = direct + ambient + emissive;
     float distanceToCamera = distance(cameraPosition, input.worldPosition);
     float fog = saturate(1.0 - exp(-max(distanceToCamera - fogStart, 0.0) * fogDensity));
     float3 fogColor = environmentFogColor.w > 0.5
@@ -1712,7 +1717,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
                 !loadSubmittedTexture(draw.material.normalTexture, false, material.normal) ||
                 !loadSubmittedTexture(draw.material.roughnessTexture, false, material.roughness) ||
                 !loadSubmittedTexture(draw.material.metallicTexture, false, material.metallic) ||
-                !loadSubmittedTexture(draw.material.ambientOcclusionTexture, false, material.ambientOcclusion))
+                !loadSubmittedTexture(draw.material.ambientOcclusionTexture, false, material.ambientOcclusion) ||
+                !loadSubmittedTexture(draw.material.emissiveTexture, true, material.emissive))
                 return;
             if (draw.material.packedMetallicRoughness && material.roughness) {
                 material.metallic = material.roughness;
@@ -1723,6 +1729,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             material.textureFlags[2] = material.metallic
                 ? (draw.material.packedMetallicRoughness ? 2U : 1U) : 0U;
             material.textureFlags[3] = material.ambientOcclusion ? 1U : 0U;
+            material.advancedTextureFlags[0] = material.emissive ? 1U : 0U;
             m_submittedMaterials.push_back(std::move(material));
         }
         if (!submittedGeometry.vertices.empty()) {
@@ -2118,6 +2125,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
                 material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),
                 material.roughness.Get(), material.metallic.Get(), material.ambientOcclusion.Get()
             };
+            ID3D11ShaderResourceView* emissiveView = material.emissive.Get();
+            m_context->PSSetShaderResources(9, 1, &emissiveView);
             m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(materialViews)), materialViews);
             SceneConstants constants{};
             constants.world = draw.world;
@@ -2184,6 +2193,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             constants.baseColorFactor[3] = 1.0F;
             for (std::size_t flag = 0; flag < std::size(material.textureFlags); ++flag)
                 constants.textureFlags[flag] = material.textureFlags[flag];
+            for (std::size_t flag = 0; flag < std::size(material.advancedTextureFlags); ++flag)
+                constants.advancedTextureFlags[flag] = material.advancedTextureFlags[flag];
             for (std::size_t cascade = 0; cascade < 3; ++cascade)
                 constants.lightViewProjection[cascade] = lightViewProjections[cascade];
             constants.cascadeSplits[0] = 25.0F;
@@ -2202,6 +2213,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         m_context->OMSetDepthStencilState(m_depthState.Get(), 0U);
         ID3D11ShaderResourceView* nullMaterialViews[6]{};
         m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(nullMaterialViews)), nullMaterialViews);
+        ID3D11ShaderResourceView* nullEmissiveView = nullptr;
+        m_context->PSSetShaderResources(9, 1, &nullEmissiveView);
     }
 
     // Composite the complete linear HDR scene into the swap chain. The HDR target must

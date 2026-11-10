@@ -43,6 +43,8 @@ private:
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> roughness;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> metallic;
         Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> ambientOcclusion;
+        Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> emissive;
+        UINT advancedTextureFlags[4] = {};
         float baseColor[4] = {1.0F, 1.0F, 1.0F, 1.0F};
         float roughnessFactor = 0.8F;
         float metallicFactor = 0.0F;

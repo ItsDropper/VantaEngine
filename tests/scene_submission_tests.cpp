@@ -418,7 +418,13 @@ int main()
     Require(advancedMaterialScene.CreateMaterial(blendedMaterialDescription).IsValid());
     MaterialDescription emissiveTextureDescription;
     emissiveTextureDescription.emissiveTexture = textureRoot / "emissive.png";
-    Require(!advancedMaterialScene.CreateMaterial(emissiveTextureDescription).IsValid());
+    const MaterialHandle emissiveTextureMaterial = advancedMaterialScene.CreateMaterial(emissiveTextureDescription);
+    Require(emissiveTextureMaterial.IsValid());
+    Require(advancedMaterialScene.CreateInstance(advancedMesh, emissiveTextureMaterial).IsValid());
+    const SceneFrame emissiveFrame = advancedMaterialScene.BuildFrame(view);
+    SubmittedSceneGeometry emissiveGeometry;
+    Require(BuildSubmittedSceneGeometry(emissiveFrame, emissiveGeometry, geometryError));
+    Require((static_cast<std::uint32_t>(emissiveGeometry.vertices.back().material[3]) & 512U) != 0U);
 
     SceneSubmission cachedScene;
     const MeshHandle cachedMesh = cachedScene.CreateMesh(Triangle());

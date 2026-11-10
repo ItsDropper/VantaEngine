@@ -2232,7 +2232,6 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         std::memcpy(shadowConstants + sizeof(Mat4), &elapsedSeconds, sizeof(elapsedSeconds));
     }
 
-    m_nvidiaStreamline.MarkRenderSubmitStart();
     if (FAILED(m_commandAllocators[m_frameIndex]->Reset()) ||
         FAILED(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get()))) {
         m_lastRenderError = "Direct3D 12: command recording reset failed.";
@@ -2240,6 +2239,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         m_failed = true;
         return;
     }
+    m_nvidiaStreamline.MarkRenderSubmitStart();
 
     const UINT timestampBase = m_frameIndex * 7U;
     if (m_timestampFrequency != 0)

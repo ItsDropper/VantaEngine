@@ -1777,6 +1777,13 @@ void D3D12Renderer::Render(float elapsedSeconds, float cameraX, float cameraY, f
 
 bool D3D12Renderer::Render(const renderer::SceneFrame& submittedScene)
 {
+    std::string validationError;
+    if (!renderer::ValidateFrameView(submittedScene.view, validationError))
+    {
+        m_lastFrameSucceeded = false;
+        m_lastRenderError = std::move(validationError);
+        return false;
+    }
     const float forwardX = submittedScene.view.view.At(2, 0);
     const float forwardY = std::clamp(submittedScene.view.view.At(2, 1), -1.0F, 1.0F);
     const float forwardZ = submittedScene.view.view.At(2, 2);

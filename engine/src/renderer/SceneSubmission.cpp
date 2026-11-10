@@ -80,10 +80,10 @@ bool SceneSubmission::IsValidWorldTransform(const math::Mat4& matrix) noexcept
 
 bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
 {
-    const std::array<const std::filesystem::path*, 5> texturePaths = {
+    const std::array<const std::filesystem::path*, 6> texturePaths = {
         &description.baseColorTexture, &description.normalTexture,
         &description.roughnessTexture, &description.metallicTexture,
-        &description.ambientOcclusionTexture
+        &description.ambientOcclusionTexture, &description.emissiveTexture
     };
     const bool pathsValid = std::all_of(texturePaths.begin(), texturePaths.end(),
         [](const std::filesystem::path* path)
@@ -100,7 +100,18 @@ bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
            std::isfinite(description.roughness) &&
            std::isfinite(description.metallic) &&
            description.roughness >= 0.0F && description.roughness <= 1.0F &&
-           description.metallic >= 0.0F && description.metallic <= 1.0F;
+           description.metallic >= 0.0F && description.metallic <= 1.0F &&
+           std::isfinite(description.emissive.x) && description.emissive.x >= 0.0F &&
+           std::isfinite(description.emissive.y) && description.emissive.y >= 0.0F &&
+           std::isfinite(description.emissive.z) && description.emissive.z >= 0.0F &&
+           std::isfinite(description.normalScale) && description.normalScale >= 0.0F &&
+           std::isfinite(description.occlusionStrength) && description.occlusionStrength >= 0.0F &&
+           description.occlusionStrength <= 1.0F &&
+           std::isfinite(description.alphaCutoff) && description.alphaCutoff >= 0.0F &&
+           description.alphaCutoff <= 1.0F &&
+           (description.alphaMode == MaterialAlphaMode::Opaque ||
+            description.alphaMode == MaterialAlphaMode::Mask ||
+            description.alphaMode == MaterialAlphaMode::Blend);
 }
 
 const MeshResource* SceneSubmission::Find(const MeshHandle handle) const noexcept

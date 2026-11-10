@@ -64,6 +64,13 @@ bool AppendSubmittedMeshlets(
     if (!BuildMeshletDrawData(mesh.vertices, meshlets, drawData, error))
         return false;
 
+    MeshletHierarchy hierarchy;
+    if (!BuildMeshletHierarchy(meshlets, hierarchy, error))
+        return false;
+    GpuMeshletHierarchy gpuHierarchy;
+    if (!BuildGpuMeshletHierarchy(hierarchy, gpuHierarchy, error))
+        return false;
+
     if (output.meshletIndices.size() > std::numeric_limits<std::uint32_t>::max() ||
         drawData.indices.size() > std::numeric_limits<std::uint32_t>::max() - output.meshletIndices.size() ||
         output.meshletDraws.size() > std::numeric_limits<std::uint32_t>::max() ||
@@ -73,8 +80,18 @@ bool AppendSubmittedMeshlets(
         return false;
     }
 
+    if (output.meshletHierarchyNodes.size() > UINT32_MAX || gpuHierarchy.nodes.size() > UINT32_MAX - output.meshletHierarchyNodes.size() ||
+        output.meshletHierarchyChildren.size() > UINT32_MAX || gpuHierarchy.childIndices.size() > UINT32_MAX - output.meshletHierarchyChildren.size() ||
+        output.meshletHierarchyMeshlets.size() > UINT32_MAX || gpuHierarchy.meshletIndices.size() > UINT32_MAX - output.meshletHierarchyMeshlets.size())
+    {
+        error = "Submitted meshlet hierarchy exceeds 32-bit GPU buffer limits.";
+        return false;
+    }
     const std::uint32_t firstIndex = static_cast<std::uint32_t>(output.meshletIndices.size());
     const std::uint32_t firstDraw = static_cast<std::uint32_t>(output.meshletDraws.size());
+    const std::uint32_t firstNode = static_cast<std::uint32_t>(output.meshletHierarchyNodes.size());
+    const std::uint32_t firstChild = static_cast<std::uint32_t>(output.meshletHierarchyChildren.size());
+    const std::uint32_t firstHierarchyMeshlet = static_cast<std::uint32_t>(output.meshletHierarchyMeshlets.size());
     for (const std::uint32_t index : drawData.indices)
     {
         if (index > std::numeric_limits<std::uint32_t>::max() - firstVertex)
@@ -101,6 +118,18 @@ bool AppendSubmittedMeshlets(
         firstIndex,
         static_cast<std::uint32_t>(drawData.indices.size())
     });
+    for (GpuMeshletHierarchyNode node : gpuHierarchy.nodes)
+    {
+        if (node.childRange[1] != 0U) node.childRange[0] += firstChild;
+        if (node.meshletRange[1] != 0U) node.meshletRange[0] += firstHierarchyMeshlet;
+        output.meshletHierarchyNodes.push_back(node);
+    }
+    for (const std::uint32_t child : gpuHierarchy.childIndices) output.meshletHierarchyChildren.push_back(firstNode + child);
+    for (const std::uint32_t meshlet : gpuHierarchy.meshletIndices) output.meshletHierarchyMeshlets.push_back(firstDraw + meshlet);
+    output.meshletHierarchyBatches.push_back({firstNode + gpuHierarchy.rootNode, firstNode,
+        static_cast<std::uint32_t>(gpuHierarchy.nodes.size()), firstChild,
+        static_cast<std::uint32_t>(gpuHierarchy.childIndices.size()), firstHierarchyMeshlet,
+        static_cast<std::uint32_t>(gpuHierarchy.meshletIndices.size())});
     error.clear();
     return true;
 }
@@ -685,8 +714,10 @@ bool BuildSubmittedSceneGeometry(
             pending.geometry.meshletIndices.size() >
                 std::numeric_limits<std::uint32_t>::max() - cache.geometry.meshletIndices.size() ||
             cache.geometry.meshletDraws.size() > std::numeric_limits<std::uint32_t>::max() ||
-            pending.geometry.meshletDraws.size() >
-                std::numeric_limits<std::uint32_t>::max() - cache.geometry.meshletDraws.size())
+            pending.geometry.meshletDraws.size() > std::numeric_limits<std::uint32_t>::max() - cache.geometry.meshletDraws.size() ||
+            cache.geometry.meshletHierarchyNodes.size() > UINT32_MAX || pending.geometry.meshletHierarchyNodes.size() > UINT32_MAX - cache.geometry.meshletHierarchyNodes.size() ||
+            cache.geometry.meshletHierarchyChildren.size() > UINT32_MAX || pending.geometry.meshletHierarchyChildren.size() > UINT32_MAX - cache.geometry.meshletHierarchyChildren.size() ||
+            cache.geometry.meshletHierarchyMeshlets.size() > UINT32_MAX || pending.geometry.meshletHierarchyMeshlets.size() > UINT32_MAX - cache.geometry.meshletHierarchyMeshlets.size())
         {
             error = "Submitted meshlet cache exceeds 32-bit draw range limits.";
             return false;
@@ -695,6 +726,9 @@ bool BuildSubmittedSceneGeometry(
             static_cast<std::uint32_t>(cache.geometry.meshletIndices.size());
         const std::uint32_t firstMeshletDraw =
             static_cast<std::uint32_t>(cache.geometry.meshletDraws.size());
+        const std::uint32_t firstHierarchyNode = static_cast<std::uint32_t>(cache.geometry.meshletHierarchyNodes.size());
+        const std::uint32_t firstHierarchyChild = static_cast<std::uint32_t>(cache.geometry.meshletHierarchyChildren.size());
+        const std::uint32_t firstHierarchyMeshlet = static_cast<std::uint32_t>(cache.geometry.meshletHierarchyMeshlets.size());
         for (const std::uint32_t index : pending.geometry.meshletIndices)
         {
             if (index > std::numeric_limits<std::uint32_t>::max() - firstVertex)
@@ -724,6 +758,19 @@ bool BuildSubmittedSceneGeometry(
                 meshletBatch.indexCount
             });
         }
+
+        for (GpuMeshletHierarchyNode node : pending.geometry.meshletHierarchyNodes)
+        {
+            if (node.childRange[1] != 0U) node.childRange[0] += firstHierarchyChild;
+            if (node.meshletRange[1] != 0U) node.meshletRange[0] += firstHierarchyMeshlet;
+            cache.geometry.meshletHierarchyNodes.push_back(node);
+        }
+        for (const std::uint32_t child : pending.geometry.meshletHierarchyChildren) cache.geometry.meshletHierarchyChildren.push_back(firstHierarchyNode + child);
+        for (const std::uint32_t meshlet : pending.geometry.meshletHierarchyMeshlets) cache.geometry.meshletHierarchyMeshlets.push_back(firstMeshletDraw + meshlet);
+        for (const SubmittedMeshletHierarchyBatch& batch : pending.geometry.meshletHierarchyBatches)
+            cache.geometry.meshletHierarchyBatches.push_back({firstHierarchyNode + batch.rootNode,
+                firstHierarchyNode + batch.firstNode, batch.nodeCount, firstHierarchyChild + batch.firstChild,
+                batch.childCount, firstHierarchyMeshlet + batch.firstMeshlet, batch.meshletCount});
 
         SubmittedDrawRange geometryTemplate = sourceRange;
         geometryTemplate.firstVertex = firstVertex;

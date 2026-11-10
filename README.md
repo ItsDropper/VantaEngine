@@ -252,3 +252,53 @@ Path tracing still requires DXR state-object/shader-table creation, ray-generati
 miss and hit shaders, material/lighting bindings, accumulation, and denoising.
 DLSS 5 is not integrated; its SDK is not publicly available to independent
 developers at this time.
+
+
+## NVIDIA RTX technology support
+
+VantaEngine uses Direct3D 12 as its current Windows renderer. NVIDIA support is
+being added through native graphics APIs and optional NVIDIA SDKs; detecting a
+capability is deliberately not reported as an integrated rendering feature.
+
+### Hardware/API capability detection
+
+The selected D3D12 adapter is now queried and logged for:
+
+- DXR hardware ray-tracing tier.
+- Variable Rate Shading tier.
+- Mesh Shader tier.
+- Sampler Feedback tier.
+- Highest reported shader model (queried through Shader Model 6.9 down to 6.0).
+
+The renderer reports these capabilities for the adapter it actually selected.
+The standalone capability query can also enumerate hardware adapters and
+prefers an NVIDIA adapter for its NVIDIA-focused report. The renderer's
+selection policy is unchanged.
+
+### Integration status
+
+| Technology | Current status |
+| --- | --- |
+| DXR acceleration structures (BLAS/TLAS) | Native D3D12 foundation implemented; not yet connected to scene rendering |
+| DXR path tracing | Not yet implemented; requires ray pipeline, shaders, material/light bindings, accumulation and denoising |
+| DLSS Super Resolution / DLAA | Not integrated; Streamline/NGX SDK and temporal input integration required |
+| DLSS Ray Reconstruction | Not integrated; requires ray-traced signal decomposition and supported SDK |
+| DLSS Frame Generation / Multi Frame Generation | Not integrated; requires Streamline, motion/depth/UI inputs and swap-chain/present integration |
+| NVIDIA Reflex | Not integrated; requires Reflex SDK/Streamline markers and render-queue pacing |
+| NVIDIA NRD | Not integrated; denoiser integration follows ray-traced lighting/path-tracing signals |
+| RTXDI / ReSTIR | Not integrated; requires GPU light sampling, reservoirs and temporal/spatial reuse |
+| RTX Path Tracing (RTXPT) | Reference architecture identified; no code has been copied or claimed as integrated |
+| RTXMU | Not integrated; evaluate after acceleration-structure lifetime and allocation strategy are established |
+| RTX Neural Shaders / Neural Texture Compression | Not integrated; separate SDK and asset/runtime pipeline required |
+| RTX Mega Geometry / Opacity Micromaps / Shader Execution Reordering | Not integrated; requires DXR 1.2 / Shader Model 6.9 support and feature-specific data paths |
+| Nsight / Aftermath diagnostics | Not integrated; current renderer retains its D3D12 timestamp profiler and debug-layer validation |
+
+NVIDIA's current public integration route for DLSS and Reflex is Streamline.
+DLSS 4.5 includes Super Resolution, Ray Reconstruction, Frame Generation,
+Multi Frame Generation and DLAA. DLSS 5 is not represented by a compatibility
+flag or substitute effect; it will only be added through an official SDK and
+supported developer integration path.
+
+The capability report is a hardware/API inventory only. A feature becomes
+"integrated" only after its real SDK or API path is implemented, validated,
+and exercised in the renderer.

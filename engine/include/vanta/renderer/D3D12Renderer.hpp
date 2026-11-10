@@ -56,7 +56,7 @@ private:
     static constexpr UINT kHiZBaseSrvIndex = 12;
     static constexpr UINT kHiZBaseUavIndex = 14;
     static constexpr UINT kSubmittedMaterialBaseSrvIndex = 46;
-    static constexpr UINT kSubmittedMaterialSrvCount = 5;
+    static constexpr UINT kSubmittedMaterialSrvCount = 6;
     struct DrawChunk
     {
         std::array<UINT, 5> startIndex{};
@@ -142,11 +142,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_hdrTexture;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_shadowTexture;
-    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_modelMaterialTextures;
-    std::array<UINT, 5> m_modelMaterialMipLevels{};
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 6> m_modelMaterialTextures;
+    std::array<UINT, 6> m_modelMaterialMipLevels{};
     UINT m_modelMaterialLayerCount = 1;
-    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 5> m_submittedMaterialTextures;
-    std::array<UINT, 5> m_submittedMaterialMipLevels{};
+    std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 6> m_submittedMaterialTextures;
+    std::array<UINT, 6> m_submittedMaterialMipLevels{};
     UINT m_submittedMaterialLayerCount = 0;
     std::string m_submittedMaterialCacheKey;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_vertexBuffer;

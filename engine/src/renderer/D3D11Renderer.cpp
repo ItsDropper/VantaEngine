@@ -1399,6 +1399,29 @@ bool D3D11Renderer::CreatePipeline()
         return false;
     }
 
+    D3D11_DEPTH_STENCIL_DESC transparentDepthDescription{};
+    transparentDepthDescription.DepthEnable = TRUE;
+    transparentDepthDescription.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    transparentDepthDescription.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    if (FAILED(m_device->CreateDepthStencilState(&transparentDepthDescription,
+            m_transparentDepthState.GetAddressOf()))) {
+        LogError("Could not create the transparent material depth state.");
+        return false;
+    }
+    D3D11_BLEND_DESC alphaBlendDescription{};
+    alphaBlendDescription.RenderTarget[0].BlendEnable = TRUE;
+    alphaBlendDescription.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    alphaBlendDescription.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    alphaBlendDescription.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    alphaBlendDescription.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    alphaBlendDescription.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    alphaBlendDescription.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    alphaBlendDescription.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    if (FAILED(m_device->CreateBlendState(&alphaBlendDescription, m_alphaBlendState.GetAddressOf()))) {
+        LogError("Could not create the transparent material blend state.");
+        return false;
+    }
+
     D3D11_RASTERIZER_DESC rasterDescription{};
     rasterDescription.FillMode = D3D11_FILL_SOLID;
     rasterDescription.CullMode = D3D11_CULL_NONE;
@@ -2056,9 +2079,39 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         ID3D11Buffer* submittedVertices = m_submittedVertexBuffer.Get();
         m_context->IASetVertexBuffers(0, 1, &submittedVertices, &submittedStride, &submittedOffset);
         m_context->IASetIndexBuffer(m_submittedIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-        for (std::size_t drawIndex = 0; drawIndex < submittedGeometry.draws.size(); ++drawIndex) {
+        std::vector<std::size_t> submittedDrawOrder;
+        submittedDrawOrder.reserve(submittedGeometry.draws.size());
+        for (std::size_t drawIndex = 0; drawIndex < submittedGeometry.draws.size(); ++drawIndex)
+            if (renderer::IsSubmittedDrawVisible(submittedGeometry.draws[drawIndex], currentViewProjection))
+                submittedDrawOrder.push_back(drawIndex);
+        const auto cameraDistanceSquared = [&](const renderer::SubmittedDrawRange& draw) {
+            const float centerX = (draw.localBoundsMin.x + draw.localBoundsMax.x) * 0.5F;
+            const float centerY = (draw.localBoundsMin.y + draw.localBoundsMax.y) * 0.5F;
+            const float centerZ = (draw.localBoundsMin.z + draw.localBoundsMax.z) * 0.5F;
+            const math::Vec4 worldCenter = draw.world.Transform({centerX, centerY, centerZ, 1.0F});
+            const float dx = worldCenter.x - cameraX;
+            const float dy = worldCenter.y - cameraY;
+            const float dz = worldCenter.z - cameraZ;
+            return dx * dx + dy * dy + dz * dz;
+        };
+        std::stable_sort(submittedDrawOrder.begin(), submittedDrawOrder.end(),
+            [&](const std::size_t left, const std::size_t right) {
+                const auto leftMode = submittedGeometry.draws[left].material.alphaMode;
+                const auto rightMode = submittedGeometry.draws[right].material.alphaMode;
+                const bool leftTransparent = leftMode == renderer::MaterialAlphaMode::Blend;
+                const bool rightTransparent = rightMode == renderer::MaterialAlphaMode::Blend;
+                if (leftTransparent != rightTransparent) return !leftTransparent;
+                return leftTransparent && cameraDistanceSquared(submittedGeometry.draws[left]) >
+                    cameraDistanceSquared(submittedGeometry.draws[right]);
+            });
+        const float blendFactor[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+        for (const std::size_t drawIndex : submittedDrawOrder) {
             const renderer::SubmittedDrawRange& draw = submittedGeometry.draws[drawIndex];
-            if (!renderer::IsSubmittedDrawVisible(draw, currentViewProjection)) continue;
+            const bool transparent = draw.material.alphaMode == renderer::MaterialAlphaMode::Blend;
+            m_context->OMSetBlendState(transparent ? m_alphaBlendState.Get() : nullptr,
+                blendFactor, 0xffffffffU);
+            m_context->OMSetDepthStencilState(
+                transparent ? m_transparentDepthState.Get() : m_depthState.Get(), 0U);
             const GpuModelMaterial& material = m_submittedMaterials[drawIndex];
             ID3D11ShaderResourceView* materialViews[] = {
                 material.diffuse.Get(), m_shadowShaderResource.Get(), material.normal.Get(),
@@ -2144,6 +2197,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             m_context->Unmap(m_sceneConstants.Get(), 0);
             m_context->DrawIndexed(draw.indexCount, draw.firstIndex, static_cast<INT>(draw.firstVertex));
         }
+        m_context->OMSetBlendState(nullptr, blendFactor, 0xffffffffU);
+        m_context->OMSetDepthStencilState(m_depthState.Get(), 0U);
         ID3D11ShaderResourceView* nullMaterialViews[6]{};
         m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(nullMaterialViews)), nullMaterialViews);
     }

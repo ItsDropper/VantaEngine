@@ -235,3 +235,20 @@ The target exports the engine include directory, C++23 requirement, and Direct3D
 **Integration boundary:** this build target is reusable, but the current renderer still constructs its procedural valley internally. The public renderer entry points still accept the sample camera parameters rather than a game-owned scene. Linking the runtime does not yet provide arbitrary game-scene submission; that requires the scene/resource submission path to be implemented in both graphics backends.
 
 The CPU hierarchy can also be converted into a fixed 48-byte, 16-byte-aligned GPU node record (`GpuMeshletHierarchyNode`). Child and leaf ranges remain in separate 32-bit index buffers; conversion validates bounds, ranges, parent relationships and root reachability before the data is eligible for upload. This is a serialization contract, not yet a live D3D12 traversal or draw path.
+
+
+## DirectX Raytracing foundation
+
+The D3D12 runtime now contains a real DXR acceleration-structure builder
+(`D3D12RaytracingScene`). It queries the device's DXR tier, builds triangle BLAS
+resources from GPU vertex/index buffers, builds a TLAS from caller-provided
+instances, and retains the result, scratch, and instance-upload resources needed
+by command execution. The builder deliberately uses a separate API and resource
+ownership from the raster renderer's existing instance streams.
+
+This is the acceleration-structure foundation only: the current scene renderer
+does not yet dispatch a ray-tracing pipeline or present path-traced output.
+Path tracing still requires DXR state-object/shader-table creation, ray-generation,
+miss and hit shaders, material/lighting bindings, accumulation, and denoising.
+DLSS 5 is not integrated; its SDK is not publicly available to independent
+developers at this time.

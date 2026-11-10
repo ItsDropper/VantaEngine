@@ -114,11 +114,21 @@ bool BuildMeshletHierarchy(
             !std::isfinite(descriptor.boundsRadius) || descriptor.boundsRadius < 0.0F ||
             descriptor.vertexOffset > meshlets.vertexIndices.size() ||
             descriptor.vertexCount > meshlets.vertexIndices.size() - descriptor.vertexOffset ||
-            descriptor.primitiveOffset > meshlets.primitiveIndices.size() / 3U ||
-            descriptor.primitiveCount > meshlets.primitiveIndices.size() / 3U - descriptor.primitiveOffset)
+            descriptor.primitiveOffset > meshlets.primitiveIndices.size() ||
+            descriptor.primitiveCount > (meshlets.primitiveIndices.size() - descriptor.primitiveOffset) / 3U)
         {
             error = "Meshlet hierarchy input contains an invalid descriptor or bounds.";
             return false;
+        }
+        const std::size_t primitiveByteCount =
+            static_cast<std::size_t>(descriptor.primitiveCount) * 3U;
+        for (std::size_t primitive = 0U; primitive < primitiveByteCount; ++primitive)
+        {
+            if (meshlets.primitiveIndices[descriptor.primitiveOffset + primitive] >= descriptor.vertexCount)
+            {
+                error = "Meshlet hierarchy input contains an out-of-range local primitive index.";
+                return false;
+            }
         }
     }
 
@@ -185,12 +195,15 @@ bool BuildMeshletHierarchy(
             });
 
         std::vector<BuildNode> nextLevel;
-        nextLevel.reserve((currentLevel.size() + options.maxChildren - 1U) / options.maxChildren);
-        for (std::size_t first = 0U; first < currentLevel.size();
-             first += options.maxChildren)
+        const std::size_t groupCount =
+            (currentLevel.size() + options.maxChildren - 1U) / options.maxChildren;
+        const std::size_t baseGroupSize = currentLevel.size() / groupCount;
+        const std::size_t largerGroupCount = currentLevel.size() % groupCount;
+        nextLevel.reserve(groupCount);
+        std::size_t first = 0U;
+        for (std::size_t group = 0U; group < groupCount; ++group)
         {
-            const std::size_t count = std::min<std::size_t>(
-                options.maxChildren, currentLevel.size() - first);
+            const std::size_t count = baseGroupSize + (group < largerGroupCount ? 1U : 0U);
             Sphere bounds = currentLevel[first].bounds;
             for (std::size_t offset = 1U; offset < count; ++offset)
                 bounds = MergeSpheres(bounds, currentLevel[first + offset].bounds);
@@ -210,6 +223,7 @@ bool BuildMeshletHierarchy(
             output.nodes.push_back({bounds.center, bounds.radius, firstChild,
                 static_cast<std::uint32_t>(count), 0U, 0U});
             nextLevel.push_back({bounds, nodeIndex});
+            first += count;
         }
         currentLevel = std::move(nextLevel);
     }

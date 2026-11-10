@@ -178,6 +178,7 @@ private:
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kFrameCount> m_temporalConstantBuffers;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_pipelineState;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> m_transparentPipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_postProcessPipelineState;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> m_shadowPipelineState;
     std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 2> m_temporalPipelineStates;

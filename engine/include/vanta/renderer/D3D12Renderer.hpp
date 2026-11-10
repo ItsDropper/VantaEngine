@@ -7,6 +7,7 @@
 #include "vanta/renderer/SceneGeometry.hpp"
 #include "vanta/renderer/D3D12RaytracingScene.hpp"
 #include "vanta/renderer/NvidiaStreamline.hpp"
+#include "vanta/renderer/NvidiaAftermath.hpp"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -135,6 +136,7 @@ private:
     std::array<std::vector<renderer::SubmittedInstanceBatchDraw>, 3> m_submittedShadowBatchScratch;
     std::vector<renderer::SubmittedInstanceBatchDraw> m_submittedSceneBatchScratch;
     renderer::NvidiaStreamlineRuntime m_nvidiaStreamline;
+    renderer::NvidiaAftermathRuntime m_nvidiaAftermath;
     renderer::D3D12RaytracingScene m_staticRaytracingScene;
     bool m_staticRaytracingSceneReady = false;
     renderer::EnvironmentSettings m_cachedEnvironmentSettings{};

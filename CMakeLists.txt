@@ -29,7 +29,7 @@ if(VANTA_ENABLE_STREAMLINE)
     set(STREAMLINE_FEATURE_DLSS_FG ON CACHE BOOL "Include DLSS Frame Generation" FORCE)
     set(STREAMLINE_FEATURE_REFLEX ON CACHE BOOL "Include NVIDIA Reflex" FORCE)
     set(STREAMLINE_FEATURE_NIS ON CACHE BOOL "Include NVIDIA Image Scaling" FORCE)
-    set(STREAMLINE_IMPORT_AS_INTERFACE OFF CACHE BOOL "Use Streamline import library" FORCE)
+    set(STREAMLINE_IMPORT_AS_INTERFACE ON CACHE BOOL "Use Streamline without import library" FORCE)
     add_subdirectory("${VANTA_STREAMLINE_SDK_ROOT}" "${CMAKE_BINARY_DIR}/streamline")
 endif()
 

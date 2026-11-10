@@ -159,7 +159,10 @@ bool BuildSubmittedInstanceStreams(
             for (const std::uint32_t drawIndex : batch.drawIndices) {
                 if (drawIndex >= geometry.draws.size()) {
                     error = "Submitted scene batch references a missing draw while building color instances.";
-                    output = {};
+                    output.shadowTransforms.clear();
+                    output.sceneTransforms.clear();
+                    output.shadowBatches.clear();
+                    output.sceneBatches.clear();
                     return false;
                 }
                 const SubmittedDrawRange& draw = geometry.draws[drawIndex];
@@ -172,7 +175,10 @@ bool BuildSubmittedInstanceStreams(
                 if (absoluteFirstInstance > std::numeric_limits<std::uint32_t>::max() ||
                     instanceCount > std::numeric_limits<std::uint32_t>::max()) {
                     error = "Submitted scene instance stream exceeds 32-bit batch limits.";
-                    output = {};
+                    output.shadowTransforms.clear();
+                    output.sceneTransforms.clear();
+                    output.shadowBatches.clear();
+                    output.sceneBatches.clear();
                     return false;
                 }
                 output.sceneBatches.push_back({
@@ -411,10 +417,7 @@ bool BuildSubmittedSceneGeometry(
             if (index >= range.vertexCount)
             {
                 error = "Submitted mesh contains an out-of-range index.";
-                output.shadowTransforms.clear();
-                output.sceneTransforms.clear();
-                output.shadowBatches.clear();
-                output.sceneBatches.clear();
+                output = {};
                 return false;
             }
             output.indices.push_back(index);

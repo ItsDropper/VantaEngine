@@ -310,6 +310,13 @@ int main()
     Require(BuildSubmittedSceneGeometry(frame, submitted, geometryError));
     Require(geometryError.empty());
     Require(submitted.vertices.size() == 3U && submitted.indices.size() == 3U);
+    Require(submitted.meshletBatches.size() == 1U);
+    Require(submitted.meshletDraws.size() == 1U);
+    Require(submitted.meshletIndices == submitted.indices);
+    Require(submitted.meshletBatches[0].firstDraw == 0U);
+    Require(submitted.meshletBatches[0].drawCount == 1U);
+    Require(submitted.meshletDraws[0].firstIndex == 0U);
+    Require(submitted.meshletDraws[0].indexCount == 3U);
     Require(submitted.draws.size() == 1U);
     Require(submitted.vertices[0].position[0] == -1.0F);
     Require(submitted.vertices[0].position[1] == 0.0F);
@@ -342,6 +349,14 @@ int main()
     SubmittedSceneGeometry batchedGeometry;
     Require(BuildSubmittedSceneGeometry(batchedFrame, batchedGeometry, geometryError));
     Require(batchedGeometry.batches.size() == 2U);
+    Require(batchedGeometry.meshletBatches.size() == 2U);
+    Require(batchedGeometry.meshletDraws.size() == 2U);
+    Require(batchedGeometry.meshletIndices.size() == 6U);
+    Require(batchedGeometry.meshletBatches[0].firstIndex == 0U);
+    Require(batchedGeometry.meshletBatches[1].firstIndex == 3U);
+    Require(batchedGeometry.meshletIndices[3] >= batchedGeometry.batches[1].firstVertex);
+    Require(batchedGeometry.meshletIndices[3] <
+        batchedGeometry.batches[1].firstVertex + batchedGeometry.batches[1].vertexCount);
     SubmittedInstanceStreams instanceStreams;
     Require(BuildSubmittedInstanceStreams(batchedGeometry, math::Mat4::Identity(),
         math::Mat4::Identity(), instanceStreams, geometryError));

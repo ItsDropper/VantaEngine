@@ -53,7 +53,8 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
         sl::kFeatureDLSS,
         sl::kFeatureDLSS_G,
         sl::kFeatureDLSS_RR,
-        sl::kFeatureReflex
+        sl::kFeatureReflex,
+        sl::kFeaturePCL
     };
     sl::Preferences preferences{};
     preferences.engine = sl::EngineType::eCustom;
@@ -111,11 +112,18 @@ bool NvidiaStreamlineRuntime::SetDevice(
     const sl::Result rayReconstructionResult =
         slIsFeatureSupported(sl::kFeatureDLSS_RR, adapterInfo);
     const sl::Result reflexResult = slIsFeatureSupported(sl::kFeatureReflex, adapterInfo);
+    const sl::Result pclResult = slIsFeatureSupported(sl::kFeaturePCL, adapterInfo);
     m_status.deviceAttached = true;
     m_status.dlssSupported = dlssResult == sl::Result::eOk;
     m_status.dlssFrameGenerationSupported = frameGenerationResult == sl::Result::eOk;
     m_status.dlssRayReconstructionSupported = rayReconstructionResult == sl::Result::eOk;
     m_status.reflexSupported = reflexResult == sl::Result::eOk;
+    m_status.latencyMarkersSupported = pclResult == sl::Result::eOk;
+    if (m_status.reflexSupported) {
+        sl::ReflexOptions reflexOptions{};
+        reflexOptions.mode = sl::ReflexMode::eLowLatency;
+        m_status.reflexEnabled = slReflexSetOptions(reflexOptions) == sl::Result::eOk;
+    }
 
     m_status.diagnostic = "NVIDIA Streamline device attached. DLSS Super Resolution: " +
         std::string(m_status.dlssSupported ? "supported" : "unavailable") +
@@ -125,7 +133,11 @@ bool NvidiaStreamlineRuntime::SetDevice(
         (m_status.dlssRayReconstructionSupported ? "supported" : "unavailable") +
         "; Reflex: " +
         (m_status.reflexSupported ? "supported" : "unavailable") +
-        ". These are plugin support checks, not proof that frame resources are wired or features are executing.";
+        "; Reflex low-latency mode: " +
+        (m_status.reflexEnabled ? "enabled" : "not enabled") +
+        "; latency markers: " +
+        (m_status.latencyMarkersSupported ? "available" : "unavailable") +
+        ". DLSS execution still requires valid frame resources, constants, tagging and evaluation.";
     error.clear();
     return true;
 #else
@@ -133,6 +145,58 @@ bool NvidiaStreamlineRuntime::SetDevice(
     (void)adapterLuid;
     error = "NVIDIA Streamline SDK is not configured in this build.";
     return false;
+#endif
+}
+
+void NvidiaStreamlineRuntime::BeginFrame(const std::uint32_t frameIndex) noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    m_currentFrameToken = nullptr;
+    if (!m_status.initialized || !m_status.deviceAttached ||
+        !m_status.latencyMarkersSupported)
+        return;
+    sl::FrameToken* token = nullptr;
+    if (slGetNewFrameToken(token, &frameIndex) == sl::Result::eOk)
+        m_currentFrameToken = token;
+#else
+    (void)frameIndex;
+#endif
+}
+
+void NvidiaStreamlineRuntime::MarkRenderSubmitStart() noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_currentFrameToken != nullptr)
+        (void)slPCLSetMarker(sl::PCLMarker::eRenderSubmitStart,
+            *static_cast<sl::FrameToken*>(m_currentFrameToken));
+#endif
+}
+
+void NvidiaStreamlineRuntime::MarkRenderSubmitEnd() noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_currentFrameToken != nullptr)
+        (void)slPCLSetMarker(sl::PCLMarker::eRenderSubmitEnd,
+            *static_cast<sl::FrameToken*>(m_currentFrameToken));
+#endif
+}
+
+void NvidiaStreamlineRuntime::MarkPresentStart() noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_currentFrameToken != nullptr)
+        (void)slPCLSetMarker(sl::PCLMarker::ePresentStart,
+            *static_cast<sl::FrameToken*>(m_currentFrameToken));
+#endif
+}
+
+void NvidiaStreamlineRuntime::MarkPresentEnd() noexcept
+{
+#if defined(VANTA_ENABLE_STREAMLINE)
+    if (m_currentFrameToken != nullptr)
+        (void)slPCLSetMarker(sl::PCLMarker::ePresentEnd,
+            *static_cast<sl::FrameToken*>(m_currentFrameToken));
+    m_currentFrameToken = nullptr;
 #endif
 }
 
@@ -146,6 +210,9 @@ void NvidiaStreamlineRuntime::Shutdown() noexcept
     m_status.deviceAttached = false;
     m_status.dlssSupported = false;
     m_status.reflexSupported = false;
+    m_status.latencyMarkersSupported = false;
+    m_status.reflexEnabled = false;
+    m_currentFrameToken = nullptr;
     m_status.dlssFrameGenerationSupported = false;
     m_status.dlssRayReconstructionSupported = false;
 }

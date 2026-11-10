@@ -1303,6 +1303,7 @@ bool D3D12Renderer::CreateSceneGeometry()
             m_staticRaytracingScene.BuildTopLevel(
                 m_commandList.Get(), std::span{&instance, 1U}, raytracingError);
         if (!built) {
+            (void)m_commandList->Close();
             LogInfo(("Direct3D 12: DXR scene acceleration structures unavailable: " +
                 raytracingError).c_str());
             m_staticRaytracingSceneReady = false;

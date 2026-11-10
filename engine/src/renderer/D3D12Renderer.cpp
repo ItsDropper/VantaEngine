@@ -172,6 +172,19 @@ std::string DescribeD3D12Adapter(IDXGIAdapter1* adapter, const bool warp)
     return message.str();
 }
 
+void BeginGpuEvent(ID3D12GraphicsCommandList* commandList, const char* label) noexcept
+{
+    if (commandList == nullptr || label == nullptr)
+        return;
+    commandList->BeginEvent(0U, label, static_cast<UINT>(std::strlen(label)));
+}
+
+void EndGpuEvent(ID3D12GraphicsCommandList* commandList) noexcept
+{
+    if (commandList != nullptr)
+        commandList->EndEvent();
+}
+
 SubmittedInstanceData MakeSubmittedInstance(const Mat4& world) noexcept
 {
     SubmittedInstanceData instance{};
@@ -2311,6 +2324,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     const UINT timestampBase = m_frameIndex * 7U;
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase);
+    BeginGpuEvent(m_commandList.Get(), "Vanta.Shadows");
     D3D12_RESOURCE_BARRIER shadowToDepth{};
     shadowToDepth.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     shadowToDepth.Transition.pResource = m_shadowTexture.Get();
@@ -2675,8 +2689,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
         }
         m_sceneDrawCallsAccumulated += opaqueDrawCalls + transparentDraws.size();
     }
+    EndGpuEvent(m_commandList.Get());
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 4U);
+    BeginGpuEvent(m_commandList.Get(), "Vanta.TemporalResolve");
     D3D12_RESOURCE_BARRIER depthToSample{};
     depthToSample.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     depthToSample.Transition.pResource = m_depthTexture.Get();
@@ -2720,8 +2736,10 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
+    EndGpuEvent(m_commandList.Get());
     if (m_timestampFrequency != 0)
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 5U);
+    BeginGpuEvent(m_commandList.Get(), "Vanta.PostProcess");
     D3D12_RESOURCE_BARRIER historyColorToSample = historyColorToTarget;
     historyColorToSample.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     historyColorToSample.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -2748,6 +2766,7 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     m_commandList->IASetIndexBuffer(nullptr);
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
+    EndGpuEvent(m_commandList.Get());
     if (m_timestampFrequency != 0) {
         m_commandList->EndQuery(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase + 6U);
         m_commandList->ResolveQueryData(m_timestampQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,

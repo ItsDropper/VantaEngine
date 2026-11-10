@@ -246,8 +246,9 @@ bool BuildMeshletDrawData(
         if (meshlet.vertexCount == 0U || meshlet.primitiveCount == 0U ||
             meshlet.vertexOffset > meshlets.vertexIndices.size() ||
             meshlet.vertexCount > meshlets.vertexIndices.size() - meshlet.vertexOffset ||
-            meshlet.primitiveOffset > meshlets.primitiveIndices.size() / 3U ||
-            meshlet.primitiveCount > (meshlets.primitiveIndices.size() / 3U) - meshlet.primitiveOffset ||
+            meshlet.primitiveOffset > meshlets.primitiveIndices.size() ||
+            static_cast<std::size_t>(meshlet.primitiveCount) * 3U >
+                meshlets.primitiveIndices.size() - meshlet.primitiveOffset ||
             !IsFinite(meshlet.boundsCenter) || !std::isfinite(meshlet.boundsRadius) ||
             meshlet.boundsRadius < 0.0F || !IsFinite(meshlet.normalConeAxis) ||
             !std::isfinite(meshlet.normalConeCutoff))
@@ -274,8 +275,7 @@ bool BuildMeshletDrawData(
         draw.normalConeAxis = meshlet.normalConeAxis;
         draw.normalConeCutoff = meshlet.normalConeCutoff;
 
-        const std::size_t primitiveByteOffset =
-            static_cast<std::size_t>(meshlet.primitiveOffset) * 3U;
+        const std::size_t primitiveByteOffset = meshlet.primitiveOffset;
         for (std::size_t indexOffset = 0U; indexOffset < indexCount; ++indexOffset)
         {
             const std::uint8_t localIndex =

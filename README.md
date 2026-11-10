@@ -134,6 +134,12 @@ The executable includes a separate sample that uses only the public submission A
 
 The normal launch continues to run the engine's procedural valley sample. The scene-submission sample deliberately suppresses that valley so an external game can own the rendered scene.
 
+## Meshlet and cluster hierarchy foundation
+
+The renderer-independent asset pipeline can partition indexed triangle meshes into bounded meshlets with local byte-sized primitive indices, conservative bounding spheres, and normal cones. A second preprocessing step builds a deterministic spatial hierarchy over those meshlets. Internal nodes reference bounded child ranges; leaves reference the original meshlet payload through a permutation array. Parent spheres conservatively enclose their children, allowing a future GPU traversal to reject whole groups before testing individual meshlets.
+
+This is preprocessing data only. The current renderer does not upload or traverse this hierarchy, select geometric LODs from it, or render through a mesh-shader path. Existing D3D12 chunk culling and Hi-Z occlusion remain the active GPU-driven path; the external submitted-scene path still uses its existing indexed draw and instance-stream contracts. The hierarchy work deliberately leaves those stream capacities and layouts unchanged.
+
 ## Math conventions
 
 The math layer is header-only and has no Windows or graphics API dependencies.

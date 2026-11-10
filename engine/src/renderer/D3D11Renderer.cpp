@@ -1437,6 +1437,12 @@ bool D3D11Renderer::CreatePipeline()
         LogError("Could not create the rasterizer state.");
         return false;
     }
+    rasterDescription.CullMode = D3D11_CULL_BACK;
+    if (FAILED(m_device->CreateRasterizerState(&rasterDescription, m_singleSidedRasterizerState.GetAddressOf())))
+    {
+        LogError("Could not create the single-sided rasterizer state.");
+        return false;
+    }
 
     return true;
 }
@@ -1919,6 +1925,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
                 }
                 *static_cast<SceneConstants*>(mapped.pData) = constants;
                 m_context->Unmap(m_sceneConstants.Get(), 0);
+                m_context->RSSetState(draw.material.doubleSided
+                    ? m_rasterizerState.Get() : m_singleSidedRasterizerState.Get());
                 m_context->DrawIndexed(draw.indexCount, draw.firstIndex, static_cast<INT>(draw.firstVertex));
             }
         }
@@ -2119,6 +2127,8 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
             const bool transparent = draw.material.alphaMode == renderer::MaterialAlphaMode::Blend;
             m_context->OMSetBlendState(transparent ? m_alphaBlendState.Get() : nullptr,
                 blendFactor, 0xffffffffU);
+            m_context->RSSetState(draw.material.doubleSided
+                ? m_rasterizerState.Get() : m_singleSidedRasterizerState.Get());
             m_context->OMSetDepthStencilState(
                 transparent ? m_transparentDepthState.Get() : m_depthState.Get(), 0U);
             const GpuModelMaterial& material = m_submittedMaterials[drawIndex];
@@ -2212,6 +2222,7 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         }
         m_context->OMSetBlendState(nullptr, blendFactor, 0xffffffffU);
         m_context->OMSetDepthStencilState(m_depthState.Get(), 0U);
+        m_context->RSSetState(m_rasterizerState.Get());
         ID3D11ShaderResourceView* nullMaterialViews[6]{};
         m_context->PSSetShaderResources(0, static_cast<UINT>(std::size(nullMaterialViews)), nullMaterialViews);
         ID3D11ShaderResourceView* nullEmissiveView = nullptr;

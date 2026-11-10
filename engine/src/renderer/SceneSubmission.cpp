@@ -45,8 +45,12 @@ void AdvanceGeneration(Slot& slot) noexcept
 
 bool IsFiniteMatrix(const math::Mat4& matrix) noexcept
 {
-    return std::all_of(matrix.elements.begin(), matrix.elements.end(),
-        [](const float value) { return std::isfinite(value); });
+    for (const float value : matrix.elements)
+    {
+        if (!std::isfinite(value))
+            return false;
+    }
+    return true;
 }
 } // namespace
 

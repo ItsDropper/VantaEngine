@@ -110,7 +110,8 @@ bool SceneSubmission::IsValid(const MaterialDescription& description) noexcept
            std::isfinite(description.alphaCutoff) && description.alphaCutoff >= 0.0F &&
            description.alphaCutoff <= 1.0F &&
            (description.alphaMode == MaterialAlphaMode::Opaque ||
-            description.alphaMode == MaterialAlphaMode::Mask) &&
+            description.alphaMode == MaterialAlphaMode::Mask ||
+            description.alphaMode == MaterialAlphaMode::Blend) &&
            description.emissiveTexture.empty();
 }
 

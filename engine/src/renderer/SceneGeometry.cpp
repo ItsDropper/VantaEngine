@@ -36,7 +36,8 @@ std::string MaterialTextureKey(const MaterialDescription& material)
 {
     const std::array<const std::filesystem::path*, 6> paths = {
         &material.baseColorTexture, &material.normalTexture, &material.roughnessTexture,
-        &material.metallicTexture, &material.ambientOcclusionTexture
+        &material.metallicTexture, &material.ambientOcclusionTexture,
+        &material.emissiveTexture
     };
     std::string key;
     for (const std::filesystem::path* path : paths)

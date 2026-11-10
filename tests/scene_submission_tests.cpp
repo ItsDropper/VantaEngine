@@ -100,13 +100,15 @@ int main()
         reusableMesh, reusableMaterial, math::Mat4::Translation({2.0F, 0.0F, 0.0F}));
     Require(reusableA.IsValid() && reusableB.IsValid());
     SceneFrame reusableFrame;
-    reusableScene.BuildFrame(view, reusableFrame);
+    FrameView reusableView;
+    reusableScene.BuildFrame(reusableView, reusableFrame);
     Require(reusableFrame.draws.size() == 2U);
     const auto* reusableDrawStorage = reusableFrame.draws.data();
     const std::size_t reusableDrawCapacity = reusableFrame.draws.capacity();
     Require(reusableScene.SetTransform(reusableA,
         math::Mat4::Translation({1.0F, 0.0F, 0.0F})));
-    reusableScene.BuildFrame(view, reusableFrame);
+    FrameView reusableView;
+    reusableScene.BuildFrame(reusableView, reusableFrame);
     Require(reusableFrame.draws.size() == 2U);
     Require(reusableFrame.draws.data() == reusableDrawStorage);
     Require(reusableFrame.draws.capacity() == reusableDrawCapacity);

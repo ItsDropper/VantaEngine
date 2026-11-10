@@ -364,6 +364,57 @@ int main()
     Require(batchedGeometry.meshletHierarchyMeshlets.size() == 2U);
     Require(batchedGeometry.meshletHierarchyMeshlets[0] == 0U);
     Require(batchedGeometry.meshletHierarchyMeshlets[1] == 1U);
+
+    // A mesh with enough clusters to force multiple hierarchy levels verifies that
+    // submitted batch rebasing adjusts both node child ranges and child-node indices.
+    MeshDescription hierarchyMeshDescription;
+    constexpr std::uint32_t hierarchyTriangleCount = 1100U;
+    hierarchyMeshDescription.vertices.reserve(hierarchyTriangleCount * 3U);
+    hierarchyMeshDescription.indices.reserve(hierarchyTriangleCount * 3U);
+    for (std::uint32_t triangle = 0U; triangle < hierarchyTriangleCount; ++triangle)
+    {
+        const float x = static_cast<float>(triangle) * 2.0F;
+        const std::uint32_t firstVertex = static_cast<std::uint32_t>(hierarchyMeshDescription.vertices.size());
+        hierarchyMeshDescription.vertices.push_back({{x, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 0.0F, 0.0F});
+        hierarchyMeshDescription.vertices.push_back({{x + 1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 0.0F});
+        hierarchyMeshDescription.vertices.push_back({{x, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, 0.0F, 1.0F});
+        hierarchyMeshDescription.indices.insert(hierarchyMeshDescription.indices.end(),
+            {firstVertex, firstVertex + 1U, firstVertex + 2U});
+    }
+    SceneSubmission hierarchyScene;
+    const MeshHandle hierarchyMeshHandle = hierarchyScene.CreateMesh(std::move(hierarchyMeshDescription));
+    const MeshHandle hierarchyTailMeshHandle = hierarchyScene.CreateMesh(Triangle());
+    const MaterialHandle hierarchyMaterialA = hierarchyScene.CreateMaterial({});
+    MaterialDescription hierarchyMaterialBDescription;
+    hierarchyMaterialBDescription.baseColor = {0.5F, 0.7F, 0.9F};
+    const MaterialHandle hierarchyMaterialB = hierarchyScene.CreateMaterial(hierarchyMaterialBDescription);
+    Require(hierarchyMeshHandle.IsValid() && hierarchyTailMeshHandle.IsValid());
+    Require(hierarchyMaterialA.IsValid() && hierarchyMaterialB.IsValid());
+    Require(hierarchyScene.CreateInstance(hierarchyMeshHandle, hierarchyMaterialA).IsValid());
+    Require(hierarchyScene.CreateInstance(hierarchyTailMeshHandle, hierarchyMaterialB).IsValid());
+    SubmittedSceneGeometry hierarchySubmitted;
+    Require(BuildSubmittedSceneGeometry(hierarchyScene.BuildFrame(view), hierarchySubmitted, geometryError));
+    Require(hierarchySubmitted.meshletHierarchyBatches.size() == 2U);
+    const SubmittedMeshletHierarchyBatch& firstHierarchyBatch = hierarchySubmitted.meshletHierarchyBatches[0];
+    const SubmittedMeshletHierarchyBatch& secondHierarchyBatch = hierarchySubmitted.meshletHierarchyBatches[1];
+    Require(firstHierarchyBatch.nodeCount > 1U);
+    Require(firstHierarchyBatch.childCount > 0U);
+    Require(secondHierarchyBatch.rootNode == firstHierarchyBatch.firstNode + firstHierarchyBatch.nodeCount);
+    Require(secondHierarchyBatch.firstChild == firstHierarchyBatch.firstChild + firstHierarchyBatch.childCount);
+    const GpuMeshletHierarchyNode& firstHierarchyRoot =
+        hierarchySubmitted.meshletHierarchyNodes[firstHierarchyBatch.rootNode];
+    Require(firstHierarchyRoot.childRange[0] >= firstHierarchyBatch.firstChild);
+    Require(firstHierarchyRoot.childRange[0] + firstHierarchyRoot.childRange[1] <=
+        firstHierarchyBatch.firstChild + firstHierarchyBatch.childCount);
+    for (std::uint32_t child = 0U; child < firstHierarchyRoot.childRange[1]; ++child)
+    {
+        const std::uint32_t childNode =
+            hierarchySubmitted.meshletHierarchyChildren[firstHierarchyRoot.childRange[0] + child];
+        Require(childNode >= firstHierarchyBatch.firstNode);
+        Require(childNode < firstHierarchyBatch.firstNode + firstHierarchyBatch.nodeCount);
+    }
+    Require(hierarchySubmitted.meshletHierarchyMeshlets.back() ==
+        hierarchySubmitted.meshletBatches.back().firstDraw);
     Require(batchedGeometry.meshletBatches[0].firstIndex == 0U);
     Require(batchedGeometry.meshletBatches[1].firstIndex == 3U);
     Require(batchedGeometry.meshletIndices[3] >= batchedGeometry.batches[1].firstVertex);

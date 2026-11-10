@@ -368,7 +368,7 @@ float4 PSMain(PixelInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
     float metallic = textureFlags.z != 0
         ? saturate(metallicMapValue)
         : saturate(materialProperties.y);
-    float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : input.color;
+    float4 sampled = useTexture != 0 ? diffuseTexture.Sample(diffuseSampler, input.uv) : float4(input.color.rgb, 1.0);
     if (advancedMaterial.w > 0.5 && advancedMaterial.w < 1.5)
         clip(sampled.a - advancedMaterial.z);
     float3 albedo = max(sampled.rgb * baseColorFactor.rgb, 0.0);

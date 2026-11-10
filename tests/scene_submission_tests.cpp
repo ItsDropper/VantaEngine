@@ -147,6 +147,16 @@ int main()
     Require(instanceStreams.sceneTransforms[2].At(0, 3) == 0.2F);
     Require(instanceStreams.sceneTransforms[3].At(0, 3) == -0.1F);
     Require(instanceStreams.sceneTransforms[4].At(0, 3) == 0.1F);
+    const std::size_t retainedShadowCapacity = instanceStreams.shadowTransforms.capacity();
+    const std::size_t retainedSceneCapacity = instanceStreams.sceneTransforms.capacity();
+    const std::size_t retainedBatchCapacity = instanceStreams.shadowBatches.capacity();
+    Require(BuildSubmittedInstanceStreams(batchedGeometry, math::Mat4::Identity(),
+        math::Mat4::Identity(), instanceStreams, geometryError));
+    Require(instanceStreams.shadowTransforms.capacity() >= retainedShadowCapacity);
+    Require(instanceStreams.sceneTransforms.capacity() >= retainedSceneCapacity);
+    Require(instanceStreams.shadowBatches.capacity() >= retainedBatchCapacity);
+    Require(instanceStreams.shadowTransforms.size() == 5U);
+    Require(instanceStreams.sceneTransforms.size() == 5U);
     SubmittedInstanceStreams shadowOnlyStreams;
     Require(BuildSubmittedInstanceStreams(batchedGeometry, math::Mat4::Identity(),
         math::Mat4::Identity(), shadowOnlyStreams, geometryError, false));

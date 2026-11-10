@@ -579,7 +579,8 @@ float4 PSMain(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
     // otherwise bright snow receives unoccluded skylight and hides cast shadows.
     ambient *= lerp(0.42, 1.0, shadow);
     float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
-    return float4(litColor, 1.0);
+    const float outputAlpha = input.materialExtra1.z > 1.5 ? baseColorAlpha : 1.0;
+    return float4(litColor, outputAlpha);
 }
 )VANTA3";
 
@@ -773,6 +774,19 @@ bool D3D12Renderer::CreatePipeline()
     }
     if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_pipelineState.GetAddressOf())))) {
         LogError("Direct3D 12: graphics pipeline state creation failed.");
+        return false;
+    }
+    D3D12_RENDER_TARGET_BLEND_DESC& transparentBlend = pso.BlendState.RenderTarget[0];
+    transparentBlend.BlendEnable = TRUE;
+    transparentBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    transparentBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    transparentBlend.BlendOp = D3D12_BLEND_OP_ADD;
+    transparentBlend.SrcBlendAlpha = D3D12_BLEND_ONE;
+    transparentBlend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    transparentBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(m_transparentPipelineState.GetAddressOf())))) {
+        LogError("Direct3D 12: transparent material pipeline state creation failed.");
         return false;
     }
     return true;

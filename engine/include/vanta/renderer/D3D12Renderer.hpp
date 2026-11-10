@@ -5,6 +5,7 @@
 #include "vanta/renderer/AdaptiveWorldBudget.hpp"
 #include "vanta/renderer/EnvironmentLighting.hpp"
 #include "vanta/renderer/SceneGeometry.hpp"
+#include "vanta/renderer/NvidiaStreamline.hpp"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -132,6 +133,7 @@ private:
     std::vector<SubmittedInstanceData> m_submittedSceneInstanceScratch;
     std::array<std::vector<renderer::SubmittedInstanceBatchDraw>, 3> m_submittedShadowBatchScratch;
     std::vector<renderer::SubmittedInstanceBatchDraw> m_submittedSceneBatchScratch;
+    renderer::NvidiaStreamlineRuntime m_nvidiaStreamline;
     renderer::EnvironmentSettings m_cachedEnvironmentSettings{};
     renderer::EnvironmentLighting m_cachedEnvironmentLighting{};
     renderer::EnvironmentLighting m_emptyEnvironmentLighting{};

@@ -18,6 +18,8 @@ The renderer now includes:
 - Left-handed perspective and view matrices from the engine's math layer.
 - A depth/stencil buffer and depth testing.
 - Cook–Torrance microfacet PBR shading using GGX normal distribution, Smith geometry, and Schlick Fresnel.
+- A shared submitted-material contract across Direct3D 11 and Direct3D 12 for sRGB base-colour/emissive maps, linear normal and ORM maps (R=AO, G=roughness, B=metallic), emissive factors, normal strength, AO strength, alpha masking/cutoff, and double-sided normal orientation.
+- Alpha-blended materials use back-to-front per-instance sorting, standard source-alpha compositing, and depth testing without depth writes; blended geometry is excluded from opaque shadow maps.
 - Per-material base-color, roughness, and metallic factors read from MTL (`Kd`, `Pr`, `Pm`, with `Ns` as a legacy roughness fallback).
 - sRGB diffuse texture sampling, deterministic CPU-generated and validated `.ttex` mip-chain packages for imported textures, GPU-generated mip chains for diffuse and linear PBR maps, seamless procedural grass/stone/wood albedo textures with triplanar projection, and ACES-style tone mapping for more physically plausible light response.
 - A linear `R16G16B16A16_FLOAT` HDR scene target followed by full-screen ACES tone mapping, display transfer, thresholded 5×5 highlight bloom, and a depth-neighborhood screen-space contact-occlusion approximation. Scene shading remains linear until final composition.

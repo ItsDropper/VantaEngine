@@ -51,6 +51,8 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
 
     constexpr sl::Feature features[] = {
         sl::kFeatureDLSS,
+        sl::kFeatureDLSS_G,
+        sl::kFeatureDLSS_RR,
         sl::kFeatureReflex
     };
     sl::Preferences preferences{};
@@ -59,7 +61,7 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
     preferences.renderAPI = sl::RenderAPI::eD3D12;
     preferences.featuresToLoad = features;
     preferences.numFeaturesToLoad = static_cast<std::uint32_t>(std::size(features));
-    preferences.flags = sl::PreferenceFlag::eDisableCLStateTracking;
+    preferences.flags = sl::PreferenceFlags::eDisableCLStateTracking;
     preferences.logMessageCallback = StreamlineLogMessage;
 
     const sl::Result result = slInit(preferences);
@@ -104,16 +106,26 @@ bool NvidiaStreamlineRuntime::SetDevice(
 
     const sl::AdapterInfo adapterInfo = MakeAdapterInfo(adapterLuid);
     const sl::Result dlssResult = slIsFeatureSupported(sl::kFeatureDLSS, adapterInfo);
+    const sl::Result frameGenerationResult =
+        slIsFeatureSupported(sl::kFeatureDLSS_G, adapterInfo);
+    const sl::Result rayReconstructionResult =
+        slIsFeatureSupported(sl::kFeatureDLSS_RR, adapterInfo);
     const sl::Result reflexResult = slIsFeatureSupported(sl::kFeatureReflex, adapterInfo);
     m_status.deviceAttached = true;
     m_status.dlssSupported = dlssResult == sl::Result::eOk;
+    m_status.dlssFrameGenerationSupported = frameGenerationResult == sl::Result::eOk;
+    m_status.dlssRayReconstructionSupported = rayReconstructionResult == sl::Result::eOk;
     m_status.reflexSupported = reflexResult == sl::Result::eOk;
 
-    m_status.diagnostic = "NVIDIA Streamline device attached. DLSS plugin: " +
+    m_status.diagnostic = "NVIDIA Streamline device attached. DLSS Super Resolution: " +
         std::string(m_status.dlssSupported ? "supported" : "unavailable") +
-        "; Reflex plugin: " +
+        "; DLSS Frame Generation: " +
+        (m_status.dlssFrameGenerationSupported ? "supported" : "unavailable") +
+        "; DLSS Ray Reconstruction: " +
+        (m_status.dlssRayReconstructionSupported ? "supported" : "unavailable") +
+        "; Reflex: " +
         (m_status.reflexSupported ? "supported" : "unavailable") +
-        ". Feature execution still requires render-pipeline resource tagging and evaluation.";
+        ". These are plugin support checks, not proof that frame resources are wired or features are executing.";
     error.clear();
     return true;
 #else
@@ -134,5 +146,7 @@ void NvidiaStreamlineRuntime::Shutdown() noexcept
     m_status.deviceAttached = false;
     m_status.dlssSupported = false;
     m_status.reflexSupported = false;
+    m_status.dlssFrameGenerationSupported = false;
+    m_status.dlssRayReconstructionSupported = false;
 }
 } // namespace vanta::renderer

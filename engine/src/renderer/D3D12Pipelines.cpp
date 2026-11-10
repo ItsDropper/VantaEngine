@@ -36,10 +36,10 @@ Texture2DArray modelRoughnessTexture : register(t9);
 Texture2DArray modelMetallicTexture : register(t10);
 Texture2DArray modelOcclusionTexture : register(t11);
 Texture2DArray modelEmissiveTexture : register(t12);
-Texture2DArray submittedAlbedoTexture : register(t12);
-Texture2DArray submittedNormalTexture : register(t13);
-Texture2DArray submittedRoughnessTexture : register(t14);
-Texture2DArray submittedMetallicTexture : register(t15);
+Texture2DArray submittedAlbedoTexture : register(t13);
+Texture2DArray submittedNormalTexture : register(t14);
+Texture2DArray submittedRoughnessTexture : register(t15);
+Texture2DArray submittedMetallicTexture : register(t16);
 Texture2DArray submittedOcclusionTexture : register(t17);
 Texture2DArray submittedEmissiveTexture : register(t18);
 cbuffer InstanceConstants : register(b1) { float4x4 instanceWorldConstants; };
@@ -580,7 +580,12 @@ float4 PSMain(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET
     // Directional shadowing also attenuates a portion of the environment fill;
     // otherwise bright snow receives unoccluded skylight and hides cast shadows.
     ambient *= lerp(0.42, 1.0, shadow);
-    float3 litColor = max(lerp(direct + ambient, fogColor, fog), 0.0);
+    float3 emissive = input.materialExtra0.rgb;
+    if ((materialFlags & 512U) != 0U)
+        emissive *= submittedMaterial
+            ? submittedEmissiveTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb
+            : modelEmissiveTexture.Sample(linearWrap, float3(input.uv, input.color.a)).rgb;
+    float3 litColor = max(lerp(direct + ambient + emissive, fogColor, fog), 0.0);
     const float outputAlpha = input.materialExtra1.z > 1.5 ? baseColorAlpha : 1.0;
     return float4(litColor, outputAlpha);
 }

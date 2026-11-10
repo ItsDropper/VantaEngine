@@ -247,8 +247,8 @@ bool BuildMeshletDrawData(
             meshlet.vertexOffset > meshlets.vertexIndices.size() ||
             meshlet.vertexCount > meshlets.vertexIndices.size() - meshlet.vertexOffset ||
             meshlet.primitiveOffset > meshlets.primitiveIndices.size() ||
-            static_cast<std::size_t>(meshlet.primitiveCount) * 3U >
-                meshlets.primitiveIndices.size() - meshlet.primitiveOffset ||
+            meshlet.primitiveCount >
+                (meshlets.primitiveIndices.size() - meshlet.primitiveOffset) / 3U ||
             !IsFinite(meshlet.boundsCenter) || !std::isfinite(meshlet.boundsRadius) ||
             meshlet.boundsRadius < 0.0F || !IsFinite(meshlet.normalConeAxis) ||
             !std::isfinite(meshlet.normalConeCutoff))

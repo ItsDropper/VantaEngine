@@ -132,7 +132,8 @@ bool NvidiaStreamlineRuntime::Initialize(std::string& error)
         sl::kFeatureDLSS_RR,
         sl::kFeatureReflex,
         sl::kFeaturePCL,
-        sl::kFeatureNIS
+        sl::kFeatureNIS,
+        sl::kFeatureNvPerf
     };
     sl::Preferences preferences{};
     preferences.engine = sl::EngineType::eCustom;
@@ -221,6 +222,7 @@ bool NvidiaStreamlineRuntime::SetDevice(
     const sl::Result reflexResult = isFeatureSupported(sl::kFeatureReflex, adapterInfo);
     const sl::Result pclResult = isFeatureSupported(sl::kFeaturePCL, adapterInfo);
     const sl::Result nisResult = isFeatureSupported(sl::kFeatureNIS, adapterInfo);
+    const sl::Result nvPerfResult = isFeatureSupported(sl::kFeatureNvPerf, adapterInfo);
     m_status.deviceAttached = true;
     m_status.dlssSupported = dlssResult == sl::Result::eOk;
     m_status.dlssFrameGenerationSupported = frameGenerationResult == sl::Result::eOk;
@@ -228,6 +230,7 @@ bool NvidiaStreamlineRuntime::SetDevice(
     m_status.reflexSupported = reflexResult == sl::Result::eOk;
     m_status.latencyMarkersSupported = pclResult == sl::Result::eOk;
     m_status.nvidiaImageScalingSupported = nisResult == sl::Result::eOk;
+    m_status.nvPerfSupported = nvPerfResult == sl::Result::eOk;
 
     const auto getFeatureFunction =
         reinterpret_cast<SlGetFeatureFunction>(m_slGetFeatureFunction);
@@ -266,6 +269,8 @@ bool NvidiaStreamlineRuntime::SetDevice(
         (m_status.latencyMarkersSupported ? "available" : "unavailable") +
         "; NVIDIA Image Scaling: " +
         (m_status.nvidiaImageScalingSupported ? "supported" : "unavailable") +
+        "; Nsight Perf plugin: " +
+        (m_status.nvPerfSupported ? "supported" : "unavailable") +
         ". DLSS/NIS image processing still requires render-resource tagging and feature evaluation.";
     error.clear();
     return true;
@@ -360,6 +365,7 @@ void NvidiaStreamlineRuntime::Shutdown() noexcept
     m_status.dlssFrameGenerationSupported = false;
     m_status.dlssRayReconstructionSupported = false;
     m_status.nvidiaImageScalingSupported = false;
+    m_status.nvPerfSupported = false;
     m_createFactory2 = nullptr;
     m_createD3D12Device = nullptr;
     m_slInit = nullptr;

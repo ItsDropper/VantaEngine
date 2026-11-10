@@ -165,12 +165,6 @@ std::string DescribeD3D12Adapter(IDXGIAdapter1* adapter, const bool warp)
     return message.str();
 }
 
-struct SubmittedInstanceData
-{
-    float worldRows[3][4]{};
-};
-static_assert(sizeof(SubmittedInstanceData) == 48);
-
 SubmittedInstanceData MakeSubmittedInstance(const Mat4& world) noexcept
 {
     SubmittedInstanceData instance{};

@@ -298,6 +298,13 @@ float3 ACESFilm(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
+float3 LinearToSRGB(float3 linearColor)
+{
+    linearColor = max(linearColor, 0.0);
+    const float3 low = linearColor * 12.92;
+    const float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+    return lerp(low, high, step(0.0031308, linearColor));
+}
 float CalculateShadow(float3 worldPosition, float3 normal, float3 lightDirection)
 {
     float cameraDistance = distance(cameraPosition, worldPosition);
@@ -628,7 +635,7 @@ PostProcessOutput PSMain(PixelInput input)
     float3 hdr = max(temporalHdr + bloom * (postProcessParameters.z / 9.0), 0.0) *
         exp2(postProcessParameters.x);
     float3 mapped = ACESFilm(hdr);
-    mapped = pow(max(mapped, 0.0), 1.0 / 2.2);
+    mapped = LinearToSRGB(mapped);
     PostProcessOutput output;
     output.displayColor = float4(mapped, 1.0);
     output.historyColor = float4(temporalHdr, 1.0);

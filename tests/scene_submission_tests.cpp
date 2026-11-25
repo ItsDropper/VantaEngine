@@ -107,7 +107,7 @@ int main()
     const std::size_t reusableDrawCapacity = reusableFrame.draws.capacity();
     Require(reusableScene.SetTransform(reusableA,
         math::Mat4::Translation({1.0F, 0.0F, 0.0F})));
-    FrameView reusableView;
+    reusableView.frameNumber = 2U;
     reusableScene.BuildFrame(reusableView, reusableFrame);
     Require(reusableFrame.draws.size() == 2U);
     Require(reusableFrame.draws.data() == reusableDrawStorage);

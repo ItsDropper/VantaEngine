@@ -1,9 +1,6 @@
 # VantaEngine Editor
 
-The editor is a native Rust desktop application built with Iced and its `wgpu`
-renderer. It does not embed a browser, Chromium runtime, Python UI toolkit, or
-web frontend. The Rust application owns the window, workspace state, scene
-authoring, project navigation and asset inspection.
+The editor is a native Rust desktop application built with **egui + eframe** and the wgpu renderer, with **egui_dock** providing rearrangeable workspace tabs. It does not embed a browser or web frontend. The Rust application owns the window, workspace state, scene authoring, project navigation and asset inspection.
 
 ## Run from source
 
@@ -71,11 +68,8 @@ their runtime component contracts are not yet connected.
 
 ## Visual system
 
-The editor uses translucent, bordered surfaces over a dark workspace. On Windows 11 (build 22621 or newer), a small native Win32 integration asks Desktop Window Manager for the system Mica backdrop and rounded window corners; unsupported systems fall back to the same dark in-app surface styling. The native effect is compositor-owned rather than a simulated blur shader. Linux and macOS currently use their standard window compositor with the in-app translucent surfaces.
+The editor uses a custom dark visual system with translucent, bordered surfaces, restrained blue accent lighting, dockable tabs, and a grid-based scene-data preview. On Windows 11 it requests the compositor-owned Mica material; on macOS it requests native vibrancy. Unsupported systems use an opaque dark fallback so other desktop windows never bleed through the editor. Linux currently uses its standard compositor.
 
 ## UI technology
 
-OneClient uses PolyCompose, a Kotlin/Jetpack Compose UI library designed for
-Minecraft screens. That framework is not a Rust desktop dependency. Iced is
-the Rust-native choice: declarative view composition, explicit state/message
-updates, native windowing, and a wgpu renderer.
+The editor uses egui/eframe because an engine editor benefits from immediate-mode GPU painting, custom workspace panels, and direct integration with a renderer. egui_dock adds draggable, resizable tabs that can be rearranged by the user. This is a better architectural fit for a native engine editor than a general-purpose declarative application toolkit. The current scene preview remains data-oriented until the renderer exposes a public viewport surface/frame contract.

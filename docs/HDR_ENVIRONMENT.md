@@ -3,7 +3,10 @@
 The renderer accepts an immutable, decoded Radiance RGBE environment image on a submitted frame. The shared pointer keeps the image alive for the complete frame snapshot:
 
 ```cpp
-std::vector<std::uint8_t> encoded = ReadFileBytes(path);
+std::ifstream file(path, std::ios::binary);
+std::vector<std::uint8_t> encoded{
+    std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()
+};
 auto environment = std::make_shared<vanta::renderer::HdrEnvironmentImage>();
 std::string error;
 if (!vanta::renderer::DecodeRadianceHdr(encoded, *environment, error))

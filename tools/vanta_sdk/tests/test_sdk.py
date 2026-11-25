@@ -28,6 +28,23 @@ class ModelSdkTests(unittest.TestCase):
             self.assertTrue((Path(directory)/"sdk_test.mtl").is_file())
             self.assertTrue((Path(directory)/"sdk_test.vanta-model.json").is_file())
 
+    def test_uv_sphere_and_plane_export_attributes(self):
+        model = Model("surface_test")
+        model.add_material(Material("surface"))
+        sphere = model.add_uv_sphere("sphere", (0, 0, 0), 1.0, "surface", rings=8, segments=12)
+        plane = model.add_plane("ground", (0, -1, 0), (8, 6), "surface", uv_scale=(4, 3))
+        self.assertEqual(len(sphere.vertices), len(sphere.normals))
+        self.assertEqual(len(sphere.vertices), len(sphere.uvs))
+        self.assertEqual(plane.uvs[2], (4.0, 3.0))
+        with tempfile.TemporaryDirectory() as directory:
+            metadata = export_obj(model, Path(directory))
+            obj = (Path(directory)/"surface_test.obj").read_text(encoding="utf-8")
+            self.assertGreater(metadata["geometry"]["uv_vertex_count"], 0)
+            self.assertGreater(metadata["geometry"]["normal_vertex_count"], 0)
+            self.assertIn("vt ", obj)
+            self.assertIn("vn ", obj)
+            self.assertIn("//", obj)
+
     def test_invalid_geometry_is_rejected(self):
         model = Model("bad_model")
         model.add_material(Material("default"))

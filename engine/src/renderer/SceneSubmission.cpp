@@ -1,4 +1,5 @@
 #include "vanta/renderer/SceneSubmission.hpp"
+#include "vanta/renderer/HdrEnvironment.hpp"
 
 #include <algorithm>
 #include <array>
@@ -396,9 +397,10 @@ bool ValidateFrameView(const FrameView& view, std::string& error)
         view.postProcess.bloomIntensity < 0.0F || view.postProcess.bloomIntensity > 2.0F ||
         !std::isfinite(view.postProcess.bloomThreshold) ||
         view.postProcess.bloomThreshold < 0.1F || view.postProcess.bloomThreshold > 20.0F ||
+        (view.environmentMap && !view.environmentMap->IsValid()) ||
         view.pointLightCount > MaximumPointLightsPerFrame)
     {
-        error = "Frame view contains invalid camera, post-processing data, or exceeds the point-light limit.";
+        error = "Frame view contains invalid camera, post-processing data, HDR environment, or exceeds the point-light limit.";
         return false;
     }
     for (std::uint32_t index = 0U; index < view.pointLightCount; ++index)

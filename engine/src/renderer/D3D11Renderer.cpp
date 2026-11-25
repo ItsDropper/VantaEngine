@@ -1664,11 +1664,17 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
 
     const bool hasSubmittedScene = submittedScene != nullptr;
     const renderer::SubmittedSceneGeometry& submittedGeometry = m_submittedGeometryCache.geometry;
+    const renderer::HdrEnvironmentImage* submittedEnvironmentMap =
+        hasSubmittedScene ? submittedScene->view.environmentMap.get() : nullptr;
     if (hasSubmittedScene && submittedScene->view.environment.enabled &&
         (!m_environmentLightingCacheValid ||
-         !SameD3D11EnvironmentSettings(submittedScene->view.environment, m_cachedEnvironmentSettings))) {
-        m_cachedEnvironmentLighting = renderer::BuildEnvironmentLighting(submittedScene->view.environment);
+         !SameD3D11EnvironmentSettings(submittedScene->view.environment, m_cachedEnvironmentSettings) ||
+         submittedEnvironmentMap != m_cachedEnvironmentMap)) {
+        m_cachedEnvironmentLighting = submittedEnvironmentMap != nullptr
+            ? renderer::BuildEnvironmentLighting(*submittedEnvironmentMap)
+            : renderer::BuildEnvironmentLighting(submittedScene->view.environment);
         m_cachedEnvironmentSettings = submittedScene->view.environment;
+        m_cachedEnvironmentMap = submittedEnvironmentMap;
         m_environmentLightingCacheValid = true;
     }
     const renderer::EnvironmentLighting& environmentLighting =

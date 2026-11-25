@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vanta/renderer/SceneSubmission.hpp"
+#include "vanta/renderer/HdrEnvironment.hpp"
 
 #include <array>
 #include <cstddef>
@@ -19,4 +20,5 @@ struct EnvironmentLighting
 };
 
 [[nodiscard]] EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings) noexcept;
+[[nodiscard]] EnvironmentLighting BuildEnvironmentLighting(const HdrEnvironmentImage& environment) noexcept;
 }

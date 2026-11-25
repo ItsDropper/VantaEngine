@@ -96,6 +96,18 @@ struct PointLight final
     float intensity = 0.0F;
 };
 
+struct PostProcessSettings
+{
+    // Exposure compensation in photographic stops (EV). Zero preserves metered exposure.
+    float exposureCompensationEV = 0.0F;
+    // Screen-space occlusion strength, constrained to [0, 1].
+    float ambientOcclusionStrength = 0.55F;
+    // Bloom contribution before the 3x3 gather normalization.
+    float bloomIntensity = 0.45F;
+    // Linear HDR luminance at which bloom begins.
+    float bloomThreshold = 1.0F;
+};
+
 struct FrameView
 {
     math::Mat4 view = math::Mat4::Identity();
@@ -104,6 +116,7 @@ struct FrameView
     float elapsedSeconds = 0.0F;
     std::uint64_t frameNumber = 0;
     EnvironmentSettings environment{};
+    PostProcessSettings postProcess{};
     std::array<PointLight, MaximumPointLightsPerFrame> pointLights{};
     std::uint32_t pointLightCount = 0U;
 };

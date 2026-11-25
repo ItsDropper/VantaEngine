@@ -1,7 +1,7 @@
 use crate::assets::{AssetRecord, discover_assets, project_files};
 use crate::build::{BuildResult, build_project};
 use crate::project::{Project, create_project};
-use crate::scene::{Scene, SceneEntity, Transform, scene_path};
+use crate::scene::{Scene, scene_path};
 use crate::settings::EditorSettings;
 use eframe::egui::{self, Align, Color32, Id, Layout, RichText, Sense, Stroke, Vec2, WidgetText};
 use egui_dock::{DockArea, DockState, Style, TabViewer};
@@ -33,28 +33,33 @@ pub struct EditorApp {
     build_log: String,
     error: Option<String>,
     dock_state: DockState<WorkspaceTab>,
+    native_glass: bool,
 }
 
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         configure_theme(&cc.egui_ctx);
 
+        let mut native_glass = false;
+
         #[cfg(target_os = "windows")]
         if let Some(window) = cc.winit_window() {
-            if let Err(error) = window_vibrancy::apply_mica(window.as_ref(), Some(true)) {
-                eprintln!("VantaEngine Editor: Windows Mica unavailable: {error}");
+            native_glass = window_vibrancy::apply_mica(window.as_ref(), Some(true)).is_ok();
+            if !native_glass {
+                eprintln!("VantaEngine Editor: Windows Mica unavailable; using opaque fallback surfaces.");
             }
         }
 
         #[cfg(target_os = "macos")]
         if let Some(window) = cc.winit_window() {
-            if let Err(error) = window_vibrancy::apply_vibrancy(
+            native_glass = window_vibrancy::apply_vibrancy(
                 window.as_ref(),
                 window_vibrancy::NSVisualEffectMaterial::HudWindow,
                 None,
                 Some(16.0),
-            ) {
-                eprintln!("VantaEngine Editor: native vibrancy unavailable: {error}");
+            ).is_ok();
+            if !native_glass {
+                eprintln!("VantaEngine Editor: native vibrancy unavailable; using opaque fallback surfaces.");
             }
         }
 
@@ -77,6 +82,7 @@ impl EditorApp {
                 WorkspaceTab::Assets,
                 WorkspaceTab::Build,
             ]),
+            native_glass,
         };
 
         if let Some(path) = std::env::var_os("VANTA_EDITOR_PROJECT") {
@@ -489,7 +495,11 @@ impl eframe::App for EditorApp {
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        Color32::from_rgba_unmultiplied(8, 12, 20, 128).to_normalized_gamma_f32()
+        if self.native_glass {
+            Color32::from_rgba_unmultiplied(8, 12, 20, 120).to_normalized_gamma_f32()
+        } else {
+            Color32::from_rgb(10, 15, 25).to_normalized_gamma_f32()
+        }
     }
 }
 

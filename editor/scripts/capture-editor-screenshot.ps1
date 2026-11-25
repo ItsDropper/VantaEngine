@@ -35,6 +35,12 @@ public static class VantaWindowCapture
 
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr window, out RECT rectangle);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
 }
 "@
 
@@ -61,8 +67,14 @@ try {
     }
 
     [VantaWindowCapture]::ShowWindow($window, 3) | Out-Null
+    $screenWidth = [VantaWindowCapture]::GetSystemMetrics(0)
+    $screenHeight = [VantaWindowCapture]::GetSystemMetrics(1)
+    if ($screenWidth -lt 900 -or $screenHeight -lt 600) {
+        throw "The CI desktop is too small for a useful editor capture: ${screenWidth}x${screenHeight}."
+    }
+    [VantaWindowCapture]::SetWindowPos($window, [IntPtr]::Zero, 0, 0, $screenWidth, $screenHeight, 0x0040) | Out-Null
     [VantaWindowCapture]::SetForegroundWindow($window) | Out-Null
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 4
 
     $rectangle = New-Object VantaWindowCapture+RECT
     if (-not [VantaWindowCapture]::GetWindowRect($window, [ref]$rectangle)) {

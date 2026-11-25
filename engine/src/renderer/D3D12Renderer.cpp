@@ -109,8 +109,9 @@ struct TemporalConstants
     float skyHorizonColor[4];
     float skyZenithColor[4];
     float environmentSunColor[4];
+    float postProcessParameters[4];
 };
-static_assert(sizeof(TemporalConstants) == 208);
+static_assert(sizeof(TemporalConstants) == 224);
 
 struct GpuDrawChunk
 {
@@ -2072,6 +2073,12 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.parameters[1] = static_cast<float>(1U - m_historyWriteIndex);
     temporalConstants.parameters[2] = static_cast<float>(m_historyWriteIndex);
     temporalConstants.parameters[3] = 0.88F;
+    const renderer::PostProcessSettings postProcess = submittedScene != nullptr
+        ? submittedScene->view.postProcess : renderer::PostProcessSettings{};
+    temporalConstants.postProcessParameters[0] = postProcess.exposureCompensationEV;
+    temporalConstants.postProcessParameters[1] = postProcess.ambientOcclusionStrength;
+    temporalConstants.postProcessParameters[2] = postProcess.bloomIntensity;
+    temporalConstants.postProcessParameters[3] = postProcess.bloomThreshold;
     // Project the world-space sun direction into this camera's screen space for the sky pass.
     const Vec3 cameraRightForSky{std::cos(cameraYaw), 0.0F, -std::sin(cameraYaw)};
     const Vec3 cameraUpForSky = forward.Cross(cameraRightForSky).Normalized().value_or(Vec3{0.0F, 1.0F, 0.0F});

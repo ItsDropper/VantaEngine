@@ -632,7 +632,7 @@ PostProcessOutput PSMain(PixelInput input)
             temporalHdr = lerp(currentHdr, history, 0.86);
         }
     }
-    float3 hdr = max(temporalHdr + bloom * (postProcessParameters.z / 9.0), 0.0) *
+    float3 hdr = max(temporalHdr + bloom * postProcessParameters.z, 0.0) *
         exp2(postProcessParameters.x);
     float3 mapped = ACESFilm(hdr);
     mapped = LinearToSRGB(mapped);

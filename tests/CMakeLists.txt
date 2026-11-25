@@ -25,25 +25,19 @@ add_executable(VantaEngineMathTests
 vanta_configure_test(VantaEngineMathTests)
 add_test(NAME VantaEngine.MathTests COMMAND VantaEngineMathTests)
 
-add_executable(VantaEngineModelImportTests
-    model_import_tests.cpp
-    ../engine/src/assets/ObjLoader.cpp
-)
+add_executable(VantaEngineModelImportTests model_import_tests.cpp)
 vanta_configure_test(VantaEngineModelImportTests)
+target_link_libraries(VantaEngineModelImportTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.ModelImportTests COMMAND VantaEngineModelImportTests)
 
-add_executable(VantaEngineProceduralWorldTests
-    procedural_world_tests.cpp
-    ../engine/src/world/ProceduralWorld.cpp
-)
+add_executable(VantaEngineProceduralWorldTests procedural_world_tests.cpp)
 vanta_configure_test(VantaEngineProceduralWorldTests)
+target_link_libraries(VantaEngineProceduralWorldTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.ProceduralWorldTests COMMAND VantaEngineProceduralWorldTests)
 
-add_executable(VantaEngineGltfImportTests
-    gltf_import_tests.cpp
-    ../engine/src/assets/GltfLoader.cpp
-)
+add_executable(VantaEngineGltfImportTests gltf_import_tests.cpp)
 vanta_configure_test(VantaEngineGltfImportTests)
+target_link_libraries(VantaEngineGltfImportTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.GltfImportTests COMMAND VantaEngineGltfImportTests)
 
 add_executable(VantaEngineAdaptiveBudgetTests
@@ -70,41 +64,29 @@ add_executable(VantaEngineInputTests
 vanta_configure_test(VantaEngineInputTests)
 add_test(NAME VantaEngine.InputTests COMMAND VantaEngineInputTests)
 
-add_executable(VantaEnginePhysicsTests
-    physics_tests.cpp
-    ../engine/src/physics/PhysicsWorld.cpp
-)
+add_executable(VantaEnginePhysicsTests physics_tests.cpp)
 vanta_configure_test(VantaEnginePhysicsTests)
+target_link_libraries(VantaEnginePhysicsTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.PhysicsTests COMMAND VantaEnginePhysicsTests)
 
-add_executable(VantaEngineSceneTests
-    scene_tests.cpp
-    ../engine/src/core/Scene.cpp
-)
+add_executable(VantaEngineSceneTests scene_tests.cpp)
 vanta_configure_test(VantaEngineSceneTests)
+target_link_libraries(VantaEngineSceneTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.SceneTests COMMAND VantaEngineSceneTests)
 
-add_executable(VantaEngineAssetStoreTests
-    asset_store_tests.cpp
-    ../engine/src/assets/ObjLoader.cpp
-    ../engine/src/assets/GltfLoader.cpp
-    ../engine/src/assets/ModelAssetStore.cpp
-)
+add_executable(VantaEngineAssetStoreTests asset_store_tests.cpp)
 vanta_configure_test(VantaEngineAssetStoreTests)
+target_link_libraries(VantaEngineAssetStoreTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.AssetStoreTests COMMAND VantaEngineAssetStoreTests)
 
-add_executable(VantaEnginePhysicsEventTests
-    physics_event_tests.cpp
-    ../engine/src/physics/PhysicsEventTracker.cpp
-)
+add_executable(VantaEnginePhysicsEventTests physics_event_tests.cpp)
 vanta_configure_test(VantaEnginePhysicsEventTests)
+target_link_libraries(VantaEnginePhysicsEventTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.PhysicsEventTests COMMAND VantaEnginePhysicsEventTests)
 
-add_executable(VantaEngineInputActionTests
-    input_action_tests.cpp
-    ../engine/src/platform/InputActionMap.cpp
-)
+add_executable(VantaEngineInputActionTests input_action_tests.cpp)
 vanta_configure_test(VantaEngineInputActionTests)
+target_link_libraries(VantaEngineInputActionTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.InputActionTests COMMAND VantaEngineInputActionTests)
 
 add_executable(VantaEngineSceneSubmissionTests
@@ -118,12 +100,9 @@ add_executable(VantaEngineSceneSubmissionTests
 vanta_configure_test(VantaEngineSceneSubmissionTests)
 add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissionTests)
 
-add_executable(VantaEngineTextureProcessingTests
-    texture_processing_tests.cpp
-    ../engine/src/assets/TextureProcessing.cpp
-)
-target_compile_definitions(VantaEngineTextureProcessingTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+add_executable(VantaEngineTextureProcessingTests texture_processing_tests.cpp)
 vanta_configure_test(VantaEngineTextureProcessingTests)
+target_link_libraries(VantaEngineTextureProcessingTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.TextureProcessingTests COMMAND VantaEngineTextureProcessingTests)
 
 add_executable(VantaEngineShaderValidationTests

@@ -103,7 +103,7 @@ def self_test() -> int:
         assert project.name == "Editor_Smoke_Test"
         assert project.entrypoint.is_file()
         reopened = Project.open(root)
-        assert reopened.output == root / "build" / "editor-assets"
+        assert reopened.output == root.resolve() / "build" / "editor-assets"
         (root / "vanta.project.json").write_text(
             json.dumps({"schema_version": 1, "name": "bad", "entrypoint": "../escape.py"}),
             encoding="utf-8")

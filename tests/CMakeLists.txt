@@ -120,6 +120,7 @@ add_test(NAME VantaEngine.ShaderValidationTests COMMAND VantaEngineShaderValidat
 add_executable(VantaEngineHdrEnvironmentTests
     hdr_environment_tests.cpp
     ../engine/src/renderer/HdrEnvironment.cpp
+    ../engine/src/renderer/EnvironmentLighting.cpp
 )
 vanta_configure_test(VantaEngineHdrEnvironmentTests)
 add_test(NAME VantaEngine.HdrEnvironmentTests COMMAND VantaEngineHdrEnvironmentTests)

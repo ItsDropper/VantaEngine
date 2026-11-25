@@ -307,22 +307,32 @@ def launch_editor(initial_project: Path | None = None) -> int:
             env["PYTHONPATH"] = str(sdk_root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
             command = [sys.executable, "-m", "vanta_sdk", "build",
                        "--project", str(self.project.root), "--output", str(self.project.output)]
-            try:
-                result = subprocess.run(command, cwd=self.project.root, env=env,
-                                        capture_output=True, text=True, timeout=180)
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                self.write_log(f"Build could not run: {exc}")
-                self.status.configure(text="Build failed")
-                return
-            self.write_log(result.stdout)
-            if result.stderr:
-                self.write_log(result.stderr)
-            if result.returncode == 0:
+            project = self.project
+            self.write_log("Build running in background…")
+
+            def worker() -> None:
+                try:
+                    result = subprocess.run(command, cwd=project.root, env=env,
+                                            capture_output=True, text=True, timeout=180)
+                    outcome = (result.returncode, result.stdout, result.stderr)
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    outcome = (1, "", f"Build could not run: {exc}")
+                self.after(0, self._finish_build, outcome)
+
+            threading.Thread(target=worker, name="VantaAssetBuild", daemon=True).start()
+
+        def _finish_build(self, outcome: tuple[int, str, str]) -> None:
+            return_code, stdout, stderr = outcome
+            if stdout:
+                self.write_log(stdout)
+            if stderr:
+                self.write_log(stderr)
+            if return_code == 0:
                 self.write_log("Build completed.")
                 self.status.configure(text="Build succeeded")
                 self.refresh_assets()
             else:
-                self.write_log(f"Build failed with exit code {result.returncode}.")
+                self.write_log(f"Build failed with exit code {return_code}.")
                 self.status.configure(text="Build failed")
 
     app = Editor()

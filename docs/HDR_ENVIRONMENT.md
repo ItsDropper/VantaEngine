@@ -2,7 +2,7 @@
 
 The renderer accepts an immutable, decoded Radiance RGBE environment image on a submitted frame. The shared pointer keeps the image alive for the complete frame snapshot:
 
-\```cpp
+```cpp
 #include "vanta/renderer/HdrEnvironment.hpp"
 #include "vanta/renderer/SceneSubmission.hpp"
 

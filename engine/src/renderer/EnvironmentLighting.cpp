@@ -92,70 +92,91 @@ EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings
 
 EnvironmentLighting BuildEnvironmentLighting(const HdrEnvironmentImage& environment) noexcept
 {
-    EnvironmentLighting result{};
-    if (!environment.IsValid())
-        return result;
-
-    constexpr unsigned int sampleCount = 4096U;
-    constexpr float goldenAngle = 2.39996322972865332F;
-    std::array<std::array<float, 3>, EnvironmentLighting::kCoefficientCount> coefficients{};
-
-    for (unsigned int i = 0; i < sampleCount; ++i)
+    try
     {
-        const float y = 1.0F - 2.0F * (static_cast<float>(i) + 0.5F) /
-            static_cast<float>(sampleCount);
-        const float radius = std::sqrt(std::max(0.0F, 1.0F - y * y));
-        const float phi = goldenAngle * static_cast<float>(i);
-        const Float3 direction{radius * std::cos(phi), y, radius * std::sin(phi)};
-        const auto basis = Basis(direction);
-        const EnvironmentRadiance sample = SampleEquirectangular(
-            environment, direction.x, direction.y, direction.z);
-        for (std::size_t coefficient = 0; coefficient < basis.size(); ++coefficient)
+        EnvironmentLighting result{};
+        if (!environment.IsValid())
+            return result;
+
+        // The renderer consumes five SH roughness bands. A 16px cube produces
+        // exactly five GGX mip levels (16, 8, 4, 2, 1) for those bands.
+        EnvironmentPrefilterOptions options;
+        options.cubeSize = 16U;
+        options.diffuseSize = 8U;
+        options.specularSampleCount = 128U;
+        options.diffuseSampleCount = 128U;
+        PrefilteredEnvironment prefiltered;
+        std::string error;
+        if (!BuildPrefilteredEnvironment(environment, options, prefiltered, error) ||
+            prefiltered.specularMips.size() != EnvironmentLighting::kSpecularLevels)
+            return result;
+
+        const auto projectCube = [](const EnvironmentCubeMip& mip,
+                                    std::array<std::array<float, 4>, 9>& coefficients)
         {
-            const float weight = basis[coefficient] * (4.0F * kPi /
-                static_cast<float>(sampleCount));
-            coefficients[coefficient][0] += sample.r * weight;
-            coefficients[coefficient][1] += sample.g * weight;
-            coefficients[coefficient][2] += sample.b * weight;
-        }
-    }
-
-    constexpr std::array<float, 3> diffuseKernel{
-        kPi, 2.0F * kPi / 3.0F, kPi / 4.0F
-    };
-    for (std::size_t coefficient = 0; coefficient < coefficients.size(); ++coefficient)
-    {
-        const float kernel = coefficient == 0U ? diffuseKernel[0] :
-            (coefficient <= 3U ? diffuseKernel[1] : diffuseKernel[2]);
-        result.diffuse[coefficient] = {
-            coefficients[coefficient][0] * kernel,
-            coefficients[coefficient][1] * kernel,
-            coefficients[coefficient][2] * kernel,
-            0.0F
+            std::array<std::array<float, 3>, 9> accumulated{};
+            float totalSolidAngleWeight = 0.0F;
+            const float inverseSize = 1.0F / static_cast<float>(mip.size);
+            for (std::size_t face = 0; face < mip.faces.size(); ++face)
+            {
+                for (std::uint32_t y = 0; y < mip.size; ++y)
+                {
+                    for (std::uint32_t x = 0; x < mip.size; ++x)
+                    {
+                        const float u = 2.0F * (static_cast<float>(x) + 0.5F) *
+                            inverseSize - 1.0F;
+                        const float v = 2.0F * (static_cast<float>(y) + 0.5F) *
+                            inverseSize - 1.0F;
+                        Float3 direction{};
+                        switch (face)
+                        {
+                        case 0: direction = Normalize({1.0F, -v, -u}); break;
+                        case 1: direction = Normalize({-1.0F, -v, u}); break;
+                        case 2: direction = Normalize({u, 1.0F, v}); break;
+                        case 3: direction = Normalize({u, -1.0F, -v}); break;
+                        case 4: direction = Normalize({u, -v, 1.0F}); break;
+                        default: direction = Normalize({-u, -v, -1.0F}); break;
+                        }
+                        const float solidAngleWeight = 1.0F /
+                            std::pow(1.0F + u * u + v * v, 1.5F);
+                        const EnvironmentRadiance radiance = mip.faces[face][
+                            static_cast<std::size_t>(y) * mip.size + x];
+                        const auto basis = Basis(direction);
+                        for (std::size_t coefficient = 0; coefficient < basis.size(); ++coefficient)
+                        {
+                            const float weight = basis[coefficient] * solidAngleWeight;
+                            accumulated[coefficient][0] += radiance.r * weight;
+                            accumulated[coefficient][1] += radiance.g * weight;
+                            accumulated[coefficient][2] += radiance.b * weight;
+                        }
+                        totalSolidAngleWeight += solidAngleWeight;
+                    }
+                }
+            }
+            const float normalization = totalSolidAngleWeight > 0.0F
+                ? (4.0F * kPi / totalSolidAngleWeight) : 0.0F;
+            for (std::size_t coefficient = 0; coefficient < coefficients.size(); ++coefficient)
+            {
+                coefficients[coefficient] = {
+                    accumulated[coefficient][0] * normalization,
+                    accumulated[coefficient][1] * normalization,
+                    accumulated[coefficient][2] * normalization,
+                    0.0F
+                };
+            }
         };
-    }
 
-    constexpr std::array<float, EnvironmentLighting::kSpecularLevels> roughness{
-        0.04F, 0.18F, 0.38F, 0.65F, 1.0F
-    };
-    for (std::size_t level = 0; level < roughness.size(); ++level)
+        // Diffuse mip values are already cosine-convolved irradiance; specular
+        // mips are independently GGX-prefiltered radiance at each roughness.
+        projectCube(prefiltered.diffuseIrradiance, result.diffuse);
+        for (std::size_t level = 0; level < result.specular.size(); ++level)
+            projectCube(prefiltered.specularMips[level], result.specular[level]);
+        return result;
+    }
+    catch (...)
     {
-        const float alpha = roughness[level] * roughness[level];
-        const float sigma = alpha * 1.35F;
-        for (std::size_t coefficient = 0; coefficient < coefficients.size(); ++coefficient)
-        {
-            const int band = coefficient == 0U ? 0 : (coefficient <= 3U ? 1 : 2);
-            const float filter = std::exp(-0.5F *
-                static_cast<float>(band * (band + 1)) * sigma * sigma);
-            result.specular[level][coefficient] = {
-                coefficients[coefficient][0] * filter,
-                coefficients[coefficient][1] * filter,
-                coefficients[coefficient][2] * filter,
-                0.0F
-            };
-        }
+        // Keep the noexcept renderer-facing API safe under allocation failure.
+        return {};
     }
-    return result;
 }
-
 }

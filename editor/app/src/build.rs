@@ -87,21 +87,18 @@ fn resolve_sdk_path(repository_root: &Path) -> PathBuf {
     if let Some(path) = std::env::var_os("VANTA_SDK_PATH") {
         return PathBuf::from(path);
     }
-
     let executable_directory = std::env::current_exe().ok()
         .and_then(|path| path.parent().map(Path::to_path_buf));
-    if let Some(directory) = executable_directory {
-        for candidate in [
-            directory.join("resources").join("vanta_sdk"),
-            directory.join("tools").join("vanta_sdk"),
-        ] {
-            if candidate.join("vanta_sdk").is_dir() {
-                return candidate;
-            }
-        }
-    }
+    executable_directory.as_deref()
+        .and_then(bundled_sdk_path)
+        .unwrap_or_else(|| repository_root.join("tools").join("vanta_sdk"))
+}
 
-    repository_root.join("tools").join("vanta_sdk")
+fn bundled_sdk_path(executable_directory: &Path) -> Option<PathBuf> {
+    [
+        executable_directory.join("resources").join("vanta_sdk"),
+        executable_directory.join("tools").join("vanta_sdk"),
+    ].into_iter().find(|candidate| candidate.join("vanta_sdk").is_dir())
 }
 
 fn combine_output(stdout: &[u8], stderr: &[u8]) -> String {
@@ -142,9 +139,7 @@ mod tests {
         let executable_directory = directory.path().join("bin");
         let sdk = executable_directory.join("resources").join("vanta_sdk");
         std::fs::create_dir_all(sdk.join("vanta_sdk")).unwrap();
-        let original = std::env::current_exe().unwrap();
-        let _ = original;
-        assert!(sdk.join("vanta_sdk").is_dir());
+        assert_eq!(bundled_sdk_path(&executable_directory), Some(sdk));
     }
 
     #[test]

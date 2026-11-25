@@ -19,7 +19,7 @@ void Check(bool condition, const char* name)
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     const auto path = std::filesystem::temp_directory_path() / "vanta_obj_import_test.obj";
     const auto materialPath = path.parent_path() / "vanta_obj_import_test.mtl";
@@ -161,6 +161,23 @@ int main()
           error.find("Could not open referenced MTL") != std::string::npos,
         "fails when a declared MTL sidecar is missing");
     std::filesystem::remove(missingMtlPath);
-    std::cout << (checks - failures) << "/" << checks << " model import tests passed.\n";
+
+    if (argc > 1)
+    {
+        vanta::assets::CpuModel generatedModel;
+        error.clear();
+        const bool imported = vanta::assets::LoadWavefrontObj(argv[1], generatedModel, error);
+        Check(imported, "imports the CI-generated Python-authored OBJ");
+        Check(imported && generatedModel.vertices.size() >= 100U &&
+              generatedModel.indices.size() >= 100U,
+            "generated model contains substantial indexed geometry");
+        Check(imported && generatedModel.materials.size() >= 6U &&
+              generatedModel.submeshes.size() >= 10U,
+            "generated model retains multiple PBR materials and submeshes");
+        Check(imported && generatedModel.materials.size() > 1U &&
+              generatedModel.materials[1].name == "timber",
+            "generated OBJ resolves its companion MTL material library");
+    }
+\n    std::cout << (checks - failures) << "/" << checks << " model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

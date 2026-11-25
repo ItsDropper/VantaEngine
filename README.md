@@ -4,6 +4,14 @@ VantaEngine is an early-stage native C++23 3D game engine designed for direct co
 
 > **Current milestone:** native Direct3D 12 scene renderer with a deterministic procedural forest valley, terrain, cabins, road, creek, vegetation, indexed geometry, depth testing, directional lighting, atmospheric fog, and a free-fly camera. A Direct3D 11 compatibility renderer remains available.
 
+## Scriptable asset workflow
+
+A dependency-free Python SDK now lets project scripts author procedural models.
+Windows CI tests the SDK, generates a starter cabin, imports that exact OBJ
+through the native C++ importer, and publishes the OBJ/MTL/metadata as a
+workflow artifact. See [the Python model workflow](docs/PYTHON_MODEL_WORKFLOW.md)
+and the [starter project](projects/starter).
+
 ## What runs right now
 
 Launching the engine opens a 1280×720 native window and renders a real-time forest-valley environment: rolling terrain, a winding gravel road with worn center markings and shoulders, a rocky stream, multiple timber cabins with pitched roofs, board siding, windows, doors, porches and chimneys, timber fences, utility poles, fallen logs, angular boulders, undergrowth, and thousands of grass blades. These deterministic scene meshes are generated at startup and merged into a small number of GPU buffers. Geometry is rendered live through Direct3D 12; this is not a prerecorded animation or a UI mock-up.

@@ -29,6 +29,10 @@ add_executable(VantaEngineModelImportTests model_import_tests.cpp)
 vanta_configure_test(VantaEngineModelImportTests)
 target_link_libraries(VantaEngineModelImportTests PRIVATE VantaEngine::Core)
 add_test(NAME VantaEngine.ModelImportTests COMMAND VantaEngineModelImportTests)
+if(EXISTS "${PROJECT_SOURCE_DIR}/build/generated/starter_cabin.obj")
+    add_test(NAME VantaEngine.GeneratedModelImportTests
+        COMMAND VantaEngineModelImportTests "${PROJECT_SOURCE_DIR}/build/generated/starter_cabin.obj")
+endif()
 
 add_executable(VantaEngineProceduralWorldTests procedural_world_tests.cpp)
 vanta_configure_test(VantaEngineProceduralWorldTests)

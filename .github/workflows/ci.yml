@@ -7,12 +7,31 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test Python authoring SDK
+        env:
+          PYTHONPATH: tools/vanta_sdk
+        run: python -m unittest discover -s tools/vanta_sdk/tests -v
+
+      - name: Generate starter model
+        env:
+          PYTHONPATH: tools/vanta_sdk
+        run: python -m vanta_sdk build --project projects/starter --output build/generated
 
       - name: Configure MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -35,3 +54,11 @@ jobs:
 
       - name: Test Release
         run: ctest --test-dir build-release --output-on-failure
+
+      - name: Upload generated model
+        uses: actions/upload-artifact@v4
+        with:
+          name: vantaengine-generated-models
+          path: build/generated/
+          if-no-files-found: error
+          retention-days: 14

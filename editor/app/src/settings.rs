@@ -41,11 +41,11 @@ impl EditorSettings {
         if fs::create_dir_all(parent).is_err() { return; }
         let Ok(content) = serde_json::to_string_pretty(self) else { return; };
         let temporary = path.with_extension("json.tmp");
-        if fs::write(&temporary, content).is_ok() {
-            if fs::rename(&temporary, &path).is_err() {
-                let _ = fs::remove_file(&path);
-                let _ = fs::rename(&temporary, &path);
-            }
+        if fs::write(&temporary, content).is_ok()
+            && fs::rename(&temporary, &path).is_err()
+        {
+            let _ = fs::remove_file(&path);
+            let _ = fs::rename(&temporary, &path);
         }
     }
 }

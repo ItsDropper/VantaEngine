@@ -65,7 +65,7 @@ struct EditorApp {
 
 impl Default for EditorApp {
     fn default() -> Self {
-        Self {
+        let mut app = Self {
             project: None,
             section: Section::Workspace,
             assets: Vec::new(),
@@ -80,7 +80,16 @@ impl Default for EditorApp {
             build_running: false,
             build_log: "Create a project or open an existing VantaEngine project.".into(),
             error: None,
+        };
+
+        if let Some(project_path) = std::env::var_os("VANTA_EDITOR_PROJECT") {
+            match Project::open(PathBuf::from(project_path)) {
+                Ok(project) => app.set_project(project),
+                Err(error) => app.error = Some(error),
+            }
         }
+
+        app
     }
 }
 

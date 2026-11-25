@@ -48,6 +48,32 @@ jobs:
       - name: Build Rust editor
         run: cargo build --locked --release --manifest-path editor/app/Cargo.toml
 
+      - name: Prepare editor screenshot project
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP "VantaEditorScreenshotProject"
+          Copy-Item "projects/starter" $project -Recurse -Force
+          $env:PYTHONPATH = Join-Path $PWD "tools/vanta_sdk"
+          python -m vanta_sdk build --project $project --output (Join-Path $project "build/editor-assets")
+          if ($LASTEXITCODE -ne 0) { throw "Could not generate screenshot project assets." }
+          "VANTA_SCREENSHOT_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Capture editor screenshot
+        shell: pwsh
+        run: |
+          ./editor/scripts/capture-editor-screenshot.ps1 `
+            -ExecutablePath "editor/app/target/release/vanta-editor.exe" `
+            -ProjectPath "$env:VANTA_SCREENSHOT_PROJECT" `
+            -OutputPath "dist/screenshots/vantaengine-editor.png"
+
+      - name: Upload editor screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: vantaengine-editor-screenshot
+          path: dist/screenshots/vantaengine-editor.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Generate starter model
         env:
           PYTHONPATH: tools/vanta_sdk

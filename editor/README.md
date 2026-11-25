@@ -13,6 +13,14 @@ Install a stable Rust toolchain and Python 3.12+.
 cargo run --release --manifest-path editor/app/Cargo.toml
 ```
 
+## Automated screenshot capture
+
+The editor opens a project passed in the `VANTA_EDITOR_PROJECT` environment
+variable on startup. The Windows CI workflow uses this to open a real starter
+project, generate its assets, launch the compiled desktop application, and
+capture the visible editor window. The resulting PNG is published as the
+`vantaengine-editor-screenshot` workflow artifact.
+
 ## Portable Windows build
 
 The Windows CI workflow creates

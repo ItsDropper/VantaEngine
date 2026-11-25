@@ -1123,6 +1123,13 @@ float3 ACES(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
+float3 LinearToSRGB(float3 linearColor)
+{
+    linearColor = max(linearColor, 0.0);
+    const float3 low = linearColor * 12.92;
+    const float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+    return lerp(low, high, step(0.0031308, linearColor));
+}
 float4 PSMain(VSOut input) : SV_TARGET
 {
     float depth = sceneDepth.SampleLevel(linearClamp, input.uv, 0).r;
@@ -1151,8 +1158,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 solarDisc = lerp(defaultSolarDisc, environmentSunColor.rgb, customEnvironment);
         sky += solarDisc * (sun * 7.0 * daylight + halo * 0.8 * saturate(daylight + 0.18));
         sky += float3(0.12, 0.16, 0.24) * horizon * daylight;
-        return float4(pow(ACES(max(sky, 0.0) *
-            exp2(postProcessParameters.x)), 1.0 / 2.2), 1.0);
+        return float4(LinearToSRGB(ACES(max(sky, 0.0) *
+            exp2(postProcessParameters.x))), 1.0);
     }
     uint width, height;
     hdrScene.GetDimensions(width, height);
@@ -1229,7 +1236,7 @@ float4 PSMain(VSOut input) : SV_TARGET
     // Keep display transform channel-neutral; tint correction belongs in lighting,
     // not in a global per-channel multiplier applied to every material.
     color = ACES(color * exp2(postProcessParameters.x));
-    color = pow(max(color, 0.0), 1.0 / 2.2);
+    color = LinearToSRGB(color);
     return float4(color, 1.0);
 }
 )";

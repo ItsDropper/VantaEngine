@@ -8,9 +8,9 @@ it does not depend on private renderer implementation details.
 
 From the repository root:
 
-\`\`\`powershell
+```powershell
 python editor/vanta_editor.py
-\`\`\`
+```
 
 Open an existing project or create a new one. The workspace provides:
 
@@ -25,13 +25,13 @@ packages are required. Python must be installed with Tk support.
 
 ## Authoring model assets
 
-Edit the project's \`generate.py\` entrypoint. Its \`build()\` function returns
-a validated \`vanta_sdk.Model\`. The editor invokes the same command used in CI:
+Edit the project's `generate.py` entrypoint. Its `build()` function returns
+a validated `vanta_sdk.Model`. The editor invokes the same command used in CI:
 
-\`\`\`powershell
+```powershell
 $env:PYTHONPATH = "tools/vanta_sdk"
 python -m vanta_sdk build --project projects/starter --output build/generated
-\`\`\`
+```
 
 Generated OBJ/MTL files are consumed by the engine's native importer. The
 editor is a project/asset workbench, not yet a live in-engine viewport or

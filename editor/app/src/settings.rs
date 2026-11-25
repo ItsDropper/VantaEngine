@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -23,7 +23,7 @@ impl EditorSettings {
             .unwrap_or_default()
     }
 
-    pub fn remember_project(&mut self, path: &PathBuf) {
+    pub fn remember_project(&mut self, path: &Path) {
         self.push_project(path);
         self.save();
     }

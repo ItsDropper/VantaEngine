@@ -340,6 +340,12 @@ impl EditorApp {
     }
 }
 
+fn choice_button(label: &'static str, selected: bool, message: Message) -> iced::widget::Button<'static, Message> {
+    let control = button(label);
+    if selected { control.style(button::primary).on_press(message) }
+    else { control.style(button::secondary).on_press(message) }
+}
+
 fn nav_button(label: &'static str, section: Section, selected: bool) -> iced::widget::Button<'static, Message> {
     let control = button(text(label).size(14)).width(Length::Fill).padding([10, 12]);
     if selected { control.style(button::primary).on_press(Message::Navigate(section)) }

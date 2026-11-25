@@ -278,8 +278,8 @@ impl EditorApp {
     fn left_sidebar(&mut self, ui: &mut egui::Ui) {
         egui::Panel::left("project_sidebar")
             .resizable(true)
-            .default_width(258.0)
-            .width_range(220.0..=380.0)
+            .default_size(258.0)
+            .size_range(220.0..=380.0)
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(14, 21, 34, 214), 14.0))
             .show(ui, |ui| {
                 ui.add_space(5.0);
@@ -358,8 +358,8 @@ impl EditorApp {
     fn right_inspector(&mut self, ui: &mut egui::Ui) {
         egui::Panel::right("inspector_panel")
             .resizable(true)
-            .default_width(292.0)
-            .width_range(250.0..=420.0)
+            .default_size(292.0)
+            .size_range(250.0..=420.0)
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(14, 21, 34, 214), 14.0))
             .show(ui, |ui| {
                 ui.add_space(5.0);

@@ -2,8 +2,22 @@
 
 The renderer accepts an immutable, decoded Radiance RGBE environment image on a submitted frame. The shared pointer keeps the image alive for the complete frame snapshot:
 
-```cpp
+\```cpp
+#include "vanta/renderer/HdrEnvironment.hpp"
+#include "vanta/renderer/SceneSubmission.hpp"
+
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+const std::filesystem::path path = "environment.hdr";
 std::ifstream file(path, std::ios::binary);
+if (!file)
+    throw std::runtime_error("Could not open HDR environment.");
 std::vector<std::uint8_t> encoded{
     std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()
 };

@@ -8,7 +8,7 @@ mod settings;
 fn main() -> eframe::Result {
     let viewport = eframe::egui::ViewportBuilder::default()
         .with_inner_size([1560.0, 980.0])
-        .with_min_inner_size([1120.0, 720.0])
+        .with_min_inner_size([960.0, 680.0])
         .with_transparent(true);
 
     let options = eframe::NativeOptions {

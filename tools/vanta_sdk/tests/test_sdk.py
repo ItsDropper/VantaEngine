@@ -43,7 +43,7 @@ class ModelSdkTests(unittest.TestCase):
             self.assertGreater(metadata["geometry"]["normal_vertex_count"], 0)
             self.assertIn("vt ", obj)
             self.assertIn("vn ", obj)
-            self.assertIn("//", obj)
+            self.assertIn("/1/1", obj)
 
     def test_invalid_geometry_is_rejected(self):
         model = Model("bad_model")

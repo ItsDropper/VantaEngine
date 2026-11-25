@@ -45,6 +45,23 @@ MeshDescription Triangle()
 int main()
 {
 
+    FrameView invalidEnvironmentView;
+    invalidEnvironmentView.environmentMap = std::make_shared<HdrEnvironmentImage>();
+    std::string frameValidationError;
+    Require(!ValidateFrameView(invalidEnvironmentView, frameValidationError));
+    Require(!frameValidationError.empty());
+
+    auto validEnvironment = std::make_shared<HdrEnvironmentImage>();
+    validEnvironment->width = 2U;
+    validEnvironment->height = 2U;
+    validEnvironment->pixels.assign(4U, EnvironmentRadiance{1.0F, 0.5F, 0.25F});
+    FrameView validEnvironmentView;
+    validEnvironmentView.environment.enabled = true;
+    validEnvironmentView.environmentMap = std::move(validEnvironment);
+    Require(ValidateFrameView(validEnvironmentView, frameValidationError));
+    Require(frameValidationError.empty());
+
+
     // Meshlet preprocessing is deterministic, bounded, and independent of the renderer's
     // existing instance-buffer layout.
     MeshDescription meshletQuad;

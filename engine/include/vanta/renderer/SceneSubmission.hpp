@@ -14,6 +14,7 @@
 
 namespace vanta::renderer
 {
+struct HdrEnvironmentImage;
 template <typename Tag>
 struct ResourceHandle
 {
@@ -115,6 +116,7 @@ struct FrameView
     float elapsedSeconds = 0.0F;
     std::uint64_t frameNumber = 0;
     EnvironmentSettings environment{};
+    std::shared_ptr<const HdrEnvironmentImage> environmentMap;
     PostProcessSettings postProcess{};
     std::array<PointLight, MaximumPointLightsPerFrame> pointLights{};
     std::uint32_t pointLightCount = 0U;

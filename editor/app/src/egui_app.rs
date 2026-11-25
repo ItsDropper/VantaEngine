@@ -237,10 +237,10 @@ impl EditorApp {
         open_in_system_editor(&path);
     }
 
-    fn toolbar(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("vanta_toolbar")
+    fn toolbar(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::top("vanta_toolbar")
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(20, 29, 46, 220), 14.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(RichText::new("V A N T A  /  ENGINE").size(10.0).strong().color(accent()));
@@ -275,13 +275,13 @@ impl EditorApp {
             });
     }
 
-    fn left_sidebar(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("project_sidebar")
+    fn left_sidebar(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::left("project_sidebar")
             .resizable(true)
             .default_width(258.0)
             .width_range(220.0..=380.0)
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(14, 21, 34, 214), 14.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.add_space(5.0);
                 section_label(ui, "PROJECT");
                 ui.label(RichText::new(self.project.as_ref().map(|p| p.name.as_str()).unwrap_or("NO PROJECT"))
@@ -355,13 +355,13 @@ impl EditorApp {
             });
     }
 
-    fn right_inspector(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("inspector_panel")
+    fn right_inspector(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::right("inspector_panel")
             .resizable(true)
             .default_width(292.0)
             .width_range(250.0..=420.0)
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(14, 21, 34, 214), 14.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.add_space(5.0);
                 section_label(ui, "INSPECTOR");
                 let mut dirty = false;
@@ -402,10 +402,10 @@ impl EditorApp {
             });
     }
 
-    fn status_bar(&self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("status_bar")
+    fn status_bar(&self, ui: &mut egui::Ui) {
+        egui::Panel::bottom("status_bar")
             .frame(glass_frame(egui::Color32::from_rgba_unmultiplied(13, 19, 30, 220), 10.0))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let (label, color) = if self.build_running {
                         ("BUILD RUNNING", Color32::from_rgb(255, 190, 96))
@@ -425,13 +425,13 @@ impl EditorApp {
             });
     }
 
-    fn show_error(&mut self, ctx: &egui::Context) {
+    fn show_error(&mut self, ui: &mut egui::Ui) {
         if let Some(error) = self.error.clone() {
-            egui::TopBottomPanel::top("error_banner")
+            egui::Panel::top("error_banner")
                 .frame(egui::Frame::new()
                     .fill(Color32::from_rgba_unmultiplied(110, 35, 48, 230))
                     .inner_margin(egui::Margin::same(10)))
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(error).color(Color32::WHITE));
                         if ui.button("Dismiss").clicked() { self.error = None; }
@@ -442,23 +442,25 @@ impl EditorApp {
 }
 
 impl eframe::App for EditorApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_build();
         if self.build_running {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
+    }
 
-        self.toolbar(ctx);
-        self.status_bar(ctx);
-        self.left_sidebar(ctx);
-        self.right_inspector(ctx);
-        self.show_error(ctx);
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.toolbar(ui);
+        self.status_bar(ui);
+        self.left_sidebar(ui);
+        self.right_inspector(ui);
+        self.show_error(ui);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(8, 13, 22, 118))
                 .inner_margin(egui::Margin::same(10)))
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 let mut viewer = WorkspaceTabViewer {
                     scene: &self.scene,
                     assets: &self.assets,
@@ -699,20 +701,20 @@ fn apply_native_glass(_cc: &eframe::CreationContext<'_>) -> bool {
 }
 
 fn configure_theme(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
-    style.spacing.item_spacing = Vec2::new(10.0, 8.0);
-    style.spacing.button_padding = Vec2::new(12.0, 8.0);
-    style.visuals = egui::Visuals::dark();
-    style.visuals.panel_fill = Color32::from_rgba_unmultiplied(10, 15, 25, 190);
-    style.visuals.window_fill = Color32::from_rgba_unmultiplied(17, 24, 37, 224);
-    style.visuals.extreme_bg_color = Color32::from_rgb(5, 9, 15);
-    style.visuals.faint_bg_color = Color32::from_rgba_unmultiplied(60, 82, 116, 34);
-    style.visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(68, 118, 206, 120);
-    style.visuals.widgets.noninteractive.bg_fill = Color32::from_rgba_unmultiplied(25, 35, 51, 160);
-    style.visuals.widgets.inactive.bg_fill = Color32::from_rgba_unmultiplied(34, 46, 66, 190);
-    style.visuals.widgets.hovered.bg_fill = Color32::from_rgba_unmultiplied(58, 84, 126, 220);
-    style.visuals.widgets.active.bg_fill = Color32::from_rgba_unmultiplied(55, 105, 194, 230);
-    ctx.set_style(style);
+    ctx.all_styles_mut(|style| {
+        style.spacing.item_spacing = Vec2::new(10.0, 8.0);
+        style.spacing.button_padding = Vec2::new(12.0, 8.0);
+        style.visuals = egui::Visuals::dark();
+        style.visuals.panel_fill = Color32::from_rgba_unmultiplied(10, 15, 25, 190);
+        style.visuals.window_fill = Color32::from_rgba_unmultiplied(17, 24, 37, 224);
+        style.visuals.extreme_bg_color = Color32::from_rgb(5, 9, 15);
+        style.visuals.faint_bg_color = Color32::from_rgba_unmultiplied(60, 82, 116, 34);
+        style.visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(68, 118, 206, 120);
+        style.visuals.widgets.noninteractive.bg_fill = Color32::from_rgba_unmultiplied(25, 35, 51, 160);
+        style.visuals.widgets.inactive.bg_fill = Color32::from_rgba_unmultiplied(34, 46, 66, 190);
+        style.visuals.widgets.hovered.bg_fill = Color32::from_rgba_unmultiplied(58, 84, 126, 220);
+        style.visuals.widgets.active.bg_fill = Color32::from_rgba_unmultiplied(55, 105, 194, 230);
+    });
 }
 
 fn glass_frame(fill: Color32, radius: f32) -> egui::Frame {

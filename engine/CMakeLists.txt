@@ -11,6 +11,7 @@ set(VANTA_RUNTIME_SOURCES
     src/renderer/D3D12Resources.cpp
     src/renderer/D3D12Pipelines.cpp
     src/renderer/EnvironmentLighting.cpp
+    src/renderer/HdrEnvironment.cpp
     src/renderer/SceneSubmission.cpp
     src/renderer/SceneGeometry.cpp
     src/renderer/MeshletBuilder.cpp

@@ -57,6 +57,7 @@ struct TemporalConstants
     Mat4 previousViewProjection;
     UINT historyValid = 0;
     float padding[3]{};
+    float postProcessParameters[4]{};
 };
 
 struct SkyConstants
@@ -518,6 +519,7 @@ cbuffer TemporalConstants : register(b0)
     float4x4 previousViewProjection;
     uint historyValid;
     float3 temporalPadding;
+    float4 postProcessParameters;
 };
 struct PostProcessOutput
 {
@@ -528,6 +530,13 @@ struct PixelInput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 float3 ACESFilm(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}
+float3 LinearToSRGB(float3 linearColor)
+{
+    linearColor = max(linearColor, 0.0);
+    float3 low = linearColor * 12.92;
+    float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+    return lerp(low, high, step(0.0031308, linearColor));
 }
 PostProcessOutput PSMain(PixelInput input)
 {
@@ -558,7 +567,8 @@ PostProcessOutput PSMain(PixelInput input)
             }
         }
     }
-    float ao = 1.0 - saturate(occlusion / max(validSamples, 1.0)) * 0.42;
+    float ao = 1.0 - saturate(occlusion / max(validSamples, 1.0)) *
+        saturate(postProcessParameters.y);
     float2 texel;
     // A thresholded 3x3 gather keeps highlight bloom while limiting full-screen texture reads.
     uint width, height;
@@ -572,7 +582,8 @@ PostProcessOutput PSMain(PixelInput input)
             float2 uv = saturate(input.uv + float2(x, y) * texel * 5.0);
             float3 sampleColor = sceneTexture.Sample(sceneSampler, uv).rgb;
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
-            float contribution = smoothstep(0.8, 2.4, luminance);
+            float contribution = smoothstep(postProcessParameters.w,
+                postProcessParameters.w * 2.4, luminance);
             bloom += sampleColor * contribution;
         }
     }
@@ -621,9 +632,9 @@ PostProcessOutput PSMain(PixelInput input)
             temporalHdr = lerp(currentHdr, history, 0.86);
         }
     }
-    float3 hdr = max(temporalHdr + bloom * 0.28, 0.0) * 1.08;
-    float3 mapped = ACESFilm(hdr);
-    mapped = pow(max(mapped, 0.0), 1.0 / 2.2);
+    float3 hdr = max(temporalHdr + bloom * postProcessParameters.z, 0.0) *
+        exp2(postProcessParameters.x);
+    float3 mapped = LinearToSRGB(ACESFilm(hdr));
     PostProcessOutput output;
     output.displayColor = float4(mapped, 1.0);
     output.historyColor = float4(temporalHdr, 1.0);
@@ -2284,6 +2295,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         cameraDeltaZ * cameraDeltaZ > 9.0F;
     temporalConstants.previousViewProjection = m_previousViewProjection;
     temporalConstants.historyValid = (m_historyValid && inverseValid && !cameraCut) ? 1U : 0U;
+    const renderer::PostProcessSettings postProcess = submittedScene != nullptr
+        ? submittedScene->view.postProcess : renderer::PostProcessSettings{};
+    temporalConstants.postProcessParameters[0] = postProcess.exposureCompensationEV;
+    temporalConstants.postProcessParameters[1] = postProcess.ambientOcclusionStrength;
+    temporalConstants.postProcessParameters[2] = postProcess.bloomIntensity;
+    temporalConstants.postProcessParameters[3] = postProcess.bloomThreshold;
     D3D11_MAPPED_SUBRESOURCE temporalMapped{};
     if (SUCCEEDED(m_context->Map(m_postProcessTemporalBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &temporalMapped))) {
         *static_cast<TemporalConstants*>(temporalMapped.pData) = temporalConstants;

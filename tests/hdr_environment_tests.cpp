@@ -54,6 +54,7 @@ int main()
     const EnvironmentLighting hdrLighting = BuildEnvironmentLighting(image);
     CHECK(std::isfinite(hdrLighting.diffuse[0][0]));
     CHECK(hdrLighting.diffuse[0][0] > 0.0F);
+    CHECK(std::abs(hdrLighting.diffuse[0][0] * 0.282095F - 3.14159265F) < 0.08F);
     CHECK(std::abs(hdrLighting.diffuse[0][1] / hdrLighting.diffuse[0][0] - 0.5F) < 0.001F);
     CHECK(std::abs(hdrLighting.diffuse[0][2] / hdrLighting.diffuse[0][0] - 0.25F) < 0.001F);
     CHECK(std::abs(hdrLighting.specular[0][0][0] - hdrLighting.specular[4][0][0]) < 0.0001F);

@@ -925,6 +925,7 @@ cbuffer TemporalConstants : register(b1)
     float4 skyHorizonColor;
     float4 skyZenithColor;
     float4 environmentSunColor;
+    float4 postProcessParameters;
 };
 struct VSOut { float4 position : SV_POSITION; float2 uv : TEXCOORD0; };
 VSOut VSMain(uint id : SV_VertexID)
@@ -1122,6 +1123,13 @@ float3 ACES(float3 x)
 {
     return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
 }
+float3 LinearToSRGB(float3 linearColor)
+{
+    linearColor = max(linearColor, 0.0);
+    float3 low = linearColor * 12.92;
+    float3 high = 1.055 * pow(linearColor, 1.0 / 2.4) - 0.055;
+    return lerp(low, high, step(0.0031308, linearColor));
+}
 float4 PSMain(VSOut input) : SV_TARGET
 {
     float depth = sceneDepth.SampleLevel(linearClamp, input.uv, 0).r;
@@ -1150,7 +1158,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 solarDisc = lerp(defaultSolarDisc, environmentSunColor.rgb, customEnvironment);
         sky += solarDisc * (sun * 7.0 * daylight + halo * 0.8 * saturate(daylight + 0.18));
         sky += float3(0.12, 0.16, 0.24) * horizon * daylight;
-        return float4(pow(ACES(max(sky, 0.0)), 1.0 / 2.2), 1.0);
+        return float4(LinearToSRGB(ACES(max(sky, 0.0) *
+            exp2(postProcessParameters.x))), 1.0);
     }
     uint width, height;
     hdrScene.GetDimensions(width, height);
@@ -1208,7 +1217,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         horizonOcclusion += directionalOcclusion * directionalOcclusion;
         horizonWeight += 1.0;
     }
-    float ao = 1.0 - saturate(horizonOcclusion / max(horizonWeight, 1.0)) * 0.62;
+    float ao = 1.0 - saturate(horizonOcclusion / max(horizonWeight, 1.0)) *
+        saturate(postProcessParameters.y);
     color *= ao;
     float3 bloom = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)
@@ -1218,14 +1228,14 @@ float4 PSMain(VSOut input) : SV_TARGET
             float3 sampleColor = ResolvedColor(
                 saturate(input.uv + float2(x, y) * texel * 4.0));
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
-            bloom += sampleColor * smoothstep(1.0, 2.8, luminance);
+            bloom += sampleColor * smoothstep(postProcessParameters.w,
+                postProcessParameters.w * 2.8, luminance);
         }
     }
-    color += bloom * (0.45 / 9.0);
+    color += bloom * (postProcessParameters.z / 9.0);
     // Keep display transform channel-neutral; tint correction belongs in lighting,
     // not in a global per-channel multiplier applied to every material.
-    color = ACES(color * 1.05);
-    color = pow(max(color, 0.0), 1.0 / 2.2);
+    color = LinearToSRGB(ACES(color * exp2(postProcessParameters.x)));
     return float4(color, 1.0);
 }
 )";

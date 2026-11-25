@@ -40,28 +40,7 @@ impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         configure_theme(&cc.egui_ctx);
 
-        let mut native_glass = false;
-
-        #[cfg(target_os = "windows")]
-        if let Some(window) = cc.winit_window() {
-            native_glass = window_vibrancy::apply_mica(window.as_ref(), Some(true)).is_ok();
-            if !native_glass {
-                eprintln!("VantaEngine Editor: Windows Mica unavailable; using opaque fallback surfaces.");
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        if let Some(window) = cc.winit_window() {
-            native_glass = window_vibrancy::apply_vibrancy(
-                window.as_ref(),
-                window_vibrancy::NSVisualEffectMaterial::HudWindow,
-                None,
-                Some(16.0),
-            ).is_ok();
-            if !native_glass {
-                eprintln!("VantaEngine Editor: native vibrancy unavailable; using opaque fallback surfaces.");
-            }
-        }
+        let native_glass = apply_native_glass(cc);
 
         let mut app = Self {
             project: None,
@@ -688,6 +667,36 @@ fn metric(ui: &mut egui::Ui, label: &str, value: String) {
 
 fn section_label(ui: &mut egui::Ui, label: &str) {
     ui.label(RichText::new(label).size(9.0).strong().color(accent()));
+}
+
+#[cfg(target_os = "windows")]
+fn apply_native_glass(cc: &eframe::CreationContext<'_>) -> bool {
+    let Some(window) = cc.winit_window() else { return false; };
+    let enabled = window_vibrancy::apply_mica(window.as_ref(), Some(true)).is_ok();
+    if !enabled {
+        eprintln!("VantaEngine Editor: Windows Mica unavailable; using opaque fallback surfaces.");
+    }
+    enabled
+}
+
+#[cfg(target_os = "macos")]
+fn apply_native_glass(cc: &eframe::CreationContext<'_>) -> bool {
+    let Some(window) = cc.winit_window() else { return false; };
+    let enabled = window_vibrancy::apply_vibrancy(
+        window.as_ref(),
+        window_vibrancy::NSVisualEffectMaterial::HudWindow,
+        None,
+        Some(16.0),
+    ).is_ok();
+    if !enabled {
+        eprintln!("VantaEngine Editor: native vibrancy unavailable; using opaque fallback surfaces.");
+    }
+    enabled
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn apply_native_glass(_cc: &eframe::CreationContext<'_>) -> bool {
+    false
 }
 
 fn configure_theme(ctx: &egui::Context) {

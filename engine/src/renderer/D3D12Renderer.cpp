@@ -2149,11 +2149,17 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
             constants.pointLightColorIntensity[index][3] = light.intensity;
         }
     }
+    const renderer::HdrEnvironmentImage* submittedEnvironmentMap =
+        submittedScene != nullptr ? submittedScene->view.environmentMap.get() : nullptr;
     if (environment.enabled &&
         (!m_environmentLightingCacheValid ||
-         !SameEnvironmentSettings(environment, m_cachedEnvironmentSettings))) {
-        m_cachedEnvironmentLighting = renderer::BuildEnvironmentLighting(environment);
+         !SameEnvironmentSettings(environment, m_cachedEnvironmentSettings) ||
+         submittedEnvironmentMap != m_cachedEnvironmentMap)) {
+        m_cachedEnvironmentLighting = submittedEnvironmentMap != nullptr
+            ? renderer::BuildEnvironmentLighting(*submittedEnvironmentMap)
+            : renderer::BuildEnvironmentLighting(environment);
         m_cachedEnvironmentSettings = environment;
+        m_cachedEnvironmentMap = submittedEnvironmentMap;
         m_environmentLightingCacheValid = true;
     }
     const renderer::EnvironmentLighting& environmentLighting = environment.enabled

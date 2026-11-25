@@ -91,7 +91,7 @@ impl Scene {
         let serialized = serde_json::to_string_pretty(self)
             .map_err(|error| format!("Cannot serialize scene: {error}"))?;
         let temporary = temporary_path(path);
-        fs::write(&temporary, format!("{serialized}\\n"))
+        fs::write(&temporary, format!("{serialized}\n"))
             .map_err(|error| format!("Cannot write scene: {error}"))?;
         match fs::rename(&temporary, path) {
             Ok(()) => Ok(()),

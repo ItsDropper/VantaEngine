@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <utility>
 #include <cstring>
 #include <limits>
 #include <string_view>
@@ -318,7 +320,7 @@ bool BuildPrefilteredEnvironment(const HdrEnvironmentImage& source,
     do
     {
         const std::size_t level = output.specularMips.size();
-        const float roughness = output.specularMips.size() <= 1U ? 0.0F :
+        const float roughness = output.specularMips.size() == 0U ? 0.0F :
             static_cast<float>(level) / static_cast<float>(static_cast<unsigned int>(
                 std::floor(std::log2(static_cast<float>(options.cubeSize)))));
         EnvironmentCubeMip mip;

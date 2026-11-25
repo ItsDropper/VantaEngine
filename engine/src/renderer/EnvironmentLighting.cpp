@@ -89,4 +89,73 @@ EnvironmentLighting BuildEnvironmentLighting(const EnvironmentSettings& settings
     }
     return result;
 }
+
+EnvironmentLighting BuildEnvironmentLighting(const HdrEnvironmentImage& environment) noexcept
+{
+    EnvironmentLighting result{};
+    if (!environment.IsValid())
+        return result;
+
+    constexpr unsigned int sampleCount = 4096U;
+    constexpr float goldenAngle = 2.39996322972865332F;
+    std::array<std::array<float, 3>, EnvironmentLighting::kCoefficientCount> coefficients{};
+
+    for (unsigned int i = 0; i < sampleCount; ++i)
+    {
+        const float y = 1.0F - 2.0F * (static_cast<float>(i) + 0.5F) /
+            static_cast<float>(sampleCount);
+        const float radius = std::sqrt(std::max(0.0F, 1.0F - y * y));
+        const float phi = goldenAngle * static_cast<float>(i);
+        const Float3 direction{radius * std::cos(phi), y, radius * std::sin(phi)};
+        const auto basis = Basis(direction);
+        const EnvironmentRadiance sample = SampleEquirectangular(
+            environment, direction.x, direction.y, direction.z);
+        for (std::size_t coefficient = 0; coefficient < basis.size(); ++coefficient)
+        {
+            const float weight = basis[coefficient] * (4.0F * kPi /
+                static_cast<float>(sampleCount));
+            coefficients[coefficient][0] += sample.r * weight;
+            coefficients[coefficient][1] += sample.g * weight;
+            coefficients[coefficient][2] += sample.b * weight;
+        }
+    }
+
+    constexpr std::array<float, 3> diffuseKernel{
+        kPi, 2.0F * kPi / 3.0F, kPi / 4.0F
+    };
+    for (std::size_t coefficient = 0; coefficient < coefficients.size(); ++coefficient)
+    {
+        const float kernel = coefficient == 0U ? diffuseKernel[0] :
+            (coefficient <= 3U ? diffuseKernel[1] : diffuseKernel[2]);
+        result.diffuse[coefficient] = {
+            coefficients[coefficient][0] * kernel,
+            coefficients[coefficient][1] * kernel,
+            coefficients[coefficient][2] * kernel,
+            0.0F
+        };
+    }
+
+    constexpr std::array<float, EnvironmentLighting::kSpecularLevels> roughness{
+        0.04F, 0.18F, 0.38F, 0.65F, 1.0F
+    };
+    for (std::size_t level = 0; level < roughness.size(); ++level)
+    {
+        const float alpha = roughness[level] * roughness[level];
+        const float sigma = alpha * 1.35F;
+        for (std::size_t coefficient = 0; coefficient < coefficients.size(); ++coefficient)
+        {
+            const int band = coefficient == 0U ? 0 : (coefficient <= 3U ? 1 : 2);
+            const float filter = std::exp(-0.5F *
+                static_cast<float>(band * (band + 1)) * sigma * sigma);
+            result.specular[level][coefficient] = {
+                coefficients[coefficient][0] * filter,
+                coefficients[coefficient][1] * filter,
+                coefficients[coefficient][2] * filter,
+                0.0F
+            };
+        }
+    }
+    return result;
+}
+
 }

@@ -19,8 +19,10 @@ The SDK validates geometry and materials, then writes deterministic outputs:
 - `starter_cabin.mtl`: material factors using the engine's `Kd`, `Pr`, and `Pm` support.
 - `starter_cabin.vanta-model.json`: geometry counts and SHA-256 hashes.
 
-The API currently provides `Material`, `Model.add_mesh()`, `Model.add_box()`,
-and `Model.add_cylinder()`. The renderer remains responsible for GPU upload.
+The SDK provides custom indexed meshes, boxes, cylinders, UV spheres, and planes
+with tiled UVs. UV spheres and planes export validated per-vertex normals and
+texture coordinates for the native importer. The renderer remains responsible
+for GPU upload.
 
 ## Editor
 

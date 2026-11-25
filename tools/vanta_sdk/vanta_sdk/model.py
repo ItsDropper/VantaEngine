@@ -12,6 +12,15 @@ def _name(value: str, kind: str) -> str:
         raise ValueError(f"{kind} names must match {_NAME.pattern}")
     return value
 
+def _vector2(value: Iterable[float], label: str) -> tuple[float, float]:
+    try:
+        result = tuple(float(component) for component in value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must contain two finite numbers") from exc
+    if len(result) != 2 or not all(math.isfinite(component) for component in result):
+        raise ValueError(f"{label} must contain two finite numbers")
+    return result  # type: ignore[return-value]
+
 def _vector3(value: Iterable[float], label: str) -> tuple[float, float, float]:
     try:
         result = tuple(float(component) for component in value)
@@ -107,8 +116,8 @@ class Model:
     def add_plane(self, name: str, center: Iterable[float], size: Iterable[float],
                   material: str, uv_scale: tuple[float, float] = (1.0, 1.0)) -> Mesh:
         cx, cy, cz = _vector3(center, "center")
-        sx, sz = _vector3((size[0], size[1], 1.0), "size")[:2]
-        su, sv = _vector3((uv_scale[0], uv_scale[1], 1.0), "uv_scale")[:2]
+        sx, sz = _vector2(size, "size")
+        su, sv = _vector2(uv_scale, "uv_scale")
         if sx <= 0.0 or sz <= 0.0 or su <= 0.0 or sv <= 0.0:
             raise ValueError("plane dimensions and UV scale must be positive")
         vertices = ((cx-sx/2, cy, cz-sz/2), (cx+sx/2, cy, cz-sz/2),

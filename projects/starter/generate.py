@@ -12,7 +12,7 @@ def build() -> Model:
     model.add_box("stone_foundation", (0,0.28,0), (4.9,0.56,4.1), "stone")
     model.add_box("timber_walls", (0,1.92,0), (4.55,3.0,3.8), "timber")
     model.add_box("front_door", (0,1.22,-1.93), (0.92,2.05,0.10), "paint")
-    model.add_box("door_handle", (0.34,1.2,-2.0), (0.07,0.18,0.07), "iron")
+    model.add_uv_sphere("door_knob", (0.34,1.2,-2.06), 0.075, "iron", rings=8, segments=12)
     for side,x in (("left",-1.32),("right",1.32)):
         model.add_box(f"{side}_window_glass", (x,2.12,-1.94), (0.82,0.92,0.08), "glass")
         model.add_box(f"{side}_window_sill", (x,1.62,-2.01), (1.02,0.10,0.18), "paint")

@@ -62,7 +62,13 @@ pub fn create_project(directory: impl AsRef<Path>) -> Result<Project, String> {
     let name: String = raw_name.chars().map(|character| {
         if character.is_alphanumeric() || character == '_' || character == '-' { character } else { '_' }
     }).collect();
-    let name = if name.is_empty() { "VantaProject".to_owned() } else { name };
+    let name = if name.is_empty() {
+        "VantaProject".to_owned()
+    } else if !name.chars().next().is_some_and(|character| character.is_alphabetic() || character == '_') {
+        format!("V{name}")
+    } else {
+        name
+    };
     let manifest = ProjectManifest { schema_version: 1, name, entrypoint: "generate.py".into() };
     let serialized = serde_json::to_string_pretty(&manifest)
         .map_err(|error| format!("Cannot serialize project manifest: {error}"))?;

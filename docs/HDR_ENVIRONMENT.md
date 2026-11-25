@@ -34,6 +34,6 @@ view.environmentMap = std::move(environment);
 submission.BuildFrame(view, frame);
 ```
 
-When the image identity changes, both Direct3D renderers project the HDR radiance into the existing nine-coefficient diffuse spherical-harmonic representation and five roughness-filtered specular SH levels. The result is cached by immutable image identity and uploaded through the renderer's existing scene constants. If no HDR image is supplied, the procedural environment generated from `EnvironmentSettings` remains the fallback.
+When the image identity changes, both Direct3D renderers generate a diffuse irradiance cubemap and a five-level GGX-prefiltered specular cubemap, then project those products into the existing nine-coefficient spherical-harmonic representation used by the shaders. The result is cached by immutable image identity and uploaded through the renderer's existing scene constants. If no HDR image is supplied, the procedural environment generated from `EnvironmentSettings` remains the fallback.
 
-The CPU preprocessor also exposes `BuildPrefilteredEnvironment`, which creates diffuse irradiance and GGX-prefiltered cubemap mip data. That cubemap data is not yet bound as a GPU texture by either backend; current material shading still evaluates the SH representation. This is an intentional intermediate integration stage, not a claim of full cubemap-based specular IBL.
+The CPU preprocessor exposes `BuildPrefilteredEnvironment` for callers that need the full cubemap mip data. The renderer currently projects its generated cubemap into SH rather than binding the cubemap as a GPU texture; current material shading still evaluates the SH representation. This is an intentional intermediate integration stage, not a claim of full cubemap-based specular IBL.

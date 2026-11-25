@@ -1,5 +1,7 @@
 #include "vanta/assets/TextureProcessing.hpp"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>

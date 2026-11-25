@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "name": "starter_cabin",
+  "entrypoint": "generate.py"
+}

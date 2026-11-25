@@ -75,11 +75,21 @@ jobs:
       - name: Test Release
         run: ctest --test-dir build-release --output-on-failure
 
-      - name: Upload Windows editor
+      - name: Package portable Windows editor
+        shell: pwsh
+        run: |
+          $package = "dist/VantaEngine-Editor"
+          New-Item -ItemType Directory -Force -Path "$package/resources" | Out-Null
+          Copy-Item "editor/app/target/release/vanta-editor.exe" "$package/vanta-editor.exe"
+          Copy-Item "tools/vanta_sdk" "$package/resources/vanta_sdk" -Recurse
+          Copy-Item "editor/README.md" "$package/README.md"
+          Compress-Archive -Path "$package/*" -DestinationPath "dist/VantaEngine-Editor-Windows-x64.zip" -Force
+
+      - name: Upload portable editor
         uses: actions/upload-artifact@v4
         with:
           name: vantaengine-editor-windows-x64
-          path: editor/app/target/release/vanta-editor.exe
+          path: dist/VantaEngine-Editor-Windows-x64.zip
           if-no-files-found: error
           retention-days: 30
 

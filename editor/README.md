@@ -5,25 +5,29 @@ renderer. It does not embed a browser, Chromium runtime, Python UI toolkit, or
 web frontend. The Rust application owns the window, workspace state, scene
 authoring, project navigation and asset inspection.
 
-## Build and launch
+## Run from source
 
 Install a stable Rust toolchain and Python 3.12+.
-
-From the repository root:
 
 ```powershell
 cargo run --release --manifest-path editor/app/Cargo.toml
 ```
 
-Build a Windows executable:
+## Portable Windows build
+
+The Windows CI workflow creates
+`VantaEngine-Editor-Windows-x64.zip`. Extract it and run `vanta-editor.exe`.
+The package contains the native editor, its Python authoring SDK and this
+README. Python 3.12+ must be installed on the machine. No repository checkout
+or separate SDK installation is required.
+
+For a local executable build:
 
 ```powershell
 cargo build --release --manifest-path editor/app/Cargo.toml
 ```
 
 The executable is written to `editor/app/target/release/vanta-editor.exe`.
-The Windows CI workflow publishes this executable as a downloadable build
-artifact for each successful run on `main`.
 
 ## Implemented desktop workflows
 
@@ -39,12 +43,13 @@ artifact for each successful run on `main`.
   be reopened independently of the editor.
 - Asset library populated from generated `.vanta-model.json` metadata,
   including geometry counts and exported-file inventory.
-- Background asset builds, build logs, error reporting and asset refresh.
+- Background asset builds, build logs, error reporting, a five-minute build
+  timeout and asset refresh.
 - No telemetry or account connection.
 
-The UI and project workspace are Rust. The existing Python SDK remains the
-asset-authoring/build worker. Set `VANTA_PYTHON` to choose a Python executable
-or `VANTA_SDK_PATH` to point to an installed SDK package directory.
+The Python SDK is bundled in the portable package. Set `VANTA_PYTHON` to
+choose a Python executable or `VANTA_SDK_PATH` to override the bundled SDK
+location.
 
 ## Renderer integration status
 

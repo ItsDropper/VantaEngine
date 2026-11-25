@@ -111,8 +111,9 @@ struct TemporalConstants
     float skyHorizonColor[4];
     float skyZenithColor[4];
     float environmentSunColor[4];
+    float postProcessParameters[4];
 };
-static_assert(sizeof(TemporalConstants) == 208);
+static_assert(sizeof(TemporalConstants) == 224);
 
 struct GpuDrawChunk
 {
@@ -2202,6 +2203,12 @@ void D3D12Renderer::RenderInternal(float elapsedSeconds, float cameraX, float ca
     temporalConstants.environmentSunColor[1] = environment.sunColor.y;
     temporalConstants.environmentSunColor[2] = environment.sunColor.z;
     temporalConstants.environmentSunColor[3] = environment.enabled ? 1.0F : 0.0F;
+    const renderer::PostProcessSettings postProcess = submittedScene != nullptr
+        ? submittedScene->view.postProcess : renderer::PostProcessSettings{};
+    temporalConstants.postProcessParameters[0] = postProcess.exposureCompensationEV;
+    temporalConstants.postProcessParameters[1] = postProcess.ambientOcclusionStrength;
+    temporalConstants.postProcessParameters[2] = postProcess.bloomIntensity;
+    temporalConstants.postProcessParameters[3] = postProcess.bloomThreshold;
     auto& shadowInstances = m_submittedShadowInstanceScratch;
     auto& sceneInstances = m_submittedSceneInstanceScratch;
     auto& shadowBatchDraws = m_submittedShadowBatchScratch;

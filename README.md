@@ -221,6 +221,28 @@ The D3D12 backend reports GPU timestamp averages for each shadow cascade, scene 
 11. Replace procedural placeholder assets with authored glTF environment kits and full PBR texture sets; add mouse-look, collision, and playable character movement.
 
 
+## Engine architecture and build targets
+
+The build separates the code into three independently consumable layers:
+
+- `VantaEngine::Core` contains CPU-side scene, physics, input-action, world and
+  asset systems. It has no Win32 or Direct3D link dependencies.
+- `VantaEngine::Renderer` owns D3D11/D3D12, GPU resource and submission code,
+  renderer-side geometry processing, and Windows image decoding. It depends on
+  Core, never the other way around.
+- `VantaEngine::Runtime` is the current Win32 application composition layer:
+  windowing, frame loop and selected renderer. The `VantaEngine` executable is
+  the sample application built on this target.
+
+The editor is a separate application workstream under `editor/`, not a runtime
+mode. Its dependency and ownership rules are documented in
+[`editor/ARCHITECTURE.md`](editor/ARCHITECTURE.md). No empty editor executable
+is created before project, scene-authoring and viewport workflows exist.
+
+This split is an architectural boundary, not a claim that all runtime systems
+are platform-independent yet: the current application and both graphics
+backends remain Windows-only.
+
 ### Reusable CMake runtime target
 
 The Windows runtime is also built as the `VantaEngine::Runtime` static-library target. A separate CMake project can include this repository and link the target:

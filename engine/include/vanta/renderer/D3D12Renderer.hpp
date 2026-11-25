@@ -140,6 +140,7 @@ private:
     renderer::D3D12RaytracingScene m_staticRaytracingScene;
     bool m_staticRaytracingSceneReady = false;
     renderer::EnvironmentSettings m_cachedEnvironmentSettings{};
+    const renderer::HdrEnvironmentImage* m_cachedEnvironmentMap = nullptr;
     renderer::EnvironmentLighting m_cachedEnvironmentLighting{};
     renderer::EnvironmentLighting m_emptyEnvironmentLighting{};
     bool m_environmentLightingCacheValid = false;

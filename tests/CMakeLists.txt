@@ -100,6 +100,7 @@ add_executable(VantaEngineSceneSubmissionTests
     ../engine/src/renderer/MeshletBuilder.cpp
     ../engine/src/renderer/MeshletHierarchy.cpp
     ../engine/src/renderer/EnvironmentLighting.cpp
+    ../engine/src/renderer/HdrEnvironment.cpp
 )
 vanta_configure_test(VantaEngineSceneSubmissionTests)
 add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissionTests)

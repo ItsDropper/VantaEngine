@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-and-test:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -36,11 +36,17 @@ jobs:
       - name: Format Rust editor sources
         run: cargo fmt --manifest-path editor/app/Cargo.toml --all
 
+      - name: Generate Rust dependency lockfile
+        run: cargo generate-lockfile --manifest-path editor/app/Cargo.toml
+
       - name: Test Rust editor
-        run: cargo test --manifest-path editor/app/Cargo.toml
+        run: cargo test --locked --manifest-path editor/app/Cargo.toml
+
+      - name: Lint Rust editor
+        run: cargo clippy --locked --all-targets --manifest-path editor/app/Cargo.toml -- -D warnings
 
       - name: Build Rust editor
-        run: cargo build --release --manifest-path editor/app/Cargo.toml
+        run: cargo build --locked --release --manifest-path editor/app/Cargo.toml
 
       - name: Generate starter model
         env:
@@ -68,6 +74,14 @@ jobs:
 
       - name: Test Release
         run: ctest --test-dir build-release --output-on-failure
+
+      - name: Upload Windows editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: vantaengine-editor-windows-x64
+          path: editor/app/target/release/vanta-editor.exe
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload generated model
         uses: actions/upload-artifact@v4

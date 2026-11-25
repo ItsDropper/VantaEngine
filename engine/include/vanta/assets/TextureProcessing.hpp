@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vanta/assets/WicTextureLoader.hpp"
+#include "vanta/assets/CpuTexture.hpp"
 
 #include <cstdint>
 #include <filesystem>

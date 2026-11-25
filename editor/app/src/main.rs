@@ -411,7 +411,7 @@ impl EditorApp {
         ].spacing(12)).width(Length::Fill).height(Length::Fill).into()
     }
 
-    fn entity_inspector(&self, entity: &SceneEntity) -> Element<'_, Message> {
+    fn entity_inspector<'a>(&'a self, entity: &'a SceneEntity) -> Element<'a, Message> {
         let mut panel = column![
             text("INSPECTOR").size(10).color(Color::from_rgb8(126, 143, 164)),
             text(&entity.kind).size(10).color(self.accent_color()),

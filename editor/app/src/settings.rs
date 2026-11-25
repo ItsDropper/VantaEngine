@@ -28,7 +28,7 @@ impl EditorSettings {
         self.save();
     }
 
-    fn push_project(&mut self, path: &PathBuf) {
+    fn push_project(&mut self, path: &Path) {
         let value = path.to_string_lossy().into_owned();
         self.recent_projects.retain(|item| item != &value);
         self.recent_projects.insert(0, value);

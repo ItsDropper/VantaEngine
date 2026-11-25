@@ -116,6 +116,7 @@ struct FrameView
     float elapsedSeconds = 0.0F;
     std::uint64_t frameNumber = 0;
     EnvironmentSettings environment{};
+    // Immutable decoded Radiance image; retained by SceneFrame snapshots and cached by renderers.
     std::shared_ptr<const HdrEnvironmentImage> environmentMap;
     PostProcessSettings postProcess{};
     std::array<PointLight, MaximumPointLightsPerFrame> pointLights{};

@@ -10,6 +10,7 @@ end; no empty executable or placeholder UI is registered with CMake.
 | Area | Owns | Must not own |
 | --- | --- | --- |
 | Engine Core (`VantaEngine::Core`) | Scene/entity state, transforms, physics, input action maps, CPU assets, procedural-world data and deterministic runtime services | Window creation, graphics devices, GPU allocations, editor selection or panels |
+| Asset Pipeline (`VantaEngine::AssetPipeline`) | Texture processing and Windows-backed image/file adapters | Graphics devices, GPU resource ownership or editor state |
 | GPU / Renderer (`VantaEngine::Renderer`) | D3D11/D3D12 devices, command submission, GPU resources, shaders, render passes, scene upload and presentation | Gameplay rules, persistent editor state, project UX or scene-authoring policy |
 | Runtime (`VantaEngine::Runtime`) | Current Win32 application composition and frame loop | Editor-only dependencies or editor state |
 | Editor (future application) | Project/workspace lifecycle, scene hierarchy, inspectors, asset browser, viewport interaction, gizmos, play/stop workflow and authoring UX | Private D3D backend types, direct GPU resource ownership, duplicate scene/entity model |
@@ -18,8 +19,10 @@ end; no empty executable or placeholder UI is registered with CMake.
 
 - Core is the lowest-level runtime target and must remain free of Win32 and D3D
   headers/link libraries.
-- Renderer may depend on Core and translates immutable scene/frame data into
-  backend resources and GPU work.
+- Asset Pipeline may depend on Core for CPU asset types and provides platform
+  image/file adapters without pulling graphics APIs into Core.
+- Renderer may depend on Core and Asset Pipeline, and translates immutable
+  scene/frame data into backend resources and GPU work.
 - Runtime composes Core, platform services and a renderer for the sample app.
 - The future editor is a separate executable. It consumes Core authoring APIs
   and a stable renderer viewport interface; it must not make Core depend on

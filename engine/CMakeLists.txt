@@ -9,13 +9,28 @@ set(VANTA_CORE_SOURCES
     src/assets/ObjLoader.cpp
     src/assets/ModelAssetStore.cpp
     src/assets/GltfLoader.cpp
-    src/assets/TextureProcessing.cpp
 )
 
 add_library(VantaEngineCore STATIC ${VANTA_CORE_SOURCES})
 add_library(VantaEngine::Core ALIAS VantaEngineCore)
 target_compile_features(VantaEngineCore PUBLIC cxx_std_23)
 target_include_directories(VantaEngineCore PUBLIC include)
+
+# CPU asset transforms and Windows-backed asset I/O are separate from both the
+# platform-neutral Core and the graphics renderer.
+add_library(VantaEngineAssetPipeline STATIC
+    src/assets/TextureProcessing.cpp
+    src/assets/WicTextureLoader.cpp
+)
+add_library(VantaEngine::AssetPipeline ALIAS VantaEngineAssetPipeline)
+target_compile_features(VantaEngineAssetPipeline PUBLIC cxx_std_23)
+target_include_directories(VantaEngineAssetPipeline PUBLIC include)
+target_compile_definitions(VantaEngineAssetPipeline PRIVATE
+    WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
+)
+target_link_libraries(VantaEngineAssetPipeline PUBLIC
+    VantaEngine::Core windowscodecs ole32
+)
 
 # GPU/renderer owns graphics backends, GPU resource management, renderer-side
 # scene submission, mesh preprocessing, and platform image decoding.
@@ -34,15 +49,14 @@ set(VANTA_RENDERER_SOURCES
     src/renderer/NvidiaStreamline.cpp
     src/renderer/NvidiaAftermath.cpp
     src/renderer/D3D12RaytracingScene.cpp
-    src/assets/WicTextureLoader.cpp
 )
 
 add_library(VantaEngineRenderer STATIC ${VANTA_RENDERER_SOURCES})
 add_library(VantaEngine::Renderer ALIAS VantaEngineRenderer)
 target_compile_features(VantaEngineRenderer PUBLIC cxx_std_23)
 target_include_directories(VantaEngineRenderer PUBLIC include)
-target_link_libraries(VantaEngineRenderer PUBLIC VantaEngine::Core
-    d3d11 d3d12 dxgi d3dcompiler windowscodecs ole32)
+target_link_libraries(VantaEngineRenderer PUBLIC VantaEngine::Core VantaEngine::AssetPipeline
+    d3d11 d3d12 dxgi d3dcompiler)
 
 get_filename_component(VANTA_ENGINE_ASSET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../assets" ABSOLUTE)
 target_compile_definitions(VantaEngineRenderer PRIVATE
@@ -92,6 +106,7 @@ function(vanta_configure_engine_target target_name)
 endfunction()
 
 vanta_configure_engine_target(VantaEngineCore)
+vanta_configure_engine_target(VantaEngineAssetPipeline)
 vanta_configure_engine_target(VantaEngineRenderer)
 vanta_configure_engine_target(VantaEngineRuntime)
 

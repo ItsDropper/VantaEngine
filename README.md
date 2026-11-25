@@ -227,9 +227,11 @@ The build separates the code into three independently consumable layers:
 
 - `VantaEngine::Core` contains CPU-side scene, physics, input-action, world and
   asset systems. It has no Win32 or Direct3D link dependencies.
+- `VantaEngine::AssetPipeline` contains texture processing and Windows-backed
+  image/file adapters. It depends on Core but has no graphics API dependency.
 - `VantaEngine::Renderer` owns D3D11/D3D12, GPU resource and submission code,
-  renderer-side geometry processing, and Windows image decoding. It depends on
-  Core, never the other way around.
+  and renderer-side geometry processing. It depends on Core and AssetPipeline,
+  never the other way around.
 - `VantaEngine::Runtime` is the current Win32 application composition layer:
   windowing, frame loop and selected renderer. The `VantaEngine` executable is
   the sample application built on this target.

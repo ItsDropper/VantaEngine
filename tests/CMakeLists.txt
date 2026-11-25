@@ -102,7 +102,7 @@ add_test(NAME VantaEngine.SceneSubmissionTests COMMAND VantaEngineSceneSubmissio
 
 add_executable(VantaEngineTextureProcessingTests texture_processing_tests.cpp)
 vanta_configure_test(VantaEngineTextureProcessingTests)
-target_link_libraries(VantaEngineTextureProcessingTests PRIVATE VantaEngine::Core)
+target_link_libraries(VantaEngineTextureProcessingTests PRIVATE VantaEngine::AssetPipeline)
 add_test(NAME VantaEngine.TextureProcessingTests COMMAND VantaEngineTextureProcessingTests)
 
 add_executable(VantaEngineShaderValidationTests

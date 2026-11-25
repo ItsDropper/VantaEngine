@@ -97,7 +97,7 @@ class Model:
         rx, ry, rz = _vector3(rotation, "rotation")
         if min(sx, sy, sz) <= 0.0:
             raise ValueError("box dimensions must be positive")
-        vertices = []
+        corners = []
         for x, y, z in (
             (-sx/2, -sy/2, -sz/2), (sx/2, -sy/2, -sz/2),
             (sx/2, sy/2, -sz/2), (-sx/2, sy/2, -sz/2),
@@ -107,11 +107,29 @@ class Model:
             x, y = x*math.cos(rx)-y*math.sin(rx), x*math.sin(rx)+y*math.cos(rx)
             y, z = y*math.cos(ry)-z*math.sin(ry), y*math.sin(ry)+z*math.cos(ry)
             x, z = x*math.cos(rz)-z*math.sin(rz), x*math.sin(rz)+z*math.cos(rz)
-            vertices.append((cx+x, cy+y, cz+z))
-        return self.add_mesh(name, vertices, (
-            (0,3,2,1), (4,5,6,7), (0,1,5,4),
-            (3,7,6,2), (0,4,7,3), (1,2,6,5),
-        ), material)
+            corners.append((cx+x, cy+y, cz+z))
+        faces = ((0,3,2,1), (4,5,6,7), (0,1,5,4),
+                 (3,7,6,2), (0,4,7,3), (1,2,6,5))
+        vertices, normals, uvs, output_faces = [], [], [], []
+        face_uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+        for face in faces:
+            a, b, d = corners[face[0]], corners[face[1]], corners[face[2]]
+            ab = (b[0]-a[0], b[1]-a[1], b[2]-a[2])
+            ad = (d[0]-a[0], d[1]-a[1], d[2]-a[2])
+            normal = (ab[1]*ad[2]-ab[2]*ad[1],
+                      ab[2]*ad[0]-ab[0]*ad[2],
+                      ab[0]*ad[1]-ab[1]*ad[0])
+            length = math.sqrt(sum(value*value for value in normal))
+            if length <= 1.0e-12:
+                raise ValueError("box rotation produced degenerate geometry")
+            normal = tuple(value/length for value in normal)
+            first = len(vertices)
+            for corner, uv in zip(face, face_uvs):
+                vertices.append(corners[corner])
+                normals.append(normal)
+                uvs.append(uv)
+            output_faces.append(tuple(range(first, first+4)))
+        return self.add_mesh(name, vertices, output_faces, material, normals=normals, uvs=uvs)
 
     def add_plane(self, name: str, center: Iterable[float], size: Iterable[float],
                   material: str, uv_scale: tuple[float, float] = (1.0, 1.0)) -> Mesh:

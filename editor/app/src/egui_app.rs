@@ -170,13 +170,13 @@ impl EditorApp {
     }
 
     fn add_entity(&mut self, kind: &'static str) {
-        if let Some(scene) = &mut self.scene {
-            let label = match kind {
-                "Camera" => "Camera",
-                "PointLight" => "Point Light",
-                _ => "Cube",
-            };
-            let id = scene.add_entity(label, kind);
+        let label = match kind {
+            "Camera" => "Camera",
+            "PointLight" => "Point Light",
+            _ => "Cube",
+        };
+        let id = self.scene.as_mut().map(|scene| scene.add_entity(label, kind));
+        if let Some(id) = id {
             self.selected_entity = Some(id);
             self.entity_name_draft = label.into();
             self.persist_scene();
@@ -184,10 +184,12 @@ impl EditorApp {
     }
 
     fn duplicate_entity(&mut self) {
-        if let (Some(scene), Some(selected)) = (&mut self.scene, self.selected_entity) {
-            self.selected_entity = scene.duplicate_entity(selected);
-            self.entity_name_draft = self.selected_entity
-                .and_then(|id| scene.entities.iter().find(|entity| entity.id == id))
+        let duplicate = self.scene.as_mut()
+            .and_then(|scene| self.selected_entity.and_then(|selected| scene.duplicate_entity(selected)));
+        if let Some(id) = duplicate {
+            self.selected_entity = Some(id);
+            self.entity_name_draft = self.scene.as_ref()
+                .and_then(|scene| scene.entities.iter().find(|entity| entity.id == id))
                 .map(|entity| entity.name.clone())
                 .unwrap_or_default();
             self.persist_scene();
@@ -195,8 +197,9 @@ impl EditorApp {
     }
 
     fn delete_entity(&mut self) {
-        if let (Some(scene), Some(selected)) = (&mut self.scene, self.selected_entity) {
-            scene.remove_entity(selected);
+        let removed = self.scene.as_mut()
+            .is_some_and(|scene| self.selected_entity.is_some_and(|id| scene.remove_entity(id)));
+        if removed {
             self.selected_entity = None;
             self.entity_name_draft.clear();
             self.persist_scene();
@@ -245,7 +248,7 @@ impl EditorApp {
         }
     }
 
-    fn open_file(&mut self, path: PathBuf) {
+    fn open_file(&self, path: PathBuf) {
         open_in_system_editor(&path);
     }
 
@@ -377,6 +380,8 @@ impl EditorApp {
                 ui.add_space(5.0);
                 section_label(ui, "INSPECTOR");
                 let mut dirty = false;
+                let mut duplicate = false;
+                let mut delete = false;
                 if let Some(selected) = self.selected_entity {
                     if let Some(scene) = &mut self.scene {
                         if let Some(entity) = scene.entities.iter_mut().find(|entity| entity.id == selected) {
@@ -397,8 +402,8 @@ impl EditorApp {
                     }
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Duplicate").clicked() { self.duplicate_entity(); }
-                        if ui.button("Delete").clicked() { self.delete_entity(); }
+                        duplicate = ui.button("Duplicate").clicked();
+                        delete = ui.button("Delete").clicked();
                     });
                 } else {
                     ui.add_space(14.0);
@@ -407,6 +412,8 @@ impl EditorApp {
                         .size(11.0).color(muted()));
                 }
                 if dirty { self.persist_scene(); }
+                if duplicate { self.duplicate_entity(); }
+                if delete { self.delete_entity(); }
             });
     }
 

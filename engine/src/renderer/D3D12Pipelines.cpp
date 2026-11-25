@@ -1103,6 +1103,7 @@ cbuffer TemporalConstants : register(b1)
     float4 skyHorizonColor;
     float4 skyZenithColor;
     float4 environmentSunColor;
+    float4 postProcessParameters;
 };
 float3 ResolvedColor(float2 uv)
 {
@@ -1150,7 +1151,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         float3 solarDisc = lerp(defaultSolarDisc, environmentSunColor.rgb, customEnvironment);
         sky += solarDisc * (sun * 7.0 * daylight + halo * 0.8 * saturate(daylight + 0.18));
         sky += float3(0.12, 0.16, 0.24) * horizon * daylight;
-        return float4(pow(ACES(max(sky, 0.0)), 1.0 / 2.2), 1.0);
+        return float4(pow(ACES(max(sky, 0.0) *
+            exp2(postProcessParameters.x)), 1.0 / 2.2), 1.0);
     }
     uint width, height;
     hdrScene.GetDimensions(width, height);
@@ -1208,7 +1210,8 @@ float4 PSMain(VSOut input) : SV_TARGET
         horizonOcclusion += directionalOcclusion * directionalOcclusion;
         horizonWeight += 1.0;
     }
-    float ao = 1.0 - saturate(horizonOcclusion / max(horizonWeight, 1.0)) * 0.62;
+    float ao = 1.0 - saturate(horizonOcclusion / max(horizonWeight, 1.0)) *
+        saturate(postProcessParameters.y);
     color *= ao;
     float3 bloom = 0.0;
     [unroll] for (int y = -1; y <= 1; ++y)
@@ -1218,13 +1221,14 @@ float4 PSMain(VSOut input) : SV_TARGET
             float3 sampleColor = ResolvedColor(
                 saturate(input.uv + float2(x, y) * texel * 4.0));
             float luminance = dot(sampleColor, float3(0.2126, 0.7152, 0.0722));
-            bloom += sampleColor * smoothstep(1.0, 2.8, luminance);
+            bloom += sampleColor * smoothstep(postProcessParameters.w,
+                postProcessParameters.w * 2.8, luminance);
         }
     }
-    color += bloom * (0.45 / 9.0);
+    color += bloom * (postProcessParameters.z / 9.0);
     // Keep display transform channel-neutral; tint correction belongs in lighting,
     // not in a global per-channel multiplier applied to every material.
-    color = ACES(color * 1.05);
+    color = ACES(color * exp2(postProcessParameters.x));
     color = pow(max(color, 0.0), 1.0 / 2.2);
     return float4(color, 1.0);
 }

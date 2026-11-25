@@ -2289,10 +2289,12 @@ void D3D11Renderer::Render(const float elapsedSeconds, const float cameraX, cons
         cameraDeltaZ * cameraDeltaZ > 9.0F;
     temporalConstants.previousViewProjection = m_previousViewProjection;
     temporalConstants.historyValid = (m_historyValid && inverseValid && !cameraCut) ? 1U : 0U;
-    temporalConstants.postProcessParameters[0] = submittedScene->view.postProcess.exposureCompensationEV;
-    temporalConstants.postProcessParameters[1] = submittedScene->view.postProcess.ambientOcclusionStrength;
-    temporalConstants.postProcessParameters[2] = submittedScene->view.postProcess.bloomIntensity;
-    temporalConstants.postProcessParameters[3] = submittedScene->view.postProcess.bloomThreshold;
+    const renderer::PostProcessSettings postProcess = submittedScene != nullptr
+        ? submittedScene->view.postProcess : renderer::PostProcessSettings{};
+    temporalConstants.postProcessParameters[0] = postProcess.exposureCompensationEV;
+    temporalConstants.postProcessParameters[1] = postProcess.ambientOcclusionStrength;
+    temporalConstants.postProcessParameters[2] = postProcess.bloomIntensity;
+    temporalConstants.postProcessParameters[3] = postProcess.bloomThreshold;
     D3D11_MAPPED_SUBRESOURCE temporalMapped{};
     if (SUCCEEDED(m_context->Map(m_postProcessTemporalBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &temporalMapped))) {
         *static_cast<TemporalConstants*>(temporalMapped.pData) = temporalConstants;

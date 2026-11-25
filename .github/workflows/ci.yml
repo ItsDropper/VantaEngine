@@ -28,6 +28,9 @@ jobs:
           PYTHONPATH: tools/vanta_sdk
         run: python -m unittest discover -s tools/vanta_sdk/tests -v
 
+      - name: Test editor project workflow
+        run: python editor/vanta_editor.py --self-test
+
       - name: Generate starter model
         env:
           PYTHONPATH: tools/vanta_sdk

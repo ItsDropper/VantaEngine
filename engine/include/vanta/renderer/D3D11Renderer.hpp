@@ -134,6 +134,7 @@ private:
     UINT m_modelIndexCount = 0;
     renderer::SubmittedSceneGeometryCache m_submittedGeometryCache;
     renderer::EnvironmentSettings m_cachedEnvironmentSettings{};
+    const renderer::HdrEnvironmentImage* m_cachedEnvironmentMap = nullptr;
     renderer::EnvironmentLighting m_cachedEnvironmentLighting{};
     renderer::EnvironmentLighting m_emptyEnvironmentLighting{};
     bool m_environmentLightingCacheValid = false;

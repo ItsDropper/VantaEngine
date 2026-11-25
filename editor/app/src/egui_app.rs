@@ -442,24 +442,23 @@ impl EditorApp {
 }
 
 impl eframe::App for EditorApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_build();
         if self.build_running {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
 
-        self.toolbar(&ctx);
-        self.status_bar(&ctx);
-        self.left_sidebar(&ctx);
-        self.right_inspector(&ctx);
-        self.show_error(&ctx);
+        self.toolbar(ctx);
+        self.status_bar(ctx);
+        self.left_sidebar(ctx);
+        self.right_inspector(ctx);
+        self.show_error(ctx);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new()
                 .fill(Color32::from_rgba_unmultiplied(8, 13, 22, 118))
                 .inner_margin(egui::Margin::same(10)))
-            .show(&ctx, |ui| {
+            .show(ctx, |ui| {
                 let mut viewer = WorkspaceTabViewer {
                     scene: &self.scene,
                     assets: &self.assets,

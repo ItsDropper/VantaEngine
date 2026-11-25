@@ -1,4 +1,5 @@
 mod assets;
+mod backdrop;
 mod build;
 mod project;
 mod scene;
@@ -204,8 +205,9 @@ impl EditorApp {
     fn view(&self) -> Element<'_, Message> {
         let header = row![
             column![
-                text("VANTAENGINE").size(11).color(self.accent_color()),
-                text("Editor").size(25),
+                text("V A N T A  /  ENGINE").size(10).color(self.accent_color()),
+                text("Studio").size(27),
+                text("NATIVE 3D AUTHORING WORKSPACE").size(9).color(Color::from_rgb8(135, 151, 174)),
             ].spacing(1),
             horizontal_space(),
             button("New project").on_press(Message::NewProject),
@@ -229,9 +231,11 @@ impl EditorApp {
         ].spacing(18).align_y(Alignment::Center);
 
         let mut layout = column![
-            container(header).padding([15, 20]).width(Length::Fill),
+            container(header).padding([16, 22]).width(Length::Fill)
+                .style(|_| panel_style(Color::from_rgb8(18, 25, 38))),
             row![sidebar, content].height(Length::Fill).spacing(0),
-            container(status).padding([9, 20]).width(Length::Fill),
+            container(status).padding([10, 22]).width(Length::Fill)
+                .style(|_| panel_style(Color::from_rgb8(14, 20, 30))),
         ].spacing(0).width(Length::Fill).height(Length::Fill);
 
         if let Some(error) = &self.error {
@@ -273,7 +277,7 @@ impl EditorApp {
                 }
             }
         }
-        container(scrollable(sidebar)).width(Length::Fixed(238.0)).height(Length::Fill).padding(14)
+        container(scrollable(sidebar)).width(Length::Fixed(252.0)).height(Length::Fill).padding(16)
             .style(|_| panel_style(Color::from_rgb8(19, 24, 32))).into()
     }
 
@@ -625,7 +629,7 @@ impl EditorApp {
 
     fn theme(&self) -> Theme {
         Theme::custom("Vanta".into(), iced::theme::Palette {
-            background: Color::from_rgb8(13, 17, 23),
+            background: Color::from_rgba8(8, 12, 20, 0.72),
             text: Color::from_rgb8(232, 237, 245),
             primary: self.accent_color(),
             success: Color::from_rgb8(75, 196, 145),
@@ -708,7 +712,12 @@ fn empty_state(title: &'static str, description: &'static str) -> Element<'stati
 fn panel_style(color: Color) -> container::Style {
     container::Style {
         background: Some(Background::Color(color)),
-        border: Border { color: Color::from_rgb8(42, 52, 67), width: 1.0, radius: 8.0.into() },
+        border: Border {
+            color: Color::from_rgba8(142, 170, 215, 0.18),
+            width: 1.0,
+            radius: 14.0.into(),
+        },
+        background: Some(Background::Color(color.scale_alpha(0.80))),
         ..container::Style::default()
     }
 }
@@ -731,9 +740,16 @@ fn open_in_system_editor(path: &Path) {
 }
 
 fn main() -> iced::Result {
+    backdrop::install();
     iced::application("VantaEngine Editor", EditorApp::update, EditorApp::view)
         .subscription(EditorApp::subscription)
         .theme(EditorApp::theme)
-        .window_size(iced::Size::new(1500.0, 940.0))
+        .style(|_, _| iced::theme::Style {
+            background_color: Color::from_rgba8(7, 11, 19, 0.56),
+            text_color: Color::from_rgb8(232, 238, 248),
+        })
+        .transparent(true)
+        .window_size(iced::Size::new(1560.0, 980.0))
+        .centered()
         .run()
 }

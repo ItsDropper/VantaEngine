@@ -287,6 +287,17 @@ impl EditorApp {
                 ui.label(RichText::new(self.project.as_ref().map(|p| p.name.as_str()).unwrap_or("NO PROJECT"))
                     .size(16.0).strong());
                 ui.add_space(14.0);
+                ui.add_space(14.0);
+                section_label(ui, "ENTRYPOINT");
+                if let Some(project) = &self.project {
+                    let entrypoint = project.entrypoint.strip_prefix(&project.root)
+                        .unwrap_or(&project.entrypoint);
+                    ui.label(RichText::new(entrypoint.display().to_string())
+                        .size(11.0).color(muted()));
+                } else {
+                    ui.label(RichText::new("No project loaded").size(11.0).color(muted()));
+                }
+
 
                 section_label(ui, "SCENE HIERARCHY");
                 if let Some(scene) = &self.scene {
@@ -494,7 +505,7 @@ impl TabViewer for WorkspaceTabViewer<'_> {
     type Tab = WorkspaceTab;
 
     fn id(&mut self, tab: &mut Self::Tab) -> Id {
-        Id::new(*tab)
+        Id::unique(*tab)
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
@@ -600,6 +611,8 @@ fn assets_panel(ui: &mut egui::Ui, assets: &[AssetRecord], selected: &mut Option
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             ui.label(RichText::new(&asset.metadata.model).strong().size(14.0));
+                            ui.label(RichText::new(format!("SCHEMA v{}", asset.metadata.schema_version))
+                                .size(9.0).color(muted()));
                             ui.label(RichText::new(asset.metadata.files.keys().cloned().collect::<Vec<_>>().join("  ·  "))
                                 .size(10.0).color(muted()));
                         });

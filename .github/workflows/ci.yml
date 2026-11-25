@@ -28,8 +28,19 @@ jobs:
           PYTHONPATH: tools/vanta_sdk
         run: python -m unittest discover -s tools/vanta_sdk/tests -v
 
-      - name: Test editor project workflow
-        run: python editor/vanta_editor.py --self-test
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust editor formatting
+        run: cargo fmt --manifest-path editor/app/Cargo.toml --all -- --check
+
+      - name: Test Rust editor
+        run: cargo test --manifest-path editor/app/Cargo.toml
+
+      - name: Build Rust editor
+        run: cargo build --release --manifest-path editor/app/Cargo.toml
 
       - name: Generate starter model
         env:

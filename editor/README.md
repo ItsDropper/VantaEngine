@@ -1,38 +1,55 @@
 # VantaEngine Editor
 
-The first usable editor application is a standalone Python/Tk desktop workspace.
-It is intentionally a client of the project manifest and Python authoring SDK;
-it does not depend on private renderer implementation details.
+The editor is a native Rust desktop application built with Iced and its `wgpu`
+renderer. It does not embed a browser, Chromium runtime, Python UI toolkit, or
+web frontend. Iced uses a declarative state/message/view architecture and
+renders through the platform graphics backend.
 
-## Launch
+## Build and launch
+
+Install a stable Rust toolchain and Python 3.12+.
 
 From the repository root:
 
 ```powershell
-python editor/vanta_editor.py
+cargo run --release --manifest-path editor/app/Cargo.toml
 ```
 
-Open an existing project or create a new one. The workspace provides:
-
-- Project creation and manifest validation.
-- Project file browsing; double-click a file to open it in the system editor.
-- A one-click Python asset build using the repository SDK.
-- Generated model inventory with mesh, vertex, triangle and material counts.
-- Build output and per-asset metadata inspection.
-
-The editor uses Python's standard-library Tk interface. No third-party Python
-packages are required. Python must be installed with Tk support.
-
-## Authoring model assets
-
-Edit the project's `generate.py` entrypoint. Its `build()` function returns
-a validated `vanta_sdk.Model`. The editor invokes the same command used in CI:
+Build a distributable executable:
 
 ```powershell
-$env:PYTHONPATH = "tools/vanta_sdk"
-python -m vanta_sdk build --project projects/starter --output build/generated
+cargo build --release --manifest-path editor/app/Cargo.toml
 ```
 
-Generated OBJ/MTL files are consumed by the engine's native importer. The
-editor is a project/asset workbench, not yet a live in-engine viewport or
-visual node editor; those require the renderer's public viewport integration.
+The executable is written to `editor/app/target/release/vanta-editor.exe`
+on Windows.
+
+## Implemented functionality
+
+- Native window and GPU-rendered UI with a dark Vanta theme.
+- Native folder dialogs to create and open projects.
+- Project manifest validation and canonicalized entrypoint containment.
+- Bounded project file browser with system-editor file opening.
+- Asset library populated from generated `.vanta-model.json` metadata.
+- Geometry statistics and exported-file inventory.
+- Background asset builds that do not block UI event processing.
+- Build output, failure reporting, and asset refresh after successful builds.
+
+The UI and project workspace are Rust. The existing Python SDK remains the
+asset-authoring/build worker. Set `VANTA_PYTHON` to choose a Python executable
+or `VANTA_SDK_PATH` to point to an installed SDK package directory.
+
+## Renderer integration status
+
+The current editor does not yet embed a live engine viewport. The runtime is
+currently composed around a Win32 D3D11/D3D12 window, and the renderer does not
+yet expose a public offscreen viewport surface. The viewport milestone must
+introduce an explicit renderer-owned surface/frame contract; editor panels
+must never own D3D12 devices or include private backend headers.
+
+## UI technology choice
+
+OneClient uses PolyCompose, a Kotlin/Jetpack Compose UI library designed for
+Minecraft screens. That framework is not a Rust desktop dependency. Iced is
+the Rust-native choice: declarative view composition, explicit state/message
+updates, native windowing, and a wgpu renderer.

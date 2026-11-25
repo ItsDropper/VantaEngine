@@ -69,6 +69,10 @@ contract; editor panels must never own D3D12 devices or include private backend
 headers. Camera and light entity kinds are authorable in scene documents, but
 their runtime component contracts are not yet connected.
 
+## Visual system
+
+The editor uses translucent, bordered surfaces over a dark workspace. On Windows 11 (build 22621 or newer), a small native Win32 integration asks Desktop Window Manager for the system Mica backdrop and rounded window corners; unsupported systems fall back to the same dark in-app surface styling. The native effect is compositor-owned rather than a simulated blur shader. Linux and macOS currently use their standard window compositor with the in-app translucent surfaces.
+
 ## UI technology
 
 OneClient uses PolyCompose, a Kotlin/Jetpack Compose UI library designed for

@@ -44,6 +44,8 @@ class Mesh:
     material: str
     vertices: list[tuple[float, float, float]]
     faces: list[tuple[int, ...]]
+    normals: list[tuple[float, float, float]] = field(default_factory=list)
+    uvs: list[tuple[float, float]] = field(default_factory=list)
 
 @dataclass
 class Model:
@@ -63,7 +65,9 @@ class Model:
         return material
 
     def add_mesh(self, name: str, vertices: Iterable[Iterable[float]],
-                 faces: Iterable[Iterable[int]], material: str) -> Mesh:
+                 faces: Iterable[Iterable[int]], material: str, *,
+                 normals: Iterable[Iterable[float]] | None = None,
+                 uvs: Iterable[Iterable[float]] | None = None) -> Mesh:
         _name(name, "Mesh")
         if any(mesh.name == name for mesh in self.meshes):
             raise ValueError(f"duplicate mesh: {name}")
@@ -71,7 +75,9 @@ class Model:
             raise ValueError(f"unknown material: {material}")
         mesh = Mesh(name, material,
                     [_vector3(vertex, f"{name} vertex") for vertex in vertices],
-                    [tuple(int(index) for index in face) for face in faces])
+                    [tuple(int(index) for index in face) for face in faces],
+                    [_vector3(normal, f"{name} normal") for normal in normals] if normals is not None else [],
+                    [tuple(float(value) for value in uv) for uv in uvs] if uvs is not None else [])
         self.meshes.append(mesh)
         return mesh
 
@@ -97,6 +103,49 @@ class Model:
             (0,3,2,1), (4,5,6,7), (0,1,5,4),
             (3,7,6,2), (0,4,7,3), (1,2,6,5),
         ), material)
+
+    def add_plane(self, name: str, center: Iterable[float], size: Iterable[float],
+                  material: str, uv_scale: tuple[float, float] = (1.0, 1.0)) -> Mesh:
+        cx, cy, cz = _vector3(center, "center")
+        sx, sz = _vector3((size[0], size[1], 1.0), "size")[:2]
+        su, sv = _vector3((uv_scale[0], uv_scale[1], 1.0), "uv_scale")[:2]
+        if sx <= 0.0 or sz <= 0.0 or su <= 0.0 or sv <= 0.0:
+            raise ValueError("plane dimensions and UV scale must be positive")
+        vertices = ((cx-sx/2, cy, cz-sz/2), (cx+sx/2, cy, cz-sz/2),
+                    (cx+sx/2, cy, cz+sz/2), (cx-sx/2, cy, cz+sz/2))
+        return self.add_mesh(name, vertices, ((0, 2, 1), (0, 3, 2)), material,
+                             normals=((0, 1, 0),)*4,
+                             uvs=((0, 0), (su, 0), (su, sv), (0, sv)))
+
+    def add_uv_sphere(self, name: str, center: Iterable[float], radius: float,
+                      material: str, rings: int = 16, segments: int = 32) -> Mesh:
+        cx, cy, cz = _vector3(center, "center")
+        if not math.isfinite(radius) or radius <= 0.0:
+            raise ValueError("sphere radius must be positive and finite")
+        if not isinstance(rings, int) or not 3 <= rings <= 256:
+            raise ValueError("sphere rings must be between 3 and 256")
+        if not isinstance(segments, int) or not 3 <= segments <= 512:
+            raise ValueError("sphere segments must be between 3 and 512")
+        vertices, normals, uvs, faces = [], [], [], []
+        for row in range(rings + 1):
+            phi = math.pi * row / rings
+            for column in range(segments + 1):
+                theta = 2.0 * math.pi * column / segments
+                normal = (math.sin(phi)*math.cos(theta), math.cos(phi),
+                          math.sin(phi)*math.sin(theta))
+                normals.append(normal)
+                vertices.append((cx+radius*normal[0], cy+radius*normal[1], cz+radius*normal[2]))
+                uvs.append((column/segments, 1.0-row/rings))
+        stride = segments + 1
+        for row in range(rings):
+            for column in range(segments):
+                a = row*stride+column
+                b, c, d = a+1, a+stride+1, a+stride
+                if row > 0:
+                    faces.append((a, b, d))
+                if row < rings-1:
+                    faces.append((b, c, d))
+        return self.add_mesh(name, vertices, faces, material, normals=normals, uvs=uvs)
 
     def add_cylinder(self, name: str, center: Iterable[float], radius: float,
                      height: float, material: str, segments: int = 16) -> Mesh:
@@ -134,8 +183,18 @@ class Model:
                 raise ValueError(f"mesh {mesh.name} references unknown material {mesh.material}")
             if len(mesh.vertices) < 3 or not mesh.faces:
                 raise ValueError(f"mesh {mesh.name} has no renderable geometry")
+            if mesh.normals and len(mesh.normals) != len(mesh.vertices):
+                raise ValueError(f"mesh {mesh.name} normal count must match vertex count")
+            if mesh.uvs and len(mesh.uvs) != len(mesh.vertices):
+                raise ValueError(f"mesh {mesh.name} UV count must match vertex count")
             for vertex in mesh.vertices:
                 _vector3(vertex, f"{mesh.name} vertex")
+            for normal in mesh.normals:
+                if sum(value*value for value in _vector3(normal, f"{mesh.name} normal")) <= 1.0e-12:
+                    raise ValueError(f"mesh {mesh.name} contains a zero normal")
+            for uv in mesh.uvs:
+                if len(uv) != 2 or not all(math.isfinite(float(value)) for value in uv):
+                    raise ValueError(f"mesh {mesh.name} contains an invalid UV")
             for face in mesh.faces:
                 if len(face) < 3 or len(set(face)) != len(face):
                     raise ValueError(f"mesh {mesh.name} contains an invalid face")

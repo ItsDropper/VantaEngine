@@ -388,9 +388,17 @@ bool ValidateFrameView(const FrameView& view, std::string& error)
     if (!IsFiniteMatrix(view.view) || !IsFiniteMatrix(view.projection) ||
         !std::isfinite(view.cameraPosition.x) || !std::isfinite(view.cameraPosition.y) ||
         !std::isfinite(view.cameraPosition.z) || !std::isfinite(view.elapsedSeconds) ||
+        !std::isfinite(view.postProcess.exposureCompensationEV) ||
+        view.postProcess.exposureCompensationEV < -8.0F || view.postProcess.exposureCompensationEV > 8.0F ||
+        !std::isfinite(view.postProcess.ambientOcclusionStrength) ||
+        view.postProcess.ambientOcclusionStrength < 0.0F || view.postProcess.ambientOcclusionStrength > 1.0F ||
+        !std::isfinite(view.postProcess.bloomIntensity) ||
+        view.postProcess.bloomIntensity < 0.0F || view.postProcess.bloomIntensity > 2.0F ||
+        !std::isfinite(view.postProcess.bloomThreshold) ||
+        view.postProcess.bloomThreshold < 0.1F || view.postProcess.bloomThreshold > 20.0F ||
         view.pointLightCount > MaximumPointLightsPerFrame)
     {
-        error = "Frame view contains invalid camera data or exceeds the point-light limit.";
+        error = "Frame view contains invalid camera, post-processing data, or exceeds the point-light limit.";
         return false;
     }
     for (std::uint32_t index = 0U; index < view.pointLightCount; ++index)

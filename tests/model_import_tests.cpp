@@ -178,6 +178,7 @@ int main(int argc, char** argv)
               generatedModel.materials[1].name == "timber",
             "generated OBJ resolves its companion MTL material library");
     }
-\n    std::cout << (checks - failures) << "/" << checks << " model import tests passed.\n";
+
+    std::cout << (checks - failures) << "/" << checks << " model import tests passed.\n";
     return failures == 0 ? 0 : 1;
 }

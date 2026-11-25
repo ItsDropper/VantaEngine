@@ -182,7 +182,8 @@ bool DecodeRadianceHdr(std::span<const std::uint8_t> encoded,
     if (std::sscanf(std::string(line).c_str(), " %c%c %d %c%c %d",
         &ySign, &yAxis, &height, &xSign, &xAxis, &width) != 6 ||
         ySign != '-' || yAxis != 'Y' || xSign != '+' || xAxis != 'X' ||
-        width < 2 || height < 2 || width > 32767 || height > 32767)
+        width < 2 || height < 2 || width > 32767 || height > 32767 ||
+        static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height) > 16777216ULL)
     {
         error = "Radiance HDR resolution must use the -Y height +X width orientation and dimensions from 2 to 32767.";
         return false;

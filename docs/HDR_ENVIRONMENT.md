@@ -6,12 +6,14 @@ The renderer accepts an immutable, decoded Radiance RGBE environment image on a 
 #include "vanta/renderer/HdrEnvironment.hpp"
 #include "vanta/renderer/SceneSubmission.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 const std::filesystem::path path = "environment.hdr";

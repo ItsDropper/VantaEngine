@@ -3,12 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <utility>
 #include <cstring>
-#include <cstdio>
-#include <utility>
 #include <limits>
 #include <string_view>
+#include <utility>
 
 namespace vanta::renderer
 {

@@ -28,6 +28,8 @@ std::string error;
 if (!vanta::renderer::DecodeRadianceHdr(encoded, *environment, error))
     throw std::runtime_error(error);
 
+vanta::renderer::SceneSubmission submission;
+vanta::renderer::SceneFrame frame;
 vanta::renderer::FrameView view;
 view.environment.enabled = true;
 view.environmentMap = std::move(environment);
